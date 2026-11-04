@@ -1,6 +1,6 @@
 # Taful — Project Brief
 
-> Not a spec: it captures intent and the decisions taken so far. The open questions from the first `grill` session were decided on 2026-11-04 and are logged as D1–D10 in [decisions.md](decisions.md), together with later decisions (D11+). That log is the source of truth when the two disagree. The spec comes out of `to-spec` from this brief plus the decision log.
+> Not a spec: it captures intent and the decisions taken so far. The open questions from the first `grill` session were decided on 2026-11-04 and are logged as D1–D10 in [decisions.md](decisions.md), together with later decisions (D11+). That log is the source of truth when the two disagree. The spec derived from this brief plus the decision log is [spec.md](spec.md).
 
 ## 1. Concept
 
@@ -178,7 +178,7 @@ The original open questions were decided on 2026-11-04. Details, reasoning and i
 - Formal trademark checks for "Taful" (INPI classes 9 and 41; USPTO/EUIPO if publishing abroad) before any public release.
 - Spot count and bot-profile solve budget, from the solver spike.
 - Mapping strategy for boards outside the pre-solved flop subset.
-- License and API of `fsrs-rs`, to verify during setup.
+- ~~License and API of `fsrs-rs`~~: BSD-3-Clause, verified 2026-11-04 (see [spec.md](spec.md) §4.1).
 
 ## 9. Early spikes (before implementation)
 
