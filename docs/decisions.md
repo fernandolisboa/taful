@@ -188,3 +188,23 @@ Exploitative play is only teachable if the grade measures EV against the real op
 - Each profile needs its own node-locked solves for the spot library (D2), multiplying solve cost. The solver spike (§9.2) decides how many profile × spot combinations are affordable, and whether the most common ones are pre-solved and the rest solved on demand.
 - Profiles are seedable and deterministic like the reference bot (D4), so hands replay exactly.
 - The same profile parameters later describe real opponents from imported hand histories (HUD stats literacy), so the model is reused, not duplicated.
+
+---
+
+## D9 — Cross-device sync
+
+**Date:** 2026-11-04 · **Brief ref:** §8.9
+
+### Decision
+- **No backend until a second client exists** (web or Android). Until then Taful is fully local.
+- **Meanwhile:** automatic, rotating backups/exports of the SQLite database (consistent snapshot via SQLite's backup API, never a raw file copy of a live DB) to a user-chosen folder, plus manual export/import.
+- **Hosting is decided when sync is built**, not now.
+
+### Why
+With one user on one device, sync delivers nothing and adds monthly cost and operations. The sync-ready schema from the brief (ULID ids, `updated_at` on every row, soft deletes) keeps adding a backend later an additive change.
+
+### Implications
+- The sync-ready schema rules are mandatory from the first migration and enforced by a schema test (every table has a ULID primary key, `updated_at` and `deleted_at`).
+- Content and pre-solved spots are not user data and never sync; only progress, review logs (D6), layouts/themes (D7), hand history and settings do.
+- Syncing the SQLite file through a cloud-drive folder is explicitly rejected (corruption risk with concurrent writers).
+- Secrets (Claude API key) stay in the OS credential store and are never included in backups or sync.
