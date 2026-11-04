@@ -80,3 +80,25 @@ Absolute bb alone treats a mistake in a 5bb pot the same as one in a 200bb pot, 
 - Tournaments (D1) run the same thresholds on **$EV from the ICM layer, converted back to bb-equivalents**, so one ruler works across formats.
 - Solver tolerance (exploitability of the pre-solved spot) must be stored with each spot, so "best" is never stricter than the reference itself.
 - Mixed strategies: choosing a low-frequency action that the solver still plays is not penalized beyond its actual EV loss.
+
+---
+
+## D4 — Simulator depth
+
+**Date:** 2026-11-04 · **Brief ref:** §8.4
+
+### Decision
+The simulator ships with **both modes from the start**:
+
+- **Spot mode:** a single decision point (game state, action history and sizing given). Fast to repeat; the default unit for drills, spaced repetition and "drills from your own mistakes".
+- **Full-hand mode:** the hand is played street by street. Villain(s) act by sampling the reference strategy, and **every hero decision is graded** with the D3 thresholds. The review shows the grade of each decision plus the hand's total EV loss.
+
+### Why
+Spot mode trains individual decisions efficiently; full-hand mode trains planning a hand across streets and living with the consequences of a line. Both are needed for a complete coach (D1).
+
+### Implications
+- A pre-solved flop spot already contains the full turn and river tree, so full-hand mode reuses the same library (D2) without extra solves.
+- Hero's bet sizes are **limited to the sizings in the solved tree**. The UI shows those as the available sizing buttons. Free sizing needs on-demand solving and is deferred.
+- Preflop in full-hand mode uses the preflop charts; postflop is only available for lines that reach a pre-solved spot. Lines that leave the library end the hand early with a clear message, and are logged as candidates for new solves.
+- Both modes share one engine: spot mode is full-hand mode started at a given node and stopped after one hero decision. No duplicated logic.
+- Villain sampling must be seedable, so any hand can be replayed exactly (review, bug reports, tests).
