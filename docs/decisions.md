@@ -289,3 +289,24 @@ The user expects a web version, and download size matters. The ~4–5GB library 
 - **Compact format:** Taful's library format quantizes strategy frequencies (e.g. 8-bit) and EVs, and may drop nodes that are reached with negligible frequency. The estimated reduction is 2–4x vs the solver's 16-bit trees, to be measured when the format is built.
 - **An own turn solver was considered and rejected for now.** Turns took ~5s natively on 4 cores, and would take an estimated 10–30s in single-threaded WASM, which is a wait on every turn in full-hand mode. The subgame-solver trait keeps it possible later.
 - The client needs a library host (an endpoint under the configurable base URL, D10) and an offline path: spots already cached keep working offline, and uncached spots end the hand early with a message, like lines outside the library (D4).
+
+---
+
+## D12 — Source of preflop reference charts
+
+**Date:** 2026-11-04 · **Ref:** [spec.md](spec.md) §6, Q1
+
+### Decision
+Preflop charts (frequencies and per-combo action EVs) are produced by **Taful's own offline preflop solver** in `tools/library-build`:
+- DCFR over the full preflop tree of the `GameConfig` with a fixed sizing set.
+- Postflop is abstracted at terminal nodes as `pot × equity × realization`, with realization factors per position, pot type and SPR bucket.
+- Realization factors are **calibrated from the postflop library** (each combo's root EV vs pot × raw equity, averaged over the flop subset), then the charts are re-solved. The build tool reports the chart diff per iteration.
+- Nothing is copied from proprietary sources.
+
+### Why
+D3 grades by EV loss, so preflop needs per-combo EVs, not just frequencies; frequency-only charts would break the single grading ruler. An own solver also keeps the data free of licensing questions and makes every `GameConfig` (D1) a build-manifest change.
+
+### Implications
+- Build order: preflop v0 → postflop library (ranges from v0) → calibrate → preflop v1. Preflop charts block M3; the postflop library uses them as input ranges.
+- Preflop EVs are model-based approximations; their accuracy is bounded by the realization model. The exploitability of each node within the abstracted game is stored, and "best" uses it as tolerance (D3).
+- Push/fold and ICM charts for tournaments stay a separate, exact computation.

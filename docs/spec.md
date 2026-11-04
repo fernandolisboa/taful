@@ -1,6 +1,6 @@
 # Taful — Specification
 
-> **Status:** draft for review, 2026-11-04. Derived from [brief.md](brief.md), [decisions.md](decisions.md) (D1–D11) and [spikes.md](spikes.md) / [spikes/9.1-gpui-table.md](spikes/9.1-gpui-table.md). All three §9 spikes passed, so the stack stands.
+> **Status:** draft for review, 2026-11-04. Derived from [brief.md](brief.md), [decisions.md](decisions.md) (D1–D12) and [spikes.md](spikes.md) / [spikes/9.1-gpui-table.md](spikes/9.1-gpui-table.md). All three §9 spikes passed, so the stack stands.
 >
 > **Precedence:** decisions.md > this spec > brief.md. Items marked **(proposed)** are choices this spec makes that were not grilled; they stand unless changed in review. Items marked **(open)** are listed in §19 and need a decision before the milestone that depends on them.
 
@@ -177,7 +177,7 @@ pub trait EquityModel { fn to_bb_equiv(&self, stacks_after: &[Chips], hero: Seat
 
 The first slice needs **full 6-max 100bb rake-0 charts for RFI, vs open, vs 3-bet, vs 4-bet, squeeze and blind vs blind (D2)**, with **per-combo action EVs**, because grading is EV-based (D3).
 
-**(open, Q1)** How these are produced. Proposed: an **own offline preflop solver** in `tools/library-build`:
+**Decided (D12):** an **own offline preflop solver** in `tools/library-build`:
 
 - CFR (DCFR) over the full 6-max preflop tree with a fixed sizing set (opens 2.5bb, SB open 3bb; 3-bets 3x IP / 3.5–4x OOP; 4-bets ~2.2x; 5-bet all-in).
 - Postflop is abstracted: a terminal node's value is `pot × equity × realization(position, pot type, SPR bucket)`.
@@ -522,7 +522,7 @@ As in spike §9.1: oval rail + felt, seats on an ellipse, avatars, stacks, posit
 | M0 | Workspace layout, CI (fmt, clippy, tests, architecture checks, Windows build), app shell with i18n + theme tokens. | — |
 | M1 | `taful-core`: cards, evaluator, equity, `GameConfig`, engine with side pots, grading, calc generators/solvers. | M0 |
 | M2 | `taful-store`, `taful-content`, calc trainer UI, lesson reader, skill tree, FSRS queue, backups. First usable loop (lessons + calc). First ~10 lessons. | M1 |
-| M3 | Preflop solver + charts in library format; preflop spot mode and full-hand preflop. | M1, Q1 |
+| M3 | Preflop solver + charts in library format; preflop spot mode and full-hand preflop. | M1 |
 | M4 | Library format, build tool, 245 postflop solves, river solver + validation, local `LibrarySource`; postflop spot mode. | M3, Q2, Q4 |
 | M5 | Full-hand mode end to end, hand review/replay, drills from mistakes, leak detection. | M4 |
 | M6 | Remaining lessons (to ~40), layout presets, theme polish, grade colors, performance pass. Slice acceptance (§1.1). | M5 |
@@ -535,7 +535,7 @@ The calc trainer and lessons (M2) give daily value before the library exists, so
 
 | # | Question | Proposed | Blocks |
 |---|---|---|---|
-| Q1 | Source of preflop charts with EVs | Own offline preflop solver, realization calibrated from the postflop library (§6) | M3 |
+| Q1 | Source of preflop charts with EVs | **Decided (D12):** own offline preflop solver, realization calibrated from the postflop library (§6) | — |
 | Q2 | Boards outside the flop subset | Deal postflop only from library flops (§7.4) | M4 |
 | Q3 | Trademark checks for "Taful" (INPI 9/41, USPTO/EUIPO) | Before any public release | release |
 | Q4 | Machine for the library build (≥ 32GB RAM, many cores) | Author's PC if ≥ 32GB, otherwise a rented 16-core/64GB box for ~1–2 days | M4 |
