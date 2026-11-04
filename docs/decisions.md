@@ -149,3 +149,22 @@ FSRS schedules fewer reviews for the same retention than SM-2, can optimize its 
 - Full-hand mode (D4) feeds the queue per decision, not per hand: each graded mistake becomes its own item.
 - Calc-trainer exercises and lesson quizzes use the same queue and the same rating mapping (timed drills can downgrade a slow correct answer to Hard).
 - The full review log (item, timestamp, rating, elapsed) is stored in SQLite so FSRS parameters can be re-optimized locally, and so the log syncs later (sync-ready schema).
+
+---
+
+## D7 — Layout customization sequencing
+
+**Date:** 2026-11-04 · **Brief ref:** §8.7
+
+### Decision
+1. **First slice:** layout is data from day one (JSON: panel, HUD and action-button positions and sizes). The app ships **built-in presets** with save / load / reset, and **themes as design-token files** (default petrol-teal/slate felt, amber/gold accents, cream type, no red, 4-color deck with gold/burnt orange).
+2. **Right after:** the **drag-and-drop edit mode with grid snapping**, built on top of the same JSON model. The in-app theme editor follows the same pattern on top of token files.
+
+### Why
+Since layout and theme are pure data, the editor is a UI over an existing model and adds nothing that must be redone. Waiting until the set of panels stabilizes avoids rebuilding the editor as screens change.
+
+### Implications
+- The layout schema must be versioned with migrations, so presets and user layouts survive new panels being added.
+- Layouts are resolution-independent (relative units + grid cells), so one preset works on different window sizes, and later on web.
+- GPUI drag-and-drop is still validated early in spike §9.1, so the deferred editor carries no hidden technical risk.
+- No widget hard-codes a color: everything reads tokens, enforced by a lint/test that rejects literal colors outside theme files.
