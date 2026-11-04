@@ -208,3 +208,26 @@ With one user on one device, sync delivers nothing and adds monthly cost and ope
 - Content and pre-solved spots are not user data and never sync; only progress, review logs (D6), layouts/themes (D7), hand history and settings do.
 - Syncing the SQLite file through a cloud-drive folder is explicitly rejected (corruption risk with concurrent writers).
 - Secrets (Claude API key) stay in the OS credential store and are never included in backups or sync.
+
+---
+
+## D10 — App name
+
+**Date:** 2026-11-04 · **Brief ref:** §8.10
+
+### Decision
+Keep **Taful** as the name. A preliminary availability search was run on 2026-11-04 (results below). A formal check is still required before any public release.
+
+### Preliminary findings (2026-11-04)
+- **Web search:** no app, poker product or gaming brand named "Taful" was found. Existing uses are unrelated: a Portuguese university student music group (Tuna Académica de Farmácia, Lisbon), an archived C "crackme" repo on GitHub (`LorenzKofler/Taful`), a small personal GitHub account `taful`, and a Facebook page.
+- **App stores:** no "Taful" listing found on Google Play or the App Store in search results.
+- **Domains (taful.com, .com.br, .app, .io, .dev):** not verified. RDAP/WHOIS lookups are blocked from the environment where this check ran.
+- **Trademarks (INPI, USPTO, EUIPO):** not verified. These databases require interactive searches that could not be run here.
+
+### Why
+Low collision risk in the poker/education space based on what could be checked, and the name carries the intended meaning (archaic Portuguese for a habitual gambler).
+
+### Implications
+- Before publishing, complete: domain lookups (registro.br for `.com.br`, any registrar for `.com`/`.app`), INPI search in Nice classes 9 (software) and 41 (education/entertainment), and USPTO/EUIPO if publishing outside Brazil. Consider registering `taful.com.br` and `taful.app` early, since they are cheap.
+- Keep the product name out of crate names, identifiers and storage paths where practical (e.g. one constant plus i18n strings), so a rename stays cheap if a conflict appears.
+- Note for marketing copy: "taful" means a habitual gambler, which may need care with store policies on gambling-related apps. Taful has no real-money play, which should be stated clearly in store listings.
