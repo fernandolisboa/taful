@@ -66,7 +66,7 @@ A large tree for SRPs needs 63–211GB per flop and is out of reach. Turn and ri
 **Proposed library for the first slice** (the scope of D2 is unchanged, so this sets only the numbers):
 - **5 configurations × 49 flops = 245 solves:** 3 SRP configurations (BTN vs BB, CO vs BB, SB vs BB) on the medium tree, and 2 3-bet pot configurations (BTN vs SB, CO vs BTN) on the large tree.
 - **Build budget:** ~85–150 hours for the SRPs plus ~8 hours for the 3-bet pots on a 4-core machine. A 16-core, 32GB+ machine should cut this to roughly 1–2 days (scaling not measured). A 32GB machine is the minimum for dry-board SRPs. The build is an offline, resumable batch job (one file per flop), run outside the app.
-- **Shipped size:** ~4–5GB with turn-truncated trees, or ~25MB flop-only with on-demand turn solving (~5s each). Rivers are always solved on demand in the app (< 0.1s). Which of the two to ship, and how the AGPL license of the solver is handled, is open (see [spikes.md](spikes.md), §9.2 "Implications").
+- **Shipped size:** ~4–5GB with turn-truncated trees, or ~25MB flop-only with on-demand turn solving (~5s each). Rivers are always solved on demand in the app (< 0.1s). Decided in D11: ship turn-truncated trees, and solve rivers with Taful's own river solver.
 - The library is stored in Taful's own format, exported by the build tool, not in the solver's binary format.
 
 ---
@@ -263,3 +263,23 @@ Low collision risk in the poker/education space based on what could be checked, 
   - The old host keeps serving permanent (301/308) redirects after a move.
   - **The one real cost is the web app's browser storage:** IndexedDB/localStorage are per-origin, so data stored on `taful.filx.app` is invisible on `taful.app`. The web client must treat browser storage as a cache of synced data, or ship an export/import path, before any move.
   - Android App Links need `assetlinks.json` on every host the app claims; list both during a transition.
+
+---
+
+## D11 — Solver licensing and in-app solving
+
+**Date:** 2026-11-04 · **Ref:** spike §9.2 ([spikes.md](spikes.md))
+
+### Decision
+- `postflop-solver` (AGPL-3.0) is used **only in the offline library build tool**, never linked into the app.
+- The app solves rivers on demand with **Taful's own river-only solver** in `taful-solver`, under the project's own license.
+- The library ships **turn-truncated trees** (~4–5GB for the D2 library) in Taful's own format, so the app needs no turn solver.
+
+### Why
+The user prefers to keep the option of distributing Taful someday without having to publish it under AGPL. A river-only solver is small: one street, no chance nodes, and hand strengths are precomputable with the `rs_poker` evaluator. The spike measured river subgames at < 1MB and < 0.1s.
+
+### Implications
+- The offline build tool (which links `postflop-solver`) is a separate binary outside the shipped app. It may be AGPL; its output (strategy and EV data) is not covered by the license.
+- The own river solver is validated against `postflop-solver` inside the offline tool: for a fixed set of river spots, exploitability and per-hand EVs must agree within tolerance. This test lives with the build tool, not in the app.
+- `taful-solver` exposes a trait for subgame solving, so swapping the implementation later is a local change.
+- Shipping ~4–5GB of data is acceptable for desktop. If download size becomes a problem (web, Android), the alternative is flop-only data plus an own turn solver, at ~5s per turn.
