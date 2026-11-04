@@ -52,3 +52,31 @@ It exercises the whole closed loop (simulate → grade → review → drill → 
 - Library entries are keyed by `GameConfig` + preflop line + board, so new formats are additive (D1).
 - Boards outside the subset need a mapping strategy (nearest strategically-equivalent flop, or on-demand solve later). To be decided in the spec.
 - Push/fold and ICM charts for tournaments are cheap to compute and can be generated independently of the postflop library when the MTT/SNG work starts.
+
+---
+
+## D3 — EV-loss grading thresholds
+
+**Date:** 2026-11-04 · **Brief ref:** §8.3
+
+### Decision
+Each decision is graded on **two scales at once, absolute (bb) and relative (% of the pot before the decision)**, and receives the **worse** of the two grades.
+
+| Grade | Absolute EV loss | Relative EV loss |
+|---|---|---|
+| best | action played by the reference strategy at ≥ 10% frequency, or EV within solver tolerance of the max | — |
+| correct | < 0.1bb | < 2% of pot |
+| inaccuracy | < 0.5bb | < 5% of pot |
+| mistake | < 2bb | < 15% of pot |
+| blunder | ≥ 2bb | ≥ 15% of pot |
+
+These values are starting points. They live in configuration, not in code, and will be calibrated against real sessions.
+
+### Why
+Absolute bb alone treats a mistake in a 5bb pot the same as one in a 200bb pot, so small-pot errors almost never register. Percentage of pot alone hides expensive errors in big pots (3% of 300bb is 9bb). Taking the worse of both catches both failure modes.
+
+### Implications
+- `taful-core` exposes a pure function `grade(ev_loss, pot, thresholds) -> Grade`, property-tested for monotonicity (more EV loss never improves the grade).
+- Tournaments (D1) run the same thresholds on **$EV from the ICM layer, converted back to bb-equivalents**, so one ruler works across formats.
+- Solver tolerance (exploitability of the pre-solved spot) must be stored with each spot, so "best" is never stricter than the reference itself.
+- Mixed strategies: choosing a low-frequency action that the solver still plays is not penalized beyond its actual EV loss.
