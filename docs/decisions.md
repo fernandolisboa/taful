@@ -122,3 +122,30 @@ The user is still learning, so a manual review would not catch technical errors.
 - `taful-content` needs a small, safe expression language (whitelisted pure functions from `taful-core`, no arbitrary code) and a renderer used both by the app and by CI.
 - Claims that cannot be computed (strategic heuristics, "why" explanations) must cite the reference strategy for that spot when one exists, so the text never contradicts the solver.
 - Lessons are content-addressed / versioned so progress and spaced-repetition items survive lesson edits.
+
+---
+
+## D6 — Spaced-repetition algorithm
+
+**Date:** 2026-11-04 · **Brief ref:** §8.6
+
+### Decision
+Use **FSRS** (Free Spaced Repetition Scheduler), via the official Rust implementation (`fsrs-rs`; license and API to verify during setup).
+
+The D3 grade maps directly to the FSRS rating:
+
+| D3 grade | FSRS rating |
+|---|---|
+| best | Easy |
+| correct | Good |
+| inaccuracy | Hard |
+| mistake, blunder | Again |
+
+### Why
+FSRS schedules fewer reviews for the same retention than SM-2, can optimize its parameters from the user's own review history, and is the current default in Anki. Integration effort is about the same as SM-2, and choosing it now avoids converting history later.
+
+### Implications
+- A review item is a **spot template** (game state, positions, action history, sizing), not a fixed hand. Each review instantiates it with a randomized board/hand from the same strategic family, as the brief requires for "drills from your own mistakes".
+- Full-hand mode (D4) feeds the queue per decision, not per hand: each graded mistake becomes its own item.
+- Calc-trainer exercises and lesson quizzes use the same queue and the same rating mapping (timed drills can downgrade a slow correct answer to Hard).
+- The full review log (item, timestamp, rating, elapsed) is stored in SQLite so FSRS parameters can be re-optimized locally, and so the log syncs later (sync-ready schema).
