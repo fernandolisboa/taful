@@ -102,3 +102,23 @@ Spot mode trains individual decisions efficiently; full-hand mode trains plannin
 - Preflop in full-hand mode uses the preflop charts; postflop is only available for lines that reach a pre-solved spot. Lines that leave the library end the hand early with a clear message, and are logged as candidates for new solves.
 - Both modes share one engine: spot mode is full-hand mode started at a given node and stopped after one hero decision. No duplicated logic.
 - Villain sampling must be seedable, so any hand can be replayed exactly (review, bug reports, tests).
+
+---
+
+## D5 — Lesson content: authorship and correctness
+
+**Date:** 2026-11-04 · **Brief ref:** §8.5
+
+### Decision
+- **Authorship:** lessons are drafted by AI (Claude) and committed as data.
+- **Format:** one Markdown file per lesson with TOML front matter (id, title, prerequisites in the skill tree, tags, glossary terms, the quiz/drill that unlocks the next node). Source language is en-US; pt-BR is shipped through the i18n pipeline.
+- **Correctness:** every number a lesson states (outs, pot odds, MDF, alpha, equity, chart frequencies, EV figures) is **not hand-written**. It is a reference to a computation (`{{ calc: pot_odds(pot=10, bet=5) }}`-style placeholder or a fixture) that `taful-core` evaluates. CI renders every lesson and fails if a computation errors or a pinned expectation drifts.
+- **Size of the first track:** about 40 lessons, from 101 up to intermediate cash 6-max 100bb play (matching D2). Further tracks (MTT, SNG, deep stacks, rake) follow the format rollout from D1.
+
+### Why
+The user is still learning, so a manual review would not catch technical errors. Binding every number to tested code makes the content verifiable; prose quality can be reviewed by reading. A human expert reviewer can be added later without changing the pipeline.
+
+### Implications
+- `taful-content` needs a small, safe expression language (whitelisted pure functions from `taful-core`, no arbitrary code) and a renderer used both by the app and by CI.
+- Claims that cannot be computed (strategic heuristics, "why" explanations) must cite the reference strategy for that spot when one exists, so the text never contradicts the solver.
+- Lessons are content-addressed / versioned so progress and spaced-repetition items survive lesson edits.
