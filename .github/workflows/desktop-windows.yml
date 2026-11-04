@@ -1,0 +1,74 @@
+name: desktop (Windows)
+
+on:
+  push:
+    branches: [main]
+    paths: ["apps/**", "crates/**", "Cargo.*", ".github/workflows/desktop-windows.yml"]
+  pull_request:
+    paths: ["apps/**", "crates/**", "Cargo.*", ".github/workflows/desktop-windows.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --locked --release -- -D warnings
+
+      - name: Build
+        run: cargo build --locked --release
+
+      # Launch the app on the runner's desktop and capture the screen, so the
+      # render can be checked without a local Windows machine. The runner has
+      # no GPU, so this also exercises GPUI's software (WARP) fallback.
+      - name: Smoke run + screenshot
+        shell: pwsh
+        run: |
+          $app = Start-Process -FilePath target\release\taful.exe -PassThru `
+            -RedirectStandardOutput stdout.log -RedirectStandardError stderr.log
+          Start-Sleep -Seconds 15
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(400, 300)
+          Start-Sleep -Seconds 2
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save("screenshot.png", [System.Drawing.Imaging.ImageFormat]::Png)
+          $alive = -not $app.HasExited
+          if ($alive) { Stop-Process -Id $app.Id -Force }
+          Get-Content stdout.log, stderr.log -ErrorAction SilentlyContinue
+          if (-not $alive) { throw "taful.exe exited early (code $($app.ExitCode))" }
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: taful-windows-x64
+          path: target/release/taful.exe
+          if-no-files-found: error
+
+      - name: Upload screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshot-windows
+          path: |
+            screenshot.png
+            stdout.log
+            stderr.log
+          if-no-files-found: ignore
