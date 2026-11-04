@@ -168,3 +168,23 @@ Since layout and theme are pure data, the editor is a UI over an existing model 
 - Layouts are resolution-independent (relative units + grid cells), so one preset works on different window sizes, and later on web.
 - GPUI drag-and-drop is still validated early in spike §9.1, so the deferred editor carries no hidden technical risk.
 - No widget hard-codes a color: everything reads tokens, enforced by a lint/test that rejects literal colors outside theme files.
+
+---
+
+## D8 — Bots with profiles
+
+**Date:** 2026-11-04 · **Brief ref:** §8.8
+
+### Decision
+- **First slice:** the only opponent is the **reference (GTO) bot** that already powers full-hand mode (D4).
+- **Right after the first slice:** profiled bots (nit, calling station, maniac, TAG, and more later), modeled as **parametric deviations from the reference strategy**, not as hand-written rules.
+- **Grading against a profiled bot uses EV against that bot's actual strategy**, obtained by solving with the bot's strategy node-locked. The explanation shows both the GTO line and the exploitative line, and the EV gap between them.
+
+### Why
+Exploitative play is only teachable if the grade measures EV against the real opponent. A rule-based bot has no EV reference to grade against. Deviations from the reference keep bots consistent with the rest of the engine and make them tunable.
+
+### Implications
+- Profile = a data file of deviation parameters, for example: preflop range width multipliers per node (VPIP/PFR/3-bet), fold-to-c-bet and fold-to-raise adjustments, bluff/value ratio shifts, sizing preferences, and per-street aggression. Applied as a transform over the reference strategy, then renormalized.
+- Each profile needs its own node-locked solves for the spot library (D2), multiplying solve cost. The solver spike (§9.2) decides how many profile × spot combinations are affordable, and whether the most common ones are pre-solved and the rest solved on demand.
+- Profiles are seedable and deterministic like the reference bot (D4), so hands replay exactly.
+- The same profile parameters later describe real opponents from imported hand histories (HUD stats literacy), so the model is reused, not duplicated.
