@@ -1,6 +1,6 @@
 # Taful — Project Brief
 
-> Not a spec: it captures intent and the decisions taken so far. The open questions from the first `grill` session were decided on 2026-11-04 and are logged as D1–D10 in [decisions.md](decisions.md), which is the source of truth when the two disagree. The spec comes out of `to-spec` from this brief plus the decision log.
+> Not a spec: it captures intent and the decisions taken so far. The open questions from the first `grill` session were decided on 2026-11-04 and are logged as D1–D10 in [decisions.md](decisions.md), together with later decisions (D11+). That log is the source of truth when the two disagree. The spec comes out of `to-spec` from this brief plus the decision log.
 
 ## 1. Concept
 
@@ -86,7 +86,7 @@ This is the main technical risk: grading needs a trustworthy reference.
 - **Preflop:** static charts, either self-generated or from open sources. **Do not copy proprietary data** (GTO Wizard and similar).
 - **Postflop:** the open-source `postflop-solver` by b-inary is written in Rust and powers Desktop Postflop and WASM Postflop.
   - **Verified in spike §9.2:** licensed AGPL-3.0-or-later, development suspended since October 2023. It still works with a dependency pin. See [spikes.md](spikes.md).
-- **v1 approach (D2):** pre-solve a library for cash 6-max 100bb and store the results on disk. Real-time solving comes later.
+- **v1 approach (D2):** pre-solve a library for cash 6-max 100bb offline, in Taful's own compact format, downloaded per flop on demand (D11). The only real-time solving is rivers, with Taful's own river solver (D11).
   - Preflop: full charts for every position and common node (RFI, vs open, vs 3-bet, vs 4-bet, squeeze, blind vs blind).
   - Postflop: the main single-raised and 3-bet pot configurations (e.g. BTN vs BB, CO vs BB, SB vs BB, BTN vs SB 3-bet, CO vs BTN 3-bet), each on a representative subset of about 49 flops.
   - The final spot count is set by the solver spike (§9.2), as is the budget for node-locked bot-profile solves (D8).
@@ -163,15 +163,16 @@ The original open questions were decided on 2026-11-04. Details, reasoning and i
 | # | Question | Decision |
 |---|---|---|
 | D1 | Formats in scope | Full NLHE: HU/6-max/full ring, short to deep stacks, cash/MTT/SNG, all speeds, rake. PLO out. First slice: cash 6-max 100bb. |
-| D2 | First spot library | Cash 6-max 100bb: full preflop charts, main SRP and 3-bet pot configs on ~49 flops. Count set by the solver spike. |
+| D2 | First spot library | Cash 6-max 100bb: full preflop charts, 3 SRP + 2 3-bet pot configs × ~49 flops (245 solves), sized by the solver spike. |
 | D3 | Grading thresholds | Worse of absolute (bb) and relative (% of pot) EV loss; values in config. |
 | D4 | Simulator depth | Spot mode and full-hand mode from the start, one engine. |
 | D5 | Lesson content | AI-drafted Markdown + TOML; every number computed by `taful-core` and checked in CI; ~40 lessons first. |
 | D6 | Spaced repetition | FSRS, with grades mapped to ratings. |
 | D7 | Layout customization | Presets and token themes first; drag-and-drop editor right after. |
-| D8 | Bots | GTO bot first; profiled bots as parametric deviations right after, graded by node-locked EV. |
+| D8 | Bots | GTO bot first; profiled bots as parametric deviations right after, graded by best-response EV against the profile, computed at build time. |
 | D9 | Sync | No backend until a second client exists; rotating local backups meanwhile. |
 | D10 | App name and host | Keep "Taful"; host on `taful.filx.app`; `.com.br` dropped, `.app` open. |
+| D11 | Solver licensing | `postflop-solver` (AGPL) only in the offline build tool; own river solver in the app; library downloaded on demand in a compact format. |
 
 ### Still open
 - Formal trademark checks for "Taful" (INPI classes 9 and 41; USPTO/EUIPO if publishing abroad) before any public release.
