@@ -53,6 +53,22 @@ It exercises the whole closed loop (simulate → grade → review → drill → 
 - Boards outside the subset need a mapping strategy (nearest strategically-equivalent flop, or on-demand solve later). To be decided in the spec.
 - Push/fold and ICM charts for tournaments are cheap to compute and can be generated independently of the postflop library when the MTT/SNG work starts.
 
+### Solver spike results (amended 2026-11-04)
+Measured in spike §9.2 (details in [spikes.md](spikes.md)) on a 4-vCPU, 15GB machine, with exploitability ≤ 0.5% of the pot.
+
+| Spot type | Tree | Per flop: time | Per flop: memory (16-bit) | Shippable size (truncated after turn) |
+|---|---|---|---|---|
+| SRP (SPR ≈ 18) | medium (2 flop sizes; 2 sizes + all-in on turn and river) | ~35–60 min | 8–14GB | ~15–30MB |
+| 3-bet pot (SPR ≈ 4) | large (3 flop sizes; 3 sizes + all-in on turn and river; 2 raise sizes) | ~5 min | ~2GB | ~5–20MB |
+
+A large tree for SRPs needs 63–211GB per flop and is out of reach. Turn and river subgames solve on demand in ~5s and < 0.1s.
+
+**Proposed library for the first slice** (the scope of D2 is unchanged, so this sets only the numbers):
+- **5 configurations × 49 flops = 245 solves:** 3 SRP configurations (BTN vs BB, CO vs BB, SB vs BB) on the medium tree, and 2 3-bet pot configurations (BTN vs SB, CO vs BTN) on the large tree.
+- **Build budget:** ~85–150 hours for the SRPs plus ~8 hours for the 3-bet pots on a 4-core machine. A 16-core, 32GB+ machine should cut this to roughly 1–2 days (scaling not measured). A 32GB machine is the minimum for dry-board SRPs. The build is an offline, resumable batch job (one file per flop), run outside the app.
+- **Shipped size:** ~4–5GB with turn-truncated trees, or ~25MB flop-only with on-demand turn solving (~5s each). Rivers are always solved on demand in the app (< 0.1s). Decided in D11: ship turn-truncated trees, and solve rivers with Taful's own river solver.
+- The library is stored in Taful's own format, exported by the build tool, not in the solver's binary format.
+
 ---
 
 ## D3 — EV-loss grading thresholds
@@ -189,6 +205,12 @@ Exploitative play is only teachable if the grade measures EV against the real op
 - Profiles are seedable and deterministic like the reference bot (D4), so hands replay exactly.
 - The same profile parameters later describe real opponents from imported hand histories (HUD stats literacy), so the model is reused, not duplicated.
 
+### Solver spike results (amended 2026-11-04)
+- A profile as defined above is a transform applied to the bot's whole strategy, so the bot is **locked at every node it acts**. Hero's EV against it is then a **best response**: one pass over the tree, with no solver iterations. The solver already runs this kind of pass (the exploitability check) every 10 iterations during each library solve, so its cost is a small fraction of a solve. This is reasoned from the solver's design and was not timed separately in the spike.
+- Best responses need the full tree in memory (8–14GB for an SRP), so flop and turn best-response EVs per profile are computed **offline during the library build**, while each solved tree is still loaded, and stored next to the reference strategy. River best responses run on demand in the app, like river solves (< 0.1s).
+- **Budget:** each profile adds a few minutes of build time per flop and less storage than the reference strategy (EVs for hero's hands only), instead of a full extra solve. All profiles × all D2 spots are affordable, so there is no need to split pre-solved and on-demand profiles.
+- **Avoid partial locks** (bot locked only at some nodes and re-optimizing elsewhere). Each would be a full re-solve (~35–60 min per SRP flop), which would multiply the D2 build time by the number of profiles.
+
 ---
 
 ## D9 — Cross-device sync
@@ -241,3 +263,29 @@ Low collision risk in the poker/education space based on what could be checked, 
   - The old host keeps serving permanent (301/308) redirects after a move.
   - **The one real cost is the web app's browser storage:** IndexedDB/localStorage are per-origin, so data stored on `taful.filx.app` is invisible on `taful.app`. The web client must treat browser storage as a cache of synced data, or ship an export/import path, before any move.
   - Android App Links need `assetlinks.json` on every host the app claims; list both during a transition.
+
+---
+
+## D11 — Solver licensing and in-app solving
+
+**Date:** 2026-11-04 · **Ref:** spike §9.2 ([spikes.md](spikes.md))
+
+### Decision
+- `postflop-solver` (AGPL-3.0) is used **only in the offline library build tool**, never linked into the app.
+- The app solves rivers on demand with **Taful's own river-only solver** in `taful-solver`, under the project's own license.
+- The library ships **turn-truncated trees** (~4–5GB for the D2 library) in Taful's own format, so the app needs no turn solver.
+
+### Why
+The user prefers to keep the option of distributing Taful someday without having to publish it under AGPL. A river-only solver is small: one street, no chance nodes, and hand strengths are precomputable with the `rs_poker` evaluator. The spike measured river subgames at < 1MB and < 0.1s.
+
+### Implications
+- The offline build tool (which links `postflop-solver`) is a separate binary outside the shipped app. It may be AGPL; its output (strategy and EV data) is not covered by the license.
+- The own river solver is validated against `postflop-solver` inside the offline tool: for a fixed set of river spots, exploitability and per-hand EVs must agree within tolerance. This test lives with the build tool, not in the app.
+- `taful-solver` exposes a trait for subgame solving, so swapping the implementation later is a local change.
+
+### Library delivery (amended 2026-11-04)
+The user expects a web version, and download size matters. The ~4–5GB library is therefore **not bundled with the app**:
+- **On-demand download:** one file per configuration + flop, served from a CDN. Web clients fetch a file when a hand first reaches that spot and cache it. Desktop does the same, and can also offer optional prefetch packs (e.g. "BTN vs BB SRP").
+- **Compact format:** Taful's library format quantizes strategy frequencies (e.g. 8-bit) and EVs, and may drop nodes that are reached with negligible frequency. The estimated reduction is 2–4x vs the solver's 16-bit trees, to be measured when the format is built.
+- **An own turn solver was considered and rejected for now.** Turns took ~5s natively on 4 cores, and would take an estimated 10–30s in single-threaded WASM, which is a wait on every turn in full-hand mode. The subgame-solver trait keeps it possible later.
+- The client needs a library host (an endpoint under the configurable base URL, D10) and an offline path: spots already cached keep working offline, and uncached spots end the hand early with a message, like lines outside the library (D4).
