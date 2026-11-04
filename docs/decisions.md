@@ -29,3 +29,26 @@ The user wants a complete coach, not a narrow trainer. The original brief's "6-m
 - Tournament formats need an ICM / equity-model layer between chip EV and $EV. EV-loss grading must therefore be expressed in the right unit per format (bb for cash, chip or $EV for tournaments). See D3.
 - Sequencing (which format ships first) is left to planning. Working assumption: cash 6-max 100bb is the first vertical slice because it exercises the whole loop with the cheapest reference data, while the generic model above keeps every other format a data addition.
 - Rake is a `GameConfig` parameter from the first slice, defaulting to zero, so it never requires a migration.
+
+---
+
+## D2 — First pre-solved spot library
+
+**Date:** 2026-11-04 · **Brief ref:** §8.2
+
+### Decision
+The first reference library is a **vertical slice: cash 6-max, 100bb**.
+
+- **Preflop:** full charts for every position and every common node (RFI, vs open, vs 3-bet, vs 4-bet, squeeze, blind vs blind).
+- **Postflop:** the main single-raised-pot and 3-bet-pot configurations (e.g. BTN vs BB, CO vs BB, SB vs BB, BTN vs SB 3-bet, CO vs BTN 3-bet), each solved on a representative flop subset of about 49 flops.
+- **Final spot count is set by the solver spike** (brief §9.2): time and memory per solve decide how many configurations and how deep a bet tree fit in the build budget.
+
+Every other format from D1 is added later as more data in the same library.
+
+### Why
+It exercises the whole closed loop (simulate → grade → review → drill → repeat) with the cheapest reference data, before investing in formats that need extra machinery such as ICM.
+
+### Implications
+- Library entries are keyed by `GameConfig` + preflop line + board, so new formats are additive (D1).
+- Boards outside the subset need a mapping strategy (nearest strategically-equivalent flop, or on-demand solve later). To be decided in the spec.
+- Push/fold and ICM charts for tournaments are cheap to compute and can be generated independently of the postflop library when the MTT/SNG work starts.
