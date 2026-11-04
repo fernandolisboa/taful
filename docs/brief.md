@@ -85,7 +85,7 @@ This is the main technical risk: grading needs a trustworthy reference.
 
 - **Preflop:** static charts, either self-generated or from open sources. **Do not copy proprietary data** (GTO Wizard and similar).
 - **Postflop:** the open-source `postflop-solver` by b-inary is written in Rust and powers Desktop Postflop and WASM Postflop.
-  - **To verify:** license (believed to be AGPL, which is fine for personal use) and maintenance status (believed to be discontinued by the author).
+  - **Verified in spike §9.2:** licensed AGPL-3.0-or-later, development suspended since October 2023. It still works with a dependency pin. See [spikes.md](spikes.md).
 - **v1 approach (D2):** pre-solve a library for cash 6-max 100bb and store the results on disk. Real-time solving comes later.
   - Preflop: full charts for every position and common node (RFI, vs open, vs 3-bet, vs 4-bet, squeeze, blind vs blind).
   - Postflop: the main single-raised and 3-bet pot configurations (e.g. BTN vs BB, CO vs BB, SB vs BB, BTN vs SB 3-bet, CO vs BTN 3-bet), each on a representative subset of about 49 flops.
@@ -186,3 +186,5 @@ The original open questions were decided on 2026-11-04. Details, reasoning and i
 3. **Hand evaluator + equity:** pick a crate or write our own, then benchmark it.
 
 If any spike fails, revisit the stack before writing the spec.
+
+Spikes 2 and 3 passed on 2026-11-04. Results are in [spikes.md](spikes.md).

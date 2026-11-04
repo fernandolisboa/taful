@@ -53,6 +53,22 @@ It exercises the whole closed loop (simulate → grade → review → drill → 
 - Boards outside the subset need a mapping strategy (nearest strategically-equivalent flop, or on-demand solve later). To be decided in the spec.
 - Push/fold and ICM charts for tournaments are cheap to compute and can be generated independently of the postflop library when the MTT/SNG work starts.
 
+### Solver spike results (amended 2026-11-04)
+Measured in spike §9.2 (details in [spikes.md](spikes.md)) on a 4-vCPU, 15GB machine, with exploitability ≤ 0.5% of the pot.
+
+| Spot type | Tree | Per flop: time | Per flop: memory (16-bit) | Shippable size (truncated after turn) |
+|---|---|---|---|---|
+| SRP (SPR ≈ 18) | medium (2 flop sizes; 2 sizes + all-in on turn and river) | ~35–60 min | 8–14GB | ~15–30MB |
+| 3-bet pot (SPR ≈ 4) | large (3 flop sizes; 3 sizes + all-in on turn and river; 2 raise sizes) | ~5 min | ~2GB | ~5–20MB |
+
+A large tree for SRPs needs 63–211GB per flop and is out of reach. Turn and river subgames solve on demand in ~5s and < 0.1s.
+
+**Proposed library for the first slice** (the scope of D2 is unchanged, so this sets only the numbers):
+- **5 configurations × 49 flops = 245 solves:** 3 SRP configurations (BTN vs BB, CO vs BB, SB vs BB) on the medium tree, and 2 3-bet pot configurations (BTN vs SB, CO vs BTN) on the large tree.
+- **Build budget:** ~85–150 hours for the SRPs plus ~8 hours for the 3-bet pots on a 4-core machine. A 16-core, 32GB+ machine should cut this to roughly 1–2 days (scaling not measured). A 32GB machine is the minimum for dry-board SRPs. The build is an offline, resumable batch job (one file per flop), run outside the app.
+- **Shipped size:** ~4–5GB with turn-truncated trees, or ~25MB flop-only with on-demand turn solving (~5s each). Rivers are always solved on demand in the app (< 0.1s). Which of the two to ship, and how the AGPL license of the solver is handled, is open (see [spikes.md](spikes.md), §9.2 "Implications").
+- The library is stored in Taful's own format, exported by the build tool, not in the solver's binary format.
+
 ---
 
 ## D3 — EV-loss grading thresholds
@@ -188,6 +204,12 @@ Exploitative play is only teachable if the grade measures EV against the real op
 - Each profile needs its own node-locked solves for the spot library (D2), multiplying solve cost. The solver spike (§9.2) decides how many profile × spot combinations are affordable, and whether the most common ones are pre-solved and the rest solved on demand.
 - Profiles are seedable and deterministic like the reference bot (D4), so hands replay exactly.
 - The same profile parameters later describe real opponents from imported hand histories (HUD stats literacy), so the model is reused, not duplicated.
+
+### Solver spike results (amended 2026-11-04)
+- A profile as defined above is a transform applied to the bot's whole strategy, so the bot is **locked at every node it acts**. Hero's EV against it is then a **best response**: one pass over the tree, with no solver iterations. The solver already runs this kind of pass (the exploitability check) every 10 iterations during each library solve, so its cost is a small fraction of a solve. This is reasoned from the solver's design and was not timed separately in the spike.
+- Best responses need the full tree in memory (8–14GB for an SRP), so flop and turn best-response EVs per profile are computed **offline during the library build**, while each solved tree is still loaded, and stored next to the reference strategy. River best responses run on demand in the app, like river solves (< 0.1s).
+- **Budget:** each profile adds a few minutes of build time per flop and less storage than the reference strategy (EVs for hero's hands only), instead of a full extra solve. All profiles × all D2 spots are affordable, so there is no need to split pre-solved and on-demand profiles.
+- **Avoid partial locks** (bot locked only at some nodes and re-optimizing elsewhere). Each would be a full re-solve (~35–60 min per SRP flop), which would multiply the D2 build time by the number of profiles.
 
 ---
 
