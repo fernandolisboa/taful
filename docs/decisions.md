@@ -221,13 +221,23 @@ Keep **Taful** as the name. A preliminary availability search was run on 2026-11
 ### Preliminary findings (2026-11-04)
 - **Web search:** no app, poker product or gaming brand named "Taful" was found. Existing uses are unrelated: a Portuguese university student music group (Tuna Académica de Farmácia, Lisbon), an archived C "crackme" repo on GitHub (`LorenzKofler/Taful`), a small personal GitHub account `taful`, and a Facebook page.
 - **App stores:** no "Taful" listing found on Google Play or the App Store in search results.
-- **Domains (taful.com, .com.br, .app, .io, .dev):** not verified. RDAP/WHOIS lookups are blocked from the environment where this check ran.
+- **Domains:** `taful.com` is taken (confirmed by the user). Other TLDs were not verified here (RDAP/WHOIS blocked from this environment).
 - **Trademarks (INPI, USPTO, EUIPO):** not verified. These databases require interactive searches that could not be run here.
 
 ### Why
 Low collision risk in the poker/education space based on what could be checked, and the name carries the intended meaning (archaic Portuguese for a habitual gambler).
 
 ### Implications
-- Before publishing, complete: domain lookups (registro.br for `.com.br`, any registrar for `.com`/`.app`), INPI search in Nice classes 9 (software) and 41 (education/entertainment), and USPTO/EUIPO if publishing outside Brazil. Consider registering `taful.com.br` and `taful.app` early, since they are cheap.
+- Before publishing, complete the INPI search in Nice classes 9 (software) and 41 (education/entertainment), and USPTO/EUIPO if publishing outside Brazil.
 - Keep the product name out of crate names, identifiers and storage paths where practical (e.g. one constant plus i18n strings), so a rename stays cheap if a conflict appears.
 - Note for marketing copy: "taful" means a habitual gambler, which may need care with store policies on gambling-related apps. Taful has no real-money play, which should be stated clearly in store listings.
+
+### Domain (amended 2026-11-04)
+- **Use `taful.filx.app`** (a subdomain of a domain the user already owns) whenever Taful needs a public host. No new domain is bought now.
+- `taful.com.br` is rejected (not available through the user's registrar, Vercel). `taful.app` may be bought later; not decided.
+- **Moving to an apex domain later is cheap if these rules hold from the start:**
+  - The desktop app depends on no domain at all (local-first, D9).
+  - The base URL is configuration, never hard-coded, for the web app, the sync API, OAuth redirect URIs and any links in content.
+  - The old host keeps serving permanent (301/308) redirects after a move.
+  - **The one real cost is the web app's browser storage:** IndexedDB/localStorage are per-origin, so data stored on `taful.filx.app` is invisible on `taful.app`. The web client must treat browser storage as a cache of synced data, or ship an export/import path, before any move.
+  - Android App Links need `assetlinks.json` on every host the app claims; list both during a transition.
