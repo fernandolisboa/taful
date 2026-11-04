@@ -63,6 +63,9 @@ struct Seat {
 struct PanelDrag {
     grab_x: f32,
     grab_y: f32,
+    /// Free (unsnapped) position under the cursor; snapping happens on release.
+    x: f32,
+    y: f32,
 }
 
 pub struct TableView {
@@ -124,6 +127,8 @@ impl TableView {
         self.drag = Some(PanelDrag {
             grab_x: f32::from(event.position.x) - self.panel_x,
             grab_y: f32::from(event.position.y) - self.panel_y,
+            x: self.panel_x,
+            y: self.panel_y,
         });
         cx.notify();
     }
@@ -134,24 +139,28 @@ impl TableView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(drag) = self.drag else { return };
+        let Some(drag) = self.drag.as_mut() else {
+            return;
+        };
         let viewport = window.viewport_size();
         let max_x = (f32::from(viewport.width) - PANEL_W).max(0.);
         let max_y = (f32::from(viewport.height) - PANEL_H).max(0.);
-        let snap = |v: f32, max: f32| ((v / GRID).round() * GRID).clamp(0., max);
-        let x = snap(f32::from(event.position.x) - drag.grab_x, max_x);
-        let y = snap(f32::from(event.position.y) - drag.grab_y, max_y);
-        if x != self.panel_x || y != self.panel_y {
-            self.panel_x = x;
-            self.panel_y = y;
-            cx.notify();
-        }
+        drag.x = (f32::from(event.position.x) - drag.grab_x).clamp(0., max_x);
+        drag.y = (f32::from(event.position.y) - drag.grab_y).clamp(0., max_y);
+        cx.notify();
     }
 
-    fn on_mouse_up(&mut self, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
-        if self.drag.take().is_some() {
-            cx.notify();
-        }
+    /// Hold Alt while releasing to drop the panel without snapping.
+    fn on_mouse_up(&mut self, event: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
+        let Some(drag) = self.drag.take() else {
+            return;
+        };
+        (self.panel_x, self.panel_y) = if event.modifiers.alt {
+            (drag.x, drag.y)
+        } else {
+            (snap(drag.x), snap(drag.y))
+        };
+        cx.notify();
     }
 
     fn card(&self, card: Card, scale: f32) -> Div {
@@ -363,16 +372,34 @@ impl TableView {
             }))
     }
 
+    /// Outline where the panel lands on release.
+    fn drop_target(&self, drag: PanelDrag) -> impl IntoElement {
+        div()
+            .absolute()
+            .left(px(snap(drag.x)))
+            .top(px(snap(drag.y)))
+            .w(px(PANEL_W))
+            .h(px(PANEL_H))
+            .rounded_lg()
+            .border_2()
+            .border_dashed()
+            .border_color(self.theme.accent)
+            .bg(gpui::Hsla::from(self.theme.accent).opacity(0.08))
+    }
+
     fn hint_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = &self.theme;
         let to_call = self.seats.iter().map(|s| s.bet_bb).fold(0., f32::max);
         let final_pot = self.pot_bb + to_call * 2.;
         let odds = to_call / final_pot * 100.;
         let dragging = self.drag.is_some();
+        let (x, y) = self
+            .drag
+            .map_or((self.panel_x, self.panel_y), |d| (d.x, d.y));
         div()
             .absolute()
-            .left(px(self.panel_x))
-            .top(px(self.panel_y))
+            .left(px(x))
+            .top(px(y))
             .w(px(PANEL_W))
             .h(px(PANEL_H))
             .rounded_lg()
@@ -417,8 +444,9 @@ impl TableView {
                             )),
                     )
                     .child(format!(
-                        "Posição {}, {} · grade de {} px",
-                        self.panel_x, self.panel_y, GRID
+                        "Posição {}, {} · Alt solta sem grade",
+                        x.round(),
+                        y.round()
                     )),
             )
     }
@@ -589,7 +617,10 @@ impl Render for TableView {
             .text_color(t.text)
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
-            .when(self.drag.is_some(), |d| d.child(self.grid_overlay(vw, vh)))
+            .when_some(self.drag, |d, drag| {
+                d.child(self.grid_overlay(vw, vh))
+                    .child(self.drop_target(drag))
+            })
             .child(self.table(vw, vw / 2., vh / 2. - 40.))
             .child(
                 div()
@@ -634,6 +665,10 @@ impl Render for TableView {
             )
             .child(self.hint_panel(cx))
     }
+}
+
+fn snap(v: f32) -> f32 {
+    (v / GRID).round() * GRID
 }
 
 fn fmt_bb(v: f32) -> String {
