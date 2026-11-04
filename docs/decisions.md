@@ -282,4 +282,10 @@ The user prefers to keep the option of distributing Taful someday without having
 - The offline build tool (which links `postflop-solver`) is a separate binary outside the shipped app. It may be AGPL; its output (strategy and EV data) is not covered by the license.
 - The own river solver is validated against `postflop-solver` inside the offline tool: for a fixed set of river spots, exploitability and per-hand EVs must agree within tolerance. This test lives with the build tool, not in the app.
 - `taful-solver` exposes a trait for subgame solving, so swapping the implementation later is a local change.
-- Shipping ~4–5GB of data is acceptable for desktop. If download size becomes a problem (web, Android), the alternative is flop-only data plus an own turn solver, at ~5s per turn.
+
+### Library delivery (amended 2026-11-04)
+The user expects a web version, and download size matters. The ~4–5GB library is therefore **not bundled with the app**:
+- **On-demand download:** one file per configuration + flop, served from a CDN. Web clients fetch a file when a hand first reaches that spot and cache it. Desktop does the same, and can also offer optional prefetch packs (e.g. "BTN vs BB SRP").
+- **Compact format:** Taful's library format quantizes strategy frequencies (e.g. 8-bit) and EVs, and may drop nodes that are reached with negligible frequency. The estimated reduction is 2–4x vs the solver's 16-bit trees, to be measured when the format is built.
+- **An own turn solver was considered and rejected for now.** Turns took ~5s natively on 4 cores, and would take an estimated 10–30s in single-threaded WASM, which is a wait on every turn in full-hand mode. The subgame-solver trait keeps it possible later.
+- The client needs a library host (an endpoint under the configurable base URL, D10) and an offline path: spots already cached keep working offline, and uncached spots end the hand early with a message, like lines outside the library (D4).
