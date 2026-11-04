@@ -1,6 +1,6 @@
 # Taful — Specification
 
-> **Status:** draft for review, 2026-11-04. Derived from [brief.md](brief.md), [decisions.md](decisions.md) (D1–D12) and [spikes.md](spikes.md) / [spikes/9.1-gpui-table.md](spikes/9.1-gpui-table.md). All three §9 spikes passed, so the stack stands.
+> **Status:** draft for review, 2026-11-04. Derived from [brief.md](brief.md), [decisions.md](decisions.md) (D1–D13) and [spikes.md](spikes.md) / [spikes/9.1-gpui-table.md](spikes/9.1-gpui-table.md). All three §9 spikes passed, so the stack stands.
 >
 > **Precedence:** decisions.md > this spec > brief.md. Items marked **(proposed)** are choices this spec makes that were not grilled; they stand unless changed in review. Items marked **(open)** are listed in §19 and need a decision before the milestone that depends on them.
 
@@ -218,11 +218,11 @@ Trees as measured in spike §9.2 (medium: flop 33/75%; turn and river 50/100%/al
 
 ### 7.4 Boards outside the subset
 
-**(open, Q2)** Proposed: **deal postflop only from the library.** Whenever a hand reaches a solved configuration, the flop is drawn from the subset flops (with a random suit/rank-preserving isomorph, weighted by §7.2 weights), conditioned on the hole cards already dealt. Grading stays exact and there is no mapping error.
+**Decided (D13): deal postflop only from the library.** Whenever a hand reaches a solved configuration, the flop is drawn from the subset flops (with a random suit isomorph, weighted by §7.2 weights), conditioned on the hole cards already dealt. Grading stays exact and there is no mapping error.
 
 - A *board family* (for spot templates, D6) = subset flops in the same texture class. Re-instantiating a template picks another flop from the family.
 - Mapping a real random flop to a "nearest" library flop is rejected: hero's actual hand strength changes with the board, so the grade would be wrong in exactly the hands that matter.
-- Variety grows as the library grows; the subset is a manifest parameter.
+- Variety grows as the library grows; the subset is a manifest parameter. The goal is all 1,755 canonical flops (100% of real flops), added in order of frequency after the first ~49 (D13).
 
 ### 7.5 Library format (Taful's own, D11)
 
@@ -523,7 +523,7 @@ As in spike §9.1: oval rail + felt, seats on an ellipse, avatars, stacks, posit
 | M1 | `taful-core`: cards, evaluator, equity, `GameConfig`, engine with side pots, grading, calc generators/solvers. | M0 |
 | M2 | `taful-store`, `taful-content`, calc trainer UI, lesson reader, skill tree, FSRS queue, backups. First usable loop (lessons + calc). First ~10 lessons. | M1 |
 | M3 | Preflop solver + charts in library format; preflop spot mode and full-hand preflop. | M1 |
-| M4 | Library format, build tool, 245 postflop solves, river solver + validation, local `LibrarySource`; postflop spot mode. | M3, Q2, Q4 |
+| M4 | Library format, build tool, first 245 postflop solves (49 flops × 5 configs), river solver + validation, local `LibrarySource`; postflop spot mode. Coverage then grows toward 1,755 flops in the background (D13). | M3, Q4 |
 | M5 | Full-hand mode end to end, hand review/replay, drills from mistakes, leak detection. | M4 |
 | M6 | Remaining lessons (to ~40), layout presets, theme polish, grade colors, performance pass. Slice acceptance (§1.1). | M5 |
 
@@ -536,7 +536,7 @@ The calc trainer and lessons (M2) give daily value before the library exists, so
 | # | Question | Proposed | Blocks |
 |---|---|---|---|
 | Q1 | Source of preflop charts with EVs | **Decided (D12):** own offline preflop solver, realization calibrated from the postflop library (§6) | — |
-| Q2 | Boards outside the flop subset | Deal postflop only from library flops (§7.4) | M4 |
+| Q2 | Boards outside the flop subset | **Decided (D13):** deal only solved flops; grow coverage to all 1,755 (§7.4) | — |
 | Q3 | Trademark checks for "Taful" (INPI 9/41, USPTO/EUIPO) | Before any public release | release |
-| Q4 | Machine for the library build (≥ 32GB RAM, many cores) | Author's PC if ≥ 32GB, otherwise a rented 16-core/64GB box for ~1–2 days | M4 |
+| Q4 | Machine for the library build (≥ 32GB RAM, many cores) | Author's PC (Ryzen 9 9950X3D, 16 cores, 32GB), low priority at night; benchmark pending | M4 |
 | Q5 | Static host for the library | Deferred to the web client; local folder for the first slice (§7.6) | web |

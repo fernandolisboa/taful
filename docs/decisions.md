@@ -310,3 +310,21 @@ D3 grades by EV loss, so preflop needs per-combo EVs, not just frequencies; freq
 - Build order: preflop v0 → postflop library (ranges from v0) → calibrate → preflop v1. Preflop charts block M3; the postflop library uses them as input ranges.
 - Preflop EVs are model-based approximations; their accuracy is bounded by the realization model. The exploitability of each node within the abstracted game is stored, and "best" uses it as tolerance (D3).
 - Push/fold and ICM charts for tournaments stay a separate, exact computation.
+
+---
+
+## D13 — Boards outside the solved flop subset
+
+**Date:** 2026-11-04 · **Ref:** [spec.md](spec.md) §7.2, §7.4, Q2
+
+### Decision
+- **Postflop deals only flops the library has solved.** When a hand reaches a solved configuration, the flop is drawn from the solved canonical flops, each with a random suit isomorph, weighted by the number of real flops it represents and conditioned on the hole cards already dealt. Grading stays exact.
+- **Coverage grows to all 1,755 canonical flops** (100% of the 22,100 real flops). The first build solves ~49 flops per configuration to unblock M4; later builds add flops in order of real-flop frequency until the library is complete.
+
+### Why
+Mapping a random flop to the "nearest" solved flop changes hero's real hand strength, so grades would be wrong exactly where they matter. Ending the hand on unsolved flops would stop ~97% of hands at the flop. 49 canonical flops (~620 real flops) are too little variety for a trainer used daily, which is why full coverage is the goal rather than a fixed subset.
+
+### Implications
+- The flop subset is a build-manifest parameter; adding flops is a build job, never a code change.
+- Build budget for full coverage (5 configurations × 1,755 flops) is several hundred CPU-hours. Proposed machine: the author's PC (Ryzen 9 9950X3D, 16 cores, 32GB), running at low priority at night/weekends; the build must be resumable and pausable. Benchmark pending to replace the estimates.
+- 32GB RAM fits one SRP solve at a time (up to ~14GB in 16-bit). Shipped size grows proportionally (to be measured with the compact format, §7.5).
