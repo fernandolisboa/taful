@@ -47,6 +47,11 @@ jobs:
       - name: Tests
         run: cargo test --locked --workspace --exclude taful-desktop
 
+      # Exhaustive 7-card counts, pinned preflop equities and the full
+      # property-test budget only run in release (spec §17).
+      - name: Tests (taful-core, release, exhaustive)
+        run: cargo test --locked --release -p taful-core -- --include-ignored
+
       - name: WASM-safe crates build for wasm32
         run: cargo build --locked --target wasm32-unknown-unknown -p taful-core -p taful-solver
 

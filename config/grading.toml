@@ -1,0 +1,13 @@
+# EV-loss grading thresholds (spec §8, D3). Starting points, to be calibrated
+# against real sessions. Bump `version` whenever a value changes: it is stored
+# with every graded decision so history can be regraded.
+
+version = 1
+
+# An action the reference plays at least this often is always "best".
+best_min_freq = 0.10
+
+# Upper bounds (exclusive) of correct / inaccuracy / mistake; anything at or
+# above the last one is a blunder. The worse of the two scales wins.
+abs_bb = [0.1, 0.5, 2.0]        # EV loss in bb
+rel_pot_pct = [2.0, 5.0, 15.0]  # EV loss as % of the pot before the decision

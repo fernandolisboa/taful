@@ -16,6 +16,7 @@ See [spec §4](spec.md#4-workspace). In short:
 | `tools/content-check` | Runs the content checks over `content/`. |
 | `tools/library-build` | Offline library build (M3/M4). The only crate allowed to link `postflop-solver`. |
 | `content/` | Themes now; lessons, quizzes, layouts later. |
+| `config/` | Tunable numbers loaded at runtime: `grading.toml` (D3 thresholds), `calc.toml` (trainer tolerances and target times). Tests pin them to the code defaults. |
 | `i18n/<locale>/*.ftl` | Fluent strings. en-US is the source, pt-BR ships. |
 
 ## Commands
@@ -25,6 +26,7 @@ cargo fmt --all
 cargo run -p taful-arch-check                        # architecture rules
 cargo clippy --workspace --exclude taful-desktop --all-targets -- -D warnings
 cargo test --workspace --exclude taful-desktop       # UI-free crates and tools
+cargo test --release -p taful-core -- --include-ignored  # + exhaustive evaluator/equity tests
 cargo run -p taful-content-check -- content
 
 # Windows only (gpui 0.2.2 does not build on Linux/macOS, see docs/spikes/9.1-gpui-table.md):
@@ -41,6 +43,13 @@ CI (`.github/workflows/ci.yml`) runs the Linux block on `ubuntu-latest` (plus a 
 - **No color literals** in `apps/desktop/src` outside `theme.rs`; use a token from `content/themes/*.json`.
 - **Theme rules** (every file in `content/themes/`): WCAG AA contrast for text tokens over their backgrounds (4.5:1, or 3:1 for large card ranks), and no red token. A widget that draws text on a new background adds the pair to `Theme::text_pairs`.
 - **i18n**: every `.ftl` parses, en-US and pt-BR have the same keys, every file is embedded, and every Fluent id the desktop UI names exists.
+
+## taful-core notes
+
+- **Card and combo encoding** (`cards.rs`): `Card(rank * 4 + suit)`, suits `c d h s`; combo index is the triangular index of the two card ids. Shared with the library format, so changing it means a library `format_version` bump.
+- **WASM:** `rs_poker` pulls `rand 0.10` → `getrandom 0.4`, which refuses to build for `wasm32-unknown-unknown` without a backend. `taful-core` enables getrandom's `wasm_js` feature for that target only. Nothing in Taful asks for OS entropy; every random draw is a seeded `ChaCha8Rng`.
+- **`GameConfig::key()`** is pinned by a test. If it changes, every library key changes: bump `MODEL_VERSION` and the library format together.
+- **Engine** (`engine.rs`): the driver deals the board (`deal_next` from the seeded deck, or `deal_board` for library flops, D13). Rules decisions not spelled out in the spec are listed in the module docs (short blinds, big-blind ante as dead money, cumulative short all-ins reopening).
 
 ## Adding a string
 

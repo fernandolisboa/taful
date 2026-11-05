@@ -276,14 +276,14 @@ chance   turn cards: per turn card, offset of the turn subtree (truncated at riv
 
 ```rust
 pub enum Grade { Best, Correct, Inaccuracy, Mistake, Blunder }
-pub struct Thresholds { pub best_min_freq: f32, pub abs_bb: [f64; 3], pub rel_pot: [f64; 3] }
+pub struct Thresholds { pub version: u32, pub best_min_freq: f32, pub abs_bb: [f64; 3], pub rel_pot_pct: [f64; 3] }
 pub fn grade(ev_loss_bb: f64, pot_bb: f64, chosen_freq: f32, tolerance_bb: f64, t: &Thresholds) -> Grade
 ```
 
 - `ev_loss = max_a EV(combo, a) − EV(combo, chosen)`, from the reference node for hero's exact combo.
 - `Best` if `chosen_freq ≥ 0.10` or `ev_loss ≤ tolerance_bb`, where `tolerance_bb = exploitability_pct × pot` of that spot.
 - Otherwise each scale yields a grade and the **worse** one wins. Defaults: abs `[0.1, 0.5, 2.0]` bb, rel `[2, 5, 15]` % of pot before the decision.
-- Thresholds load from `config/grading.toml`; changing them never requires a code change.
+- Thresholds load from `config/grading.toml`; changing them never requires a code change. `version` is bumped with any change and stored with each graded decision (the "thresholds version" in §14.2).
 - Property tests: monotone in `ev_loss`; never stricter than `tolerance_bb`; `Best` whenever the chosen action has ≥ 10% frequency.
 - Every graded decision is persisted with the full context (§14) so a later threshold change can regrade history.
 - **Explanation payload:** action frequencies at the node (for hero's combo and for the whole range), EV per action for hero's combo, range-level stats (equity, EV, nut advantage) and, vs profiled bots, the GTO vs exploitative line and their EV gap (D8).
@@ -338,7 +338,7 @@ Exercise types for the first slice, each a generator in `taful-core::calc` (seed
 
 | Exercise | Prompt | Shortcut shown | Exact answer |
 |---|---|---|---|
-| Outs | hole cards + board | count by draw type, discount for dirty outs | enumeration |
+| Outs | hole cards + board + villain's hand (shown, so the exact count is well defined) | count by draw type, discount for dirty outs (drop draw cards that pair the board) | enumeration of next cards that put hero ahead |
 | Rule of 2 and 4 | outs + street | `outs × 2` / `outs × 4` (with the >8-outs correction) | exact hit probability |
 | Pot odds | pot, bet | `bet / (pot + 2·bet)` | same, exact |
 | MDF | bet size as % pot | `pot / (pot + bet)` | same |
