@@ -130,7 +130,7 @@ Every spot, drill, grade and simulation takes a `GameConfig` as input: table siz
 - **No backend until a second client exists** (web or Android) (D9). Then add a thin sync API; its hosting is decided at that point. Only user data syncs (progress, review logs, layouts/themes, hand history, settings), never content or pre-solved spots. Syncing the SQLite file through a cloud-drive folder is rejected.
 
 ### Public host (D10)
-- Any public surface (web app, sync API) uses **`taful.filx.app`**. `taful.com` is taken, `taful.com.br` is dropped, and `taful.app` (free as of 2026-11-05) is not bought before web or mobile work starts, which waits for the desktop app.
+- Any public surface (web app, sync API) uses **`taful.filx.app`**. `taful.com` is taken, `taful.com.br` is dropped, and `taful.app` (unregistered as of 2026-11-05) is the preferred apex if one is needed. No domain is bought before web or mobile work starts, and that work waits until the desktop app is ready.
 - To keep a later move cheap: the desktop app depends on no domain, the base URL is always configuration, the old host keeps serving 301/308 redirects, Android App Links list every host during a transition, and the web client treats browser storage as a cache of synced data (or ships export/import) because IndexedDB/localStorage are per-origin.
 
 ## 6. Look & feel
@@ -177,7 +177,7 @@ The original open questions were decided on 2026-11-04. Details, reasoning and i
 | D13 | Boards outside the subset | Deal only solved flops; grow coverage to all 1,755. |
 
 ### Still open
-- Formal trademark checks for "Taful" (INPI classes 9 and 41; USPTO/EUIPO if publishing abroad) before any public release.
+- ~~Formal trademark checks for "Taful"~~: checked 2026-11-05, no conflicting live mark found (D10). INPI filing (classes 9, 41) remains a step before the first desktop release.
 - ~~Spot count and bot-profile solve budget~~: decided in D2 and D8.
 - ~~Mapping strategy for boards outside the pre-solved flop subset~~: decided in D13 (deal only solved flops).
 - ~~License and API of `fsrs-rs`~~: BSD-3-Clause, verified 2026-11-04 (see [spec.md](spec.md) §4.1).

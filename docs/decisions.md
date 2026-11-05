@@ -250,42 +250,44 @@ Keep **Taful** as the name. A preliminary availability search was run on 2026-11
 Low collision risk in the poker/education space based on what could be checked, and the name carries the intended meaning (archaic Portuguese for a habitual gambler).
 
 ### Implications
-- Before publishing, complete the INPI search in Nice classes 9 (software) and 41 (education/entertainment), and USPTO/EUIPO if publishing outside Brazil.
+- (Done 2026-11-05, see Availability check.) Before publishing, complete the INPI search in Nice classes 9 (software) and 41 (education/entertainment), and USPTO/EUIPO if publishing outside Brazil.
 - Keep the product name out of crate names, identifiers and storage paths where practical (e.g. one constant plus i18n strings), so a rename stays cheap if a conflict appears.
 - Note for marketing copy: "taful" means a habitual gambler, which may need care with store policies on gambling-related apps. Taful has no real-money play, which should be stated clearly in store listings.
 
 ### Availability check (amended 2026-11-05)
-Closes spec Q3 for name conflicts. Read-only lookups run on 2026-11-05 from the author's PC (registry RDAP/WHOIS, trademark databases, store searches). Nothing was registered or bought.
+Closes spec Q3 for name conflicts and supersedes the trademark items in Decision and Implications above. Read-only lookups were run on 2026-11-05 from the author's PC (registry RDAP/WHOIS, trademark databases, store searches). Nothing was registered or bought.
 
 **Trademarks**
+
 | Source | Result |
 |---|---|
 | USPTO (tmsearch) | 0 hits for word mark "taful", live or dead. |
 | TMview (EU, UK, BR and other offices) | Only two marks contain TAFUL as a whole word, both Brazilian (below). Other hits are different words (METAFUL, VITAFUL, DATAFUL, TAFULAN…). None at EUIPO. |
 | WIPO Global Brand DB | Exact "taful": 1 result, the expired BR mark below. |
 | INPI 814715036 "TAFUL" | Taful Magazine Ltda ME, filed 1989, old class 25:10. **Extinct** (expired 2000-12-04). |
-| INPI 927608448 "PADRÃO TAFUL" | Individual (MEI), filed 2022, Nice class 25 (clothing). **In force.** Different class and market; no conflict with 9, 28 or 41. |
+| INPI 927608448 "PADRÃO TAFUL" | Individual (MEI), filed 2022, Nice class 25 (clothing). **In force.** Different class and market; no apparent conflict with classes 9, 28 or 41. |
 
-No live "TAFUL" mark exists in Nice classes 9, 28 or 41 in Brazil, the US, the EU or the WIPO database.
+No live "TAFUL" mark was found in Nice classes 9, 28 or 41 in the BR, US, EU or WIPO databases searched.
 
 **Domains**
+
 | Domain | Status |
 |---|---|
 | taful.com | Registered since 2005 (GoDaddy), expires 2027-02-04, transfer-locked. "Coming soon" placeholder, no sale offer. |
 | taful.net | Registered since 2005 (GMO/Onamae, Japan), expires 2034. Nothing hosted, no sale offer. |
 | taful.app, .dev, .io, .ai, .gg, .games, .com.br | Not registered (RDAP 404 / NXDOMAIN; registro.br reports `taful.com.br` available). Premium pricing not checked. |
 
-**Stores:** no app named "Taful" on Google Play (BR) or the Microsoft Store (US).
+**Stores:** no app named "Taful" on Google Play (BR) or the Microsoft Store (US). The App Store was not rechecked (none found on 2026-11-04).
 
 **Outcome (decided 2026-11-05):**
 - **Taful is the final name.** Spec Q3 is closed for name conflicts.
-- **INPI filing is deferred until the desktop app is ready**, and is a required item on the release checklist of the first public (desktop) release: file in Nice classes 9 and 41. Brazil is first-to-file, so the filing must happen before the name is public, not after. USPTO/EUIPO only if the app is published outside Brazil.
-- **No domain is bought now.** No web or mobile work happens before the desktop app is ready, and the desktop app needs no domain (D9). `taful.app` stays the preferred apex if one is needed later (`taful.filx.app` meanwhile, see below); `.com`/`.net` are taken and not for sale.
+- **INPI filing is deferred until the desktop app is ready**, and is a required step before the first public (desktop) release: file in Nice classes 9 and 41 (28 was checked for conflicts only, not filed). Brazil is first-to-file, so file before the name is public to reduce the risk of someone else filing first. USPTO/EUIPO only if the app is published outside Brazil.
+- **No domain is bought now.** No web or mobile work happens before the desktop app is ready, and the desktop app needs no domain (D9). `taful.app` stays the preferred apex if one is needed later (`taful.filx.app` meanwhile, see below); `.com`/`.net` are taken and not listed for sale.
 - Re-run this check right before filing, since availability can change.
 
 ### Domain (amended 2026-11-04)
 - **Use `taful.filx.app`** (a subdomain of a domain the user already owns) whenever Taful needs a public host. No new domain is bought now.
-- `taful.com.br` is rejected (not available through the user's registrar, Vercel). `taful.app` may be bought later; not decided.
+- `taful.com.br` is rejected (the user's registrar, Vercel, cannot register it, although registro.br lists it as available on 2026-11-05). `taful.app` is the preferred apex if one is ever needed; nothing is bought before web or mobile work starts (see Availability check).
 - **Moving to an apex domain later is cheap if these rules hold from the start:**
   - The desktop app depends on no domain at all (local-first, D9).
   - The base URL is configuration, never hard-coded, for the web app, the sync API, OAuth redirect URIs and any links in content.

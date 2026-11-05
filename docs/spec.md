@@ -561,6 +561,6 @@ The calc trainer and lessons (M2) give daily value before the library exists, so
 |---|---|---|---|
 | Q1 | Source of preflop charts with EVs | **Decided (D12):** own offline preflop solver, realization calibrated from the postflop library (§6) | — |
 | Q2 | Boards outside the flop subset | **Decided (D13):** deal only solved flops; grow coverage to all 1,755 (§7.4) | — |
-| Q3 | Trademark checks for "Taful" (INPI 9/41, USPTO/EUIPO) | **Decided (D10, amended 2026-11-05):** no conflicting live mark; name kept; INPI filing (9, 41) on the first desktop release checklist | release |
+| Q3 | Trademark checks for "Taful" (INPI 9/41, USPTO/EUIPO) | **Decided (D10, amended 2026-11-05):** no conflicting live mark; name kept; INPI filing (9, 41) required before the first desktop release | release (INPI filing) |
 | Q4 | Machine for the library build (≥ 32GB RAM, many cores) | **Decided:** author's PC (Ryzen 9 9950X3D, 16 cores / 32 threads, 32GB), low priority at night; benchmarked in §7.3 | — |
 | Q5 | Static host for the library | Deferred to the web client; local folder for the first slice (§7.6) | web |
