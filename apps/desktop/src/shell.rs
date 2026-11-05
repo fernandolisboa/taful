@@ -2,10 +2,11 @@
 
 use std::rc::Rc;
 
-use gpui::{Context, FontWeight, SharedString, Window, div, prelude::*, px};
+use gpui::{Context, Entity, FontWeight, SharedString, Window, div, prelude::*, px};
 
 use crate::Ui;
 use crate::screen::Screen;
+use crate::screens::table::TableScreen;
 use crate::theme::Palette;
 
 const NAV_WIDTH: f32 = 232.;
@@ -16,15 +17,23 @@ pub struct Shell {
     ui: Rc<Ui>,
     palette: Palette,
     screen: Screen,
+    table: Entity<TableScreen>,
 }
 
 impl Shell {
-    pub fn new(ui: Rc<Ui>) -> Self {
+    pub fn new(ui: Rc<Ui>, cx: &mut Context<Self>) -> Self {
         let palette = Palette::new(&ui.theme.colors);
+        let table = cx.new(|_| TableScreen::new(ui.clone()));
+        // Dev override (and CI screenshots): TAFUL_SCREEN=table opens a screen.
+        let screen = std::env::var("TAFUL_SCREEN")
+            .ok()
+            .and_then(|id| Screen::from_id(&id))
+            .unwrap_or(Screen::Home);
         Self {
             ui,
             palette,
-            screen: Screen::Home,
+            screen,
+            table,
         }
     }
 
@@ -122,6 +131,22 @@ impl Shell {
     fn content(&self) -> impl IntoElement {
         let (p, t, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
         let screen = self.screen;
+        if screen == Screen::Table {
+            return div()
+                .flex_1()
+                .h_full()
+                .flex()
+                .flex_col()
+                .gap(px(t.spacing.lg))
+                .p(px(t.spacing.xxl))
+                .child(
+                    div()
+                        .text_size(px(t.text_size.xl))
+                        .font_weight(FontWeight::BOLD)
+                        .child(i18n.tr(screen.nav_key())),
+                )
+                .child(self.table.clone());
+        }
         div()
             .flex_1()
             .h_full()

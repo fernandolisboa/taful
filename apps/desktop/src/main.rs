@@ -1,10 +1,12 @@
 //! Taful desktop app (spec §15). M0: the app shell — window, navigation over
-//! the first-slice screens, localized strings and theme tokens.
+//! the first-slice screens, localized strings and theme tokens. M3: the
+//! table screen (preflop spot mode and full hands).
 
 // No console window on Windows release builds; debug builds keep it for logs.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod screen;
+mod screens;
 mod shell;
 mod theme;
 
@@ -66,7 +68,7 @@ fn main() {
                 }),
                 ..Default::default()
             },
-            |_, cx| cx.new(|_| shell::Shell::new(ui.clone())),
+            |_, cx| cx.new(|cx| shell::Shell::new(ui.clone(), cx)),
         )
         .expect("failed to open window");
         cx.activate(true);

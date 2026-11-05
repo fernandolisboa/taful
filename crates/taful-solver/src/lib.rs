@@ -5,8 +5,11 @@
 //! build links `postflop-solver` from `tools/library-build`, never from here
 //! (D11, enforced by `tools/arch-check`).
 //!
-//! M0 only reserves the crate; the library format lands in M3/M4.
+//! M3 adds the library format ([`format`]) and preflop charts ([`preflop`]);
+//! the river solver and best response land in M4.
 
-/// Version of the Taful library file format (spec §7.5). `0` means "no
-/// format yet"; the first real format is `1`.
-pub const LIBRARY_FORMAT_VERSION: u32 = 0;
+pub mod format;
+pub mod preflop;
+
+/// Version of the Taful library file format (spec §7.5).
+pub const LIBRARY_FORMAT_VERSION: u16 = format::FORMAT_VERSION;

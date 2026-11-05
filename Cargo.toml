@@ -32,6 +32,10 @@ rand_chacha = { version = "0.10", default-features = false }
 blake3 = { version = "1", default-features = false }
 toml = "0.9"
 proptest = "1"
+# Pure-Rust zstd (MIT): builds for wasm32 without a C toolchain (spec §7.5).
+ruzstd = "0.9"
+# Offline tools only (tools/library-build).
+rayon = "1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

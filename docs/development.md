@@ -14,7 +14,8 @@ See [spec §4](spec.md#4-workspace). In short:
 | `apps/desktop` | GPUI app, binary `taful`. Windows only for now. |
 | `tools/arch-check` | Dependency-direction and license checks over `cargo metadata`. |
 | `tools/content-check` | Runs the content checks over `content/`. |
-| `tools/library-build` | Offline library build (M3/M4). The only crate allowed to link `postflop-solver`. |
+| `tools/library-build` | Offline library build: preflop solver (M3), postflop batch (M4). The only crate allowed to link `postflop-solver`. |
+| `library/` | Built library files in the static layout of spec §7.6 (`v1/<config key>/…`). For now only the preflop chart, embedded by `taful-app`. |
 | `content/` | Themes now; lessons, quizzes, layouts later. |
 | `config/` | Tunable numbers loaded at runtime: `grading.toml` (D3 thresholds), `calc.toml` (trainer tolerances and target times). Tests pin them to the code defaults. |
 | `i18n/<locale>/*.ftl` | Fluent strings. en-US is the source, pt-BR ships. |
@@ -50,6 +51,19 @@ CI (`.github/workflows/ci.yml`) runs the Linux block on `ubuntu-latest` (plus a 
 - **WASM:** `rs_poker` pulls `rand 0.10` → `getrandom 0.4`, which refuses to build for `wasm32-unknown-unknown` without a backend. `taful-core` enables getrandom's `wasm_js` feature for that target only. Nothing in Taful asks for OS entropy; every random draw is a seeded `ChaCha8Rng`.
 - **`GameConfig::key()`** is pinned by a test. If it changes, every library key changes: bump `MODEL_VERSION` and the library format together.
 - **Engine** (`engine.rs`): the driver deals the board (`deal_next` from the seeded deck, or `deal_board` for library flops, D13). Rules decisions not spelled out in the spec are listed in the module docs (short blinds, big-blind ante as dead money, cumulative short all-ins reopening).
+
+## Preflop charts (M3)
+
+The app embeds `library/v1/<config key>/preflop.tafl`. To rebuild it after changing the manifest or the solver:
+
+```sh
+cargo run --release -p taful-library-build -- preflop tools/library-build/manifests/preflop-6max-100bb.toml library
+cargo run --release -p taful-library-build -- summary library/v1/*/preflop.tafl 3   # sanity check
+```
+
+About 5 minutes on 4 vCPU (the 169×169 equity table is cached in `library/cache/`, which is git-ignored). A test fails if the committed chart was built from a different manifest. Model and format details: spec §6 and §7.5.
+
+The desktop table screen opens directly with `TAFUL_SCREEN=table` (any `nav-<id>` works).
 
 ## Adding a string
 

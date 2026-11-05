@@ -3,6 +3,7 @@
 //! color literals anywhere else in `src/`.
 
 use gpui::Rgba;
+use taful_app::preflop::Suit;
 use taful_app::theme::{Color, Colors};
 
 /// Converts a token color to GPUI's representation.
@@ -25,6 +26,19 @@ pub struct Palette {
     pub text: Rgba,
     pub text_muted: Rgba,
     pub accent: Rgba,
+    pub accent_muted: Rgba,
+    pub on_accent: Rgba,
+    pub felt: Rgba,
+    pub rail: Rgba,
+    pub rail_edge: Rgba,
+    pub seat: Rgba,
+    pub seat_active: Rgba,
+    pub card_face: Rgba,
+    pub card_back: Rgba,
+    pub suit_spades: Rgba,
+    pub suit_hearts: Rgba,
+    pub suit_diamonds: Rgba,
+    pub suit_clubs: Rgba,
 }
 
 impl Palette {
@@ -37,6 +51,29 @@ impl Palette {
             text: rgba(c.text),
             text_muted: rgba(c.text_muted),
             accent: rgba(c.accent),
+            accent_muted: rgba(c.accent_muted),
+            on_accent: rgba(c.on_accent),
+            felt: rgba(c.felt),
+            rail: rgba(c.rail),
+            rail_edge: rgba(c.rail_edge),
+            seat: rgba(c.seat),
+            seat_active: rgba(c.seat_active),
+            card_face: rgba(c.card_face),
+            card_back: rgba(c.card_back),
+            suit_spades: rgba(c.suit_spades),
+            suit_hearts: rgba(c.suit_hearts),
+            suit_diamonds: rgba(c.suit_diamonds),
+            suit_clubs: rgba(c.suit_clubs),
+        }
+    }
+
+    /// Color of a suit (four-color deck, spec §15.2).
+    pub fn suit(&self, s: Suit) -> Rgba {
+        match s {
+            Suit::CLUBS => self.suit_clubs,
+            Suit::DIAMONDS => self.suit_diamonds,
+            Suit::HEARTS => self.suit_hearts,
+            _ => self.suit_spades,
         }
     }
 }

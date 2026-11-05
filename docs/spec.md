@@ -187,6 +187,15 @@ The first slice needs **full 6-max 100bb rake-0 charts for RFI, vs open, vs 3-be
 - Output: frequencies and per-combo EVs per node, in the library format (§7.5). Exploitability is reported per node and stored.
 - Nothing is copied from proprietary sources.
 
+**As built (M3):** `tools/library-build preflop <manifest> <out>`; manifest `tools/library-build/manifests/preflop-6max-100bb.toml`.
+
+- **Hands:** the 169 preflop classes. Exact for preflop: by suit symmetry every combo of a class has the same strategy, the same number of compatible combos in any other class and the same mean equity against them. Card removal is exact between two players and treated as independent across three or more.
+- **Equity:** a 169×169 all-in equity table by Monte Carlo (3,000 boards per combo pair, seeded, cached in `<out>/cache/`).
+- **Tree:** built by driving the rules engine (§5.4) with the manifest's sizes, so every stored action is legal in the app. 3-bet = 3x in position, 3.75x from the blinds, +1x the open per cold caller (squeeze); 4-bet 2.2x; the 4th raise is all-in; sizes rounded to 0.5bb. No limps. Players not yet in the pot may cold-call an open but not a 3-bet; at most 3 players see a flop. 6-max 100bb: 4,615 decision nodes, 5,257 terminals.
+- **Terminal value:** `pot × realized share`. Against one opponent with equity `e` the share is `eᵏ·Rᵢ / (eᵏ·Rᵢ + (1−e)ᵏ·Rⱼ)`: `R` is the position factor per pot type (SRP 1.0/0.80, 3-bet 1.0/0.85, 4-bet+ 1.0/0.95, IP/OOP) and `k = 1.3` is an **equity exponent** (amended in M3): weak hands realize less than their equity and strong hands more, which hand-independent factors cannot express (without it BB defended 100% vs the SB). Constant-sum; factors shrink toward 1 below SPR 2; all-in pots use raw equity; multiway = product of pairwise shares, divided by one scalar per terminal (the range-weighted mean share summed over the live players) so expected shares add up to 1. That scalar depends on the current ranges, so 3-way pots are an approximation without DCFR's convergence guarantee; exploitability is measured against the same payoffs. All of it is calibrated from the postflop library later (charts v1).
+- **Solve:** vector-form DCFR (α 1.5, β 0, γ 2), 2,000 iterations, ~5 min on 4 vCPU. Exploitability = mean best-response gain per seat against the others' average strategies, as % of the blinds (charts v0: 0.02%). Per node: the actor's best-response gain at that node, % of the pot, used as the grading tolerance (§8).
+- **Charts in the repo:** `library/v1/<config key>/preflop.tafl` (~2.2MB). The app embeds it for the first slice; a test fails if the manifest changes without a rebuild.
+
 Push/fold and ICM charts for tournaments are computed separately (Nash push/fold is exact and cheap) when the tournament work starts.
 
 ---
@@ -246,7 +255,8 @@ chance   turn cards: per turn card, offset of the turn subtree (truncated at riv
 - Only combos with non-zero reach are stored (live-combo index per node).
 - Nodes whose reach < 0.1% for both players are dropped; reaching one at play time is treated as "left the library" (D4).
 - Expected size: 2–4x smaller than the solver's 16-bit turn-truncated files, so roughly 1–2GB for the D2 library. Measured in M4; if it misses, the next lever is dropping turn EVs for non-acting combos.
-- Preflop charts use the same container with a single "preflop" pseudo-board.
+- Preflop charts use the same container with a single "preflop" pseudo-board (no board cards) and **one row per hand class (169) instead of per combo** (row domain in the header), which loses nothing preflop and keeps every class row.
+- **As built (v1, M3):** after `"TAFL"` + version (uncompressed), one zstd frame (pure-Rust `ruzstd`, WASM-safe) holds the header and the nodes. The header also stores the canonical `GameConfig` TOML and a range per seat at the root. Per node: acting position, pot before the decision, the node's exploitability, actions as kind + size **u32** chips (u16 caps out at 655bb) + child (node index, `END` = the round or hand ends, `PRUNED` = dropped for reach), then the live rows, strategy and EVs. Nodes where the actor's range holds < 0.1% of its combos are pruned. The turn chance layer is a v2 extension for M4.
 - `taful-solver` is the only reader and writer. Format changes bump `format_version`; the reader supports the current and previous version.
 
 ### 7.6 Delivery and cache (D11)
