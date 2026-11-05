@@ -12,13 +12,14 @@
 use taful_content::quiz::{Answer, RenderedQuestion};
 use taful_core::calc::ExerciseKind;
 use taful_core::srs::Rating;
+use taful_store::ReviewItem;
 
 use crate::calc_trainer::CalcRound;
 use crate::i18n::Locale;
 use crate::preflop::{Action, GradedDecision};
 use crate::review::ItemKind;
 use crate::template::SpotTemplate;
-use crate::training::DrillSpot;
+use crate::training::{DrillSpot, TemplateError};
 use crate::{App, Error, Result};
 
 /// The next thing to review.
@@ -44,21 +45,61 @@ pub enum ReviewPrompt {
 }
 
 /// Item kinds the review session presents.
-pub(crate) const PRESENTABLE: &[&str] = &["calc_exercise", "lesson_quiz", "spot_template"];
+pub(crate) const PRESENTABLE: &[&str] = &["calc_exercise", "lesson_quiz", SPOT_TEMPLATE];
+const NON_SPOT: &[&str] = &["calc_exercise", "lesson_quiz"];
+const SPOT_TEMPLATE: &str = "spot_template";
+/// Deals tried for a spot template before it is skipped for now.
+const TEMPLATE_TRIES: usize = 3;
+
+/// Due items read per [`App::next_review`] call.
+const SCAN: u32 = 100;
 
 impl App {
     /// Number of items due now that this build can present.
-    pub fn due_count(&self) -> Result<u32> {
-        Ok(self.store.count_due(self.now(), PRESENTABLE)?)
+    pub fn due_count(&mut self) -> Result<u32> {
+        if self.has_postflop() {
+            return Ok(self.store.count_due(self.now(), PRESENTABLE)?);
+        }
+        let now = self.now();
+        let others = self.store.count_due(now, NON_SPOT)?;
+        let spots = self.presentable_spots(now, u32::MAX)?.len();
+        Ok(others + u32::try_from(spots).unwrap_or(u32::MAX))
+    }
+
+    fn has_postflop(&mut self) -> bool {
+        self.trainers().is_ok_and(|t| t.post().is_some())
+    }
+
+    /// Due spot items, without the postflop ones while no library is
+    /// installed (they wait).
+    fn presentable_spots(&self, now: taful_store::Millis, limit: u32) -> Result<Vec<ReviewItem>> {
+        Ok(self
+            .store
+            .due_items(now, &[SPOT_TEMPLATE], limit)?
+            .into_iter()
+            .filter(|i| SpotTemplate::parse(&i.key).is_none_or(|t| t.is_preflop()))
+            .collect())
+    }
+
+    /// The earliest due items this build can present now, earliest first.
+    fn presentable_due(&mut self, limit: u32) -> Result<Vec<ReviewItem>> {
+        let now = self.now();
+        if self.has_postflop() {
+            return Ok(self.store.due_items(now, PRESENTABLE, limit)?);
+        }
+        let mut items = self.store.due_items(now, NON_SPOT, limit)?;
+        items.extend(self.presentable_spots(now, u32::MAX)?);
+        items.sort_by(|a, b| (a.due, &a.id).cmp(&(b.due, &b.id)));
+        items.truncate(limit as usize);
+        Ok(items)
     }
 
     /// The earliest due item this build can present, or `None` when the
     /// queue is clear for now.
     pub fn next_review(&mut self, locale: Locale) -> Result<Option<ReviewPrompt>> {
-        let now = self.now();
         // Bounded: invalid items found on the way are deleted, so a later
         // call moves past them.
-        for item in self.store.due_items(now, PRESENTABLE, 100)? {
+        for item in self.presentable_due(SCAN)? {
             match ItemKind::parse(&item.kind) {
                 Some(ItemKind::CalcExercise) => {
                     let Some((kind, band)) = item.key.split_once('/') else {
@@ -99,11 +140,15 @@ impl App {
                         continue;
                     };
                     let trainers = self.trainers()?;
-                    if !template.is_preflop() && trainers.post().is_none() {
-                        continue; // waits for the library
+                    // A few fresh seeds: a deal can miss by bad luck.
+                    let mut dealt = Err(TemplateError::Unavailable);
+                    for _ in 0..TEMPLATE_TRIES {
+                        dealt = trainers.spot_for_template(&template, self.next_seed());
+                        if !matches!(dealt, Err(TemplateError::Unavailable)) {
+                            break;
+                        }
                     }
-                    let seed = self.next_seed();
-                    match trainers.spot_for_template(&template, seed) {
+                    match dealt {
                         Ok(spot) => {
                             return Ok(Some(ReviewPrompt::Spot {
                                 item_id: item.id,
@@ -111,12 +156,12 @@ impl App {
                                 spot: Box::new(spot),
                             }));
                         }
-                        // The template is no longer in the library (other
-                        // config, rebuilt tree): retire it.
-                        Err(_) => {
+                        // Other configuration, chart or library rebuilt.
+                        Err(TemplateError::Gone) => {
                             self.store.delete_review_item(&item.id)?;
                             continue;
                         }
+                        Err(TemplateError::Unavailable) => continue,
                     }
                 }
                 None => continue,
@@ -270,6 +315,30 @@ mod tests {
         assert!(app.next_review(Locale::PtBr).unwrap().is_none());
         assert_eq!(app.store.review_totals().unwrap().0, 0, "all retired");
         assert_eq!(app.due_count().unwrap(), 0);
+    }
+
+    #[test]
+    fn postflop_items_wait_without_hiding_others() {
+        let (mut app, _) = app_at(1_000);
+        assert!(app.trainers().unwrap().post().is_none(), "no library");
+        for i in 0..(SCAN + 20) {
+            let key = format!("v1|c1c6782d35338294|btn-bb-srp|BB:x,BTN:b{i}/|A-2t-u-1|BB");
+            app.store
+                .ensure_review_item("spot_template", &key, None, 0)
+                .unwrap();
+        }
+        app.store
+            .ensure_review_item("calc_exercise", "pot_odds/bet_50", None, 500)
+            .unwrap();
+        assert_eq!(app.due_count().unwrap(), 1, "postflop items wait");
+        let Some(ReviewPrompt::Calc { .. }) = app.next_review(Locale::PtBr).unwrap() else {
+            panic!("calc prompt expected");
+        };
+        assert_eq!(
+            app.store.review_totals().unwrap().0,
+            SCAN + 21,
+            "none retired"
+        );
     }
 
     #[test]

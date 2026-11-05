@@ -269,11 +269,18 @@ impl FullHand {
             }
         };
         self.decisions.push(decision);
-        self.advance(pre, post, action)?;
-        if action == Action::Fold && self.end.is_none() {
-            self.end = Some(HandEnd::HeroFolded);
+        // The decision is graded and stored; a failure past this point must
+        // still end the hand, or it would wait forever on a missing tree.
+        let rest = self.advance(pre, post, action).and_then(|()| {
+            if action == Action::Fold && self.end.is_none() {
+                self.end = Some(HandEnd::HeroFolded);
+            }
+            self.run_bots(pre, post)
+        });
+        if let Err(e) = rest {
+            eprintln!("taful: hand left the tree: {e}");
+            self.leave(LeftReason::OffTree);
         }
-        self.run_bots(pre, post)?;
         Ok(self.decisions.last().expect("just pushed"))
     }
 
@@ -362,6 +369,12 @@ impl FullHand {
         if matches!(self.state.phase(), Phase::Finished) || behind <= 1 {
             return self.settle();
         }
+        if self.state.players()[self.hero].folded {
+            // The others play on without hero: nothing left to train.
+            self.tree = None;
+            self.end = Some(HandEnd::HeroFolded);
+            return Ok(());
+        }
         let Some(post) = post else {
             self.leave(LeftReason::NoLibrary);
             return Ok(());
@@ -406,14 +419,9 @@ impl FullHand {
             };
             let hand = self.state.players()[seat].hole;
             let (actions, freqs) = match &self.tree {
-                Some(Tree::Preflop(node)) => (
-                    pre.actions(*node),
-                    Some(
-                        pre.chart()
-                            .strategy(*node, hand)
-                            .ok_or(PreflopError::NoData)?,
-                    ),
-                ),
+                Some(Tree::Preflop(node)) => {
+                    (pre.actions(*node), pre.chart().strategy(*node, hand))
+                }
                 Some(Tree::Postflop { walk, seats }) => {
                     let node = walk.node().ok_or(PostflopError::NoData)?;
                     if seats[node.side] != seat {
@@ -434,9 +442,10 @@ impl FullHand {
                 break;
             }
             let idx: Vec<usize> = (0..actions.len()).collect();
-            let a = *idx
-                .choose_weighted(&mut self.rng, |&i| freqs[i])
-                .map_err(|_| PreflopError::NoData)?;
+            let Ok(&a) = idx.choose_weighted(&mut self.rng, |&i| freqs[i]) else {
+                self.leave(LeftReason::NotInRange);
+                break;
+            };
             self.advance(pre, post, actions[a])?;
         }
         Ok(())

@@ -34,6 +34,16 @@ pub const TOP_LEAKS: usize = 3;
 /// Hands kept in the hand-review list.
 pub const RECENT_HANDS: u32 = 30;
 
+/// Why a spot template could not be dealt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TemplateError {
+    /// The template no longer exists (other configuration, chart or
+    /// library rebuilt): its review item can be retired.
+    Gone,
+    /// No deal matched this time (unlucky seeds, library not loaded).
+    Unavailable,
+}
+
 /// The reference strategies: the built-in preflop chart and, when installed,
 /// the postflop library.
 #[derive(Debug)]
@@ -76,22 +86,28 @@ impl Trainers {
         &self,
         t: &SpotTemplate,
         seed: u64,
-    ) -> std::result::Result<DrillSpot, PostflopError> {
+    ) -> std::result::Result<DrillSpot, TemplateError> {
         if t.config != self.config_key() {
-            return Err(PostflopError::Empty);
+            return Err(TemplateError::Gone);
         }
         if t.is_preflop() {
-            let node = self.preflop.node_at(&t.line).ok_or(PostflopError::Empty)?;
+            let node = self.preflop.node_at(&t.line).ok_or(TemplateError::Gone)?;
             if self.preflop.chart().node(node).player != t.hero {
-                return Err(PostflopError::Empty);
+                return Err(TemplateError::Gone);
             }
             let spot = self
                 .preflop
                 .spot_at(node, seed)
-                .map_err(|_| PostflopError::Empty)?;
+                .map_err(|_| TemplateError::Unavailable)?;
             return Ok(DrillSpot::Preflop(Box::new(spot)));
         }
-        let post = self.postflop.as_ref().map_err(Clone::clone)?;
+        let post = self
+            .postflop
+            .as_ref()
+            .map_err(|_| TemplateError::Unavailable)?;
+        if !post.spots().iter().any(|s| s.id == t.spot) {
+            return Err(TemplateError::Gone);
+        }
         post.generate(
             &SpotRequest {
                 spot: Some(&t.spot),
@@ -103,6 +119,7 @@ impl Trainers {
             seed,
         )
         .map(|s| DrillSpot::Postflop(Box::new(s)))
+        .map_err(|_| TemplateError::Unavailable)
     }
 
     /// A spot from a leak bucket (the "drill this" action, spec §13).
@@ -389,6 +406,11 @@ impl App {
     /// Store a finished full hand with its decisions; feed the queue and
     /// count a line that left the library. Returns the hand id.
     pub fn record_hand(&mut self, h: &FullHand) -> Result<String> {
+        // One hand, all or nothing: a half-stored hand would skew leaks.
+        self.store.atomic(|_| self.record_hand_rows(h))
+    }
+
+    fn record_hand_rows(&self, h: &FullHand) -> Result<String> {
         let config = h.state.config();
         let replay = serde_json::to_value(h.replay()).map_err(taful_store::StoreError::from)?;
         let id = self.store.insert_hand(&NewHand {

@@ -316,8 +316,9 @@ impl PostflopTrainer {
         seed: u64,
     ) -> Result<PostflopSpot, PostflopError> {
         let mut rng = ChaCha8Rng::seed_from_u64(seed);
+        let mut rivers = RIVER_SOLVES;
         for _ in 0..ATTEMPTS {
-            if let Some(s) = self.try_generate(req, &mut rng)? {
+            if let Some(s) = self.try_generate(req, &mut rng, &mut rivers)? {
                 return Ok(s);
             }
         }
@@ -328,6 +329,7 @@ impl PostflopTrainer {
         &self,
         req: &SpotRequest<'_>,
         rng: &mut ChaCha8Rng,
+        rivers: &mut usize,
     ) -> Result<Option<PostflopSpot>, PostflopError> {
         let cfg = match req.spot {
             Some(id) => self
@@ -410,7 +412,14 @@ impl PostflopTrainer {
             };
             match walk.act(action)? {
                 Progress::Decision => {}
-                Progress::NeedsCard(_) => {
+                Progress::NeedsCard(street) => {
+                    // Each river deal solves the river: bound the wait.
+                    if street == Street::River {
+                        if *rivers == 0 {
+                            return Ok(None);
+                        }
+                        *rivers -= 1;
+                    }
                     let live: Vec<Card> =
                         Card::all().filter(|c| !walk.board().contains(c)).collect();
                     let card = *live.choose(rng).expect("cards left");
@@ -529,6 +538,9 @@ impl PostflopTrainer {
 
 /// Deals tried by [`PostflopTrainer::generate`] before giving up.
 const ATTEMPTS: usize = 60;
+/// River solves one [`PostflopTrainer::generate`] call may run (each is
+/// about 0.4 s in release; solving off the UI thread is an M6 follow-up).
+const RIVER_SOLVES: usize = 8;
 
 /// Seat of `pos` with the button on seat 0.
 pub(crate) fn seat_of(n: usize, pos: Position) -> Seat {

@@ -52,6 +52,8 @@ pub struct Shell {
     pub(crate) settings: SettingsView,
     pub(crate) hand_review: HandReviewView,
     pub(crate) table: Entity<TableScreen>,
+    /// The home screen's leaks, read again each time home is opened.
+    pub(crate) leaks: Option<Vec<taful_app::model::Leak>>,
     _ticker: Task<()>,
     _subscriptions: Vec<Subscription>,
 }
@@ -110,6 +112,7 @@ impl Shell {
             review: ReviewView::default(),
             settings: SettingsView::default(),
             hand_review: HandReviewView::default(),
+            leaks: None,
             table,
             _ticker: ticker,
             _subscriptions: subscriptions,
@@ -182,6 +185,9 @@ impl Shell {
             if screen == Screen::HandReview {
                 self.hand_review_enter();
             }
+            if screen == Screen::Home {
+                self.leaks = None;
+            }
         }
         window.focus(&self.focus);
         cx.notify();
@@ -248,7 +254,7 @@ impl Shell {
         self.settings.message = None;
     }
 
-    fn nav(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn nav(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let (p, t, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
         let due = self.app.due_count().unwrap_or(0);
         let items = Screen::ALL.into_iter().enumerate().map(|(i, screen)| {

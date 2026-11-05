@@ -98,7 +98,13 @@ impl Shell {
                 ),
             );
 
-        let leaks = self.app.leaks().unwrap_or_default();
+        if self.leaks.is_none() {
+            self.leaks = Some(self.app.leaks().unwrap_or_else(|e| {
+                eprintln!("taful: leaks failed: {e}");
+                Vec::new()
+            }));
+        }
+        let leaks = self.leaks.clone().unwrap_or_default();
         let rows = leaks.into_iter().enumerate().map(|(i, l)| {
             let label = crate::screens::table::TableScreen::bucket_label(&ui, &l.bucket);
             let stats = ui.i18n.tr_args(

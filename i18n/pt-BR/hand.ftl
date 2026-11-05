@@ -1,6 +1,6 @@
-# Mãos completas, revisão de mão, drills e vazamentos (M5, spec §10.2, §13, §15.1).
+# Full hands, hand review, drills and leaks, pt-BR (M5, spec §10.2, §13, §15.1).
 
-## Mesa
+## Table screen
 
 table-mode-drill = Drill
 table-subtitle-hand = Mãos completas contra o bot de referência, cash 6-max 100bb: preflop pelos charts, flop e turn pela biblioteca resolvida, river resolvido na hora.
@@ -11,7 +11,7 @@ table-river-solved = River resolvido neste computador para esta mão.
 table-review-hand = Revisar a mão
 table-postflop-preflop = Preflop
 
-## Ruas, tipos de decisão e famílias de board
+## Streets, node types and board families
 
 street-preflop = Preflop
 street-flop = Flop
@@ -41,16 +41,16 @@ texture-connected-0 = desconectado
 texture-connected-1 = conectado
 texture-connected-2 = muito conectado
 
-## Início: vazamentos
+## Home: leaks
 
 home-leak-stats = { $mistakes } erros em { $decisions } decisões, { $loss } bb perdidos
 home-leak-drill = Treinar isso
 
-## Revisão
+## Review session
 
 review-from-spot = Spot de um erro anterior: { $spot }
 
-## Revisão de mãos
+## Hand review
 
 hand-review-empty = Nenhuma mão ainda. Jogue mãos completas na mesa e elas aparecem aqui.
 hand-review-play = Jogar uma mão

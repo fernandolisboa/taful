@@ -416,45 +416,44 @@ impl Store {
     /// Applies a review to an item and appends it to the log, atomically.
     /// Returns the log row id.
     pub fn record_review(&self, item_id: &str, rec: &ReviewRecord<'_>) -> Result<String> {
-        let tx = self.conn().unchecked_transaction()?;
-        let now = self.now();
-        tx.execute(
-            "UPDATE review_items SET stability = ?1, difficulty = ?2, due = ?3,
-                 last_review = ?4, reps = reps + 1, lapses = lapses + ?5,
-                 content_version = coalesce(?6, content_version), updated_at = ?7
-             WHERE id = ?8",
-            params![
-                rec.stability,
-                rec.difficulty,
-                rec.due,
-                rec.reviewed_at,
-                u32::from(rec.lapse),
-                rec.content_version,
-                now,
-                item_id
-            ],
-        )?;
-        let log_id = new_id();
-        tx.execute(
-            "INSERT INTO review_log (id, created_at, updated_at, item_id, reviewed_at, rating,
-                 elapsed_days, source_kind, source_id)
-             VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![
-                log_id,
-                now,
-                item_id,
-                rec.reviewed_at,
-                rec.rating,
-                rec.elapsed_days,
-                rec.source_kind,
-                rec.source_id
-            ],
-        )?;
-        tx.commit()?;
-        Ok(log_id)
+        self.atomic(|s| {
+            let now = s.now();
+            s.conn().execute(
+                "UPDATE review_items SET stability = ?1, difficulty = ?2, due = ?3,
+                     last_review = ?4, reps = reps + 1, lapses = lapses + ?5,
+                     content_version = coalesce(?6, content_version), updated_at = ?7
+                 WHERE id = ?8",
+                params![
+                    rec.stability,
+                    rec.difficulty,
+                    rec.due,
+                    rec.reviewed_at,
+                    u32::from(rec.lapse),
+                    rec.content_version,
+                    now,
+                    item_id
+                ],
+            )?;
+            let log_id = new_id();
+            s.conn().execute(
+                "INSERT INTO review_log (id, created_at, updated_at, item_id, reviewed_at, rating,
+                     elapsed_days, source_kind, source_id)
+                 VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    log_id,
+                    now,
+                    item_id,
+                    rec.reviewed_at,
+                    rec.rating,
+                    rec.elapsed_days,
+                    rec.source_kind,
+                    rec.source_id
+                ],
+            )?;
+            Ok(log_id)
+        })
     }
 
-    /// Items due at or before `now`, earliest first.
     /// Items of `kinds` (all kinds when empty) due at or before `now`,
     /// earliest first.
     pub fn due_items(&self, now: Millis, kinds: &[&str], limit: u32) -> Result<Vec<ReviewItem>> {
@@ -842,7 +841,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::test_clock;
+    use crate::{StoreError, test_clock};
 
     fn store() -> (Store, std::sync::Arc<std::sync::atomic::AtomicI64>) {
         let (clock, t) = test_clock(1_000);
@@ -860,6 +859,24 @@ mod tests {
         assert_eq!(s.setting("locale").unwrap(), None);
         s.set_setting("locale", &json!("pt-BR")).unwrap();
         assert_eq!(s.setting("locale").unwrap(), Some(json!("pt-BR")));
+    }
+
+    #[test]
+    fn atomic_keeps_or_drops_everything_and_nests() {
+        let (s, _) = store();
+        let failed: Result<()> = s.atomic(|s| {
+            s.set_setting("a", &json!(1))?;
+            Err(StoreError::NotATafulDatabase("x".into()))
+        });
+        assert!(failed.is_err());
+        assert_eq!(s.setting("a").unwrap(), None, "rolled back");
+        let ok: Result<()> = s.atomic(|s| {
+            s.set_setting("a", &json!(1))?;
+            s.atomic(|s| s.set_setting("b", &json!(2)))?;
+            Ok(())
+        });
+        ok.unwrap();
+        assert_eq!(s.setting("b").unwrap(), Some(json!(2)));
     }
 
     #[test]

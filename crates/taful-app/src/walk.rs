@@ -257,29 +257,17 @@ impl Walk {
         let Some(node) = self.node() else {
             return Vec::new();
         };
-        let dead = CardSet::from_cards(&self.board);
-        let live = |r: &[f32]| -> f64 {
-            (0..NUM_COMBOS)
-                .filter(|&h| !Hand::from_combo(h).expect("<1326").mask().intersects(dead))
-                .map(|h| f64::from(r[h]))
-                .sum()
-        };
-        let total = live(&self.reach[node.side]);
-        (0..node.actions.len())
-            .map(|a| {
-                let mut r = self.reach[node.side].clone();
-                self.apply_reach(a, &mut r);
-                if total > 0.0 {
-                    (live(&r) / total) as f32
-                } else {
-                    0.0
-                }
-            })
+        let w: Vec<f64> = (0..node.actions.len())
+            .map(|a| self.action_weight(a))
+            .collect();
+        let total: f64 = w.iter().sum();
+        w.iter()
+            .map(|&x| if total > 0.0 { (x / total) as f32 } else { 0.0 })
             .collect()
     }
 
-    /// Share of the actor's range (by reach, board-dead combos excluded)
-    /// that would take `a`, without moving.
+    /// Reach mass of the actor's range (board-dead combos excluded) that
+    /// would take `a`, without moving.
     pub fn action_weight(&self, a: usize) -> f64 {
         let Some(node) = self.node() else { return 0.0 };
         let dead = CardSet::from_cards(&self.board);
