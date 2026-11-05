@@ -1,0 +1,50 @@
+id = "positions-6max-quiz"
+version = 1
+lesson = "positions-6max"
+pass = 0.75
+
+[[questions]]
+id = "first-preflop"
+kind = "choice"
+prompt = { en-US = "Who acts first before the flop at 6-max?", pt-BR = "Quem age primeiro antes do flop no 6-max?" }
+choices = [
+    { en-US = "UTG", pt-BR = "UTG" },
+    { en-US = "SB", pt-BR = "SB" },
+    { en-US = "BB", pt-BR = "BB" },
+    { en-US = "BTN", pt-BR = "BTN" },
+]
+answer = 0
+
+[[questions]]
+id = "last-postflop"
+kind = "choice"
+prompt = { en-US = "Who acts last on the flop, turn and river?", pt-BR = "Quem age por último no flop, turn e river?" }
+choices = [
+    { en-US = "BB", pt-BR = "BB" },
+    { en-US = "BTN", pt-BR = "BTN" },
+    { en-US = "UTG", pt-BR = "UTG" },
+]
+answer = 1
+
+[[questions]]
+id = "widest-open"
+kind = "choice"
+prompt = { en-US = "Which seat opens the widest range?", pt-BR = "Qual posição abre o range mais largo?" }
+choices = [
+    { en-US = "UTG", pt-BR = "UTG" },
+    { en-US = "HJ", pt-BR = "HJ" },
+    { en-US = "BTN", pt-BR = "BTN" },
+]
+answer = 2
+explanation = { en-US = "Only the blinds are left behind the button, and it plays in position after the flop.", pt-BR = "Atrás do botão só restam os blinds, e ele joga em posição depois do flop." }
+
+[[questions]]
+id = "in-position"
+kind = "choice"
+prompt = { en-US = "What does being in position mean?", pt-BR = "O que significa estar em posição?" }
+choices = [
+    { en-US = "Acting after your opponent", pt-BR = "Agir depois do adversário" },
+    { en-US = "Having the bigger stack", pt-BR = "Ter o stack maior" },
+    { en-US = "Posting a blind", pt-BR = "Pagar um blind" },
+]
+answer = 0

@@ -1,0 +1,14 @@
+# Rendered placeholder values, pinned (spec §12.3). Regenerate with
+# `cargo run -p taful-content-check -- --bless`; review the diff.
+
+[en-US]
+'calc: combos(range="JJ") | int' = "6"
+'calc: combos(range="KQo") | int' = "12"
+'calc: combos(range="TT+,AK") | int' = "46"
+"calc: mul(a=3, b=4) | int" = "12"
+
+[pt-BR]
+'calc: combos(range="JJ") | int' = "6"
+'calc: combos(range="KQo") | int' = "12"
+'calc: combos(range="TT+,AK") | int' = "46"
+"calc: mul(a=3, b=4) | int" = "12"

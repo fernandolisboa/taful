@@ -1,0 +1,36 @@
+id = "outs-101-quiz"
+version = 1
+lesson = "outs-101"
+pass = 0.75
+
+[[questions]]
+id = "flush-draw"
+kind = "numeric"
+prompt = { en-US = "6♥ 5♥ against K♠ K♣ on Q♥ 9♥ 3♦. How many outs?", pt-BR = "6♥ 5♥ contra K♠ K♣ em Q♥ 9♥ 3♦. Quantos outs?" }
+answer = "{{ calc: outs(hero=\"6h5h\", villain=\"KsKc\", board=\"Qh9h3d\") | int }}"
+tolerance = 0.0
+
+[[questions]]
+id = "oesd"
+kind = "numeric"
+prompt = { en-US = "9♣ 8♣ against A♠ A♦ on 7♦ 6♠ 2♥. How many outs?", pt-BR = "9♣ 8♣ contra A♠ A♦ em 7♦ 6♠ 2♥. Quantos outs?" }
+answer = "{{ calc: outs(hero=\"9c8c\", villain=\"AsAd\", board=\"7d6s2h\") | int }}"
+tolerance = 0.0
+
+[[questions]]
+id = "gutshot"
+kind = "numeric"
+prompt = { en-US = "J♣ 9♣ against A♠ A♦ on Q♦ 8♠ 2♥ 3♣ (turn). How many outs?", pt-BR = "J♣ 9♣ contra A♠ A♦ em Q♦ 8♠ 2♥ 3♣ (turn). Quantos outs?" }
+answer = "{{ calc: outs(hero=\"Jc9c\", villain=\"AsAd\", board=\"Qd8s2h3c\") | int }}"
+tolerance = 0.0
+
+[[questions]]
+id = "dirty"
+kind = "choice"
+prompt = { en-US = "A♥ J♥ against a set of kings on K♥ 7♥ 2♦. Why is the 2♥ not an out?", pt-BR = "A♥ J♥ contra trinca de reis em K♥ 7♥ 2♦. Por que o 2♥ não é out?" }
+choices = [
+    { en-US = "It pairs the board and gives the set a full house", pt-BR = "Ele pareia a mesa e dá full house para a trinca" },
+    { en-US = "It is not a heart", pt-BR = "Ele não é de copas" },
+    { en-US = "It is already on the board", pt-BR = "Ele já está na mesa" },
+]
+answer = 0

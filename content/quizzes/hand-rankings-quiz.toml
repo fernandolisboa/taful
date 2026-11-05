@@ -1,0 +1,46 @@
+id = "hand-rankings-quiz"
+version = 1
+lesson = "hand-rankings"
+pass = 0.75
+
+[[questions]]
+id = "flush-vs-straight"
+kind = "choice"
+prompt = { en-US = "Which hand is stronger?", pt-BR = "Qual mão é mais forte?" }
+choices = [
+    { en-US = "A flush", pt-BR = "Um flush" },
+    { en-US = "A straight", pt-BR = "Uma sequência (straight)" },
+    { en-US = "They tie", pt-BR = "Empatam" },
+]
+answer = 0
+explanation = { en-US = "A flush beats a straight.", pt-BR = "Flush ganha de sequência." }
+
+[[questions]]
+id = "full-house-vs-flush"
+kind = "choice"
+prompt = { en-US = "Full house or flush: which wins?", pt-BR = "Full house ou flush: qual ganha?" }
+choices = [
+    { en-US = "Full house", pt-BR = "Full house" },
+    { en-US = "Flush", pt-BR = "Flush" },
+]
+answer = 0
+explanation = { en-US = "A full house ranks just above a flush.", pt-BR = "O full house fica logo acima do flush." }
+
+[[questions]]
+id = "kicker"
+kind = "choice"
+prompt = { en-US = "Board A♥ 8♣ 6♦ 4♠ 2♣. A♠ K♦ against A♣ Q♥: who wins?", pt-BR = "Mesa A♥ 8♣ 6♦ 4♠ 2♣. A♠ K♦ contra A♣ Q♥: quem ganha?" }
+choices = [
+    { en-US = "A♠ K♦, with the king kicker", pt-BR = "A♠ K♦, pelo kicker rei" },
+    { en-US = "A♣ Q♥", pt-BR = "A♣ Q♥" },
+    { en-US = "Split pot", pt-BR = "Pote dividido" },
+]
+answer = 0
+explanation = { en-US = "Both have a pair of aces; the king outkicks the queen.", pt-BR = "Os dois têm par de ases; o rei ganha da dama no kicker." }
+
+[[questions]]
+id = "starting-hands"
+kind = "numeric"
+prompt = { en-US = "How many two-card starting hands are there?", pt-BR = "Quantas mãos iniciais de duas cartas existem?" }
+answer = "{{ calc: choose(n=52, k=2) | int }}"
+tolerance = 0.0

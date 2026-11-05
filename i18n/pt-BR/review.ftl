@@ -1,0 +1,29 @@
+# Sessão de revisão (spec §13) e tela inicial.
+
+review-intro = Sua fila de repetição espaçada: perguntas de quiz erradas e cálculos lentos ou errados, numa sessão só.
+review-due = { $count ->
+    [0] Nada para revisar agora.
+    [one] 1 item para revisar.
+   *[other] { $count } itens para revisar.
+}
+review-start = Começar a revisão
+review-next-at = Próxima revisão: { $when }
+review-empty = Tudo em dia.
+review-from-lesson = Da lição “{ $lesson }”
+review-continue = Continuar
+review-session-done = { $count ->
+    [one] 1 revisão feita nesta sessão.
+   *[other] { $count } revisões feitas nesta sessão.
+}
+
+home-due-title = Revisões
+home-lesson-title = Próxima lição
+home-lesson-none = Todas as lições concluídas. Mais lições chegam nos próximos marcos.
+home-open-lesson = Ler
+home-calc-title = Cálculo mental
+home-calc-recent = { $correct } de { $total } certas nas suas últimas respostas
+home-calc-none = Nenhuma resposta ainda.
+home-calc-start = Treinar
+home-progress = { $done } de { $total } lições concluídas
+home-leaks-title = Maiores vazamentos
+home-leaks-body = A detecção de vazamentos chega com as mãos completas (M5).

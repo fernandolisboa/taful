@@ -36,6 +36,12 @@ proptest = "1"
 ruzstd = "0.9"
 # Offline tools only (tools/library-build).
 rayon = "1"
+rusqlite = { version = "0.41", features = ["bundled", "backup"] }
+fsrs = "6"
+pulldown-cmark = { version = "0.13", default-features = false }
+ulid = "3"
+jiff = "0.2"
+tempfile = "3"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

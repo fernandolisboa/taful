@@ -1,51 +1,211 @@
-//! App shell: navigation rail + the current screen.
+//! App shell: navigation rail + the current screen, the window-wide key
+//! handler (one focus target feeds the answer box of whichever screen is
+//! up), and the background ticks (live timer, backup-by-use).
 
 use std::rc::Rc;
+use std::time::Duration;
 
-use gpui::{Context, Entity, FontWeight, SharedString, Window, div, prelude::*, px};
+use gpui::{
+    AnyElement, Context, Entity, FocusHandle, FontWeight, KeyDownEvent, ScrollHandle, SharedString,
+    Subscription, Task, Window, div, prelude::*, px,
+};
+use taful_app::App;
 
 use crate::Ui;
 use crate::screen::Screen;
 use crate::screens::table::TableScreen;
+use crate::screens::{
+    calc::CalcView, lesson::LessonView, review::ReviewView, settings::SettingsView,
+};
 use crate::theme::Palette;
 
 const NAV_WIDTH: f32 = 232.;
-const CONTENT_MAX_WIDTH: f32 = 720.;
+pub const CONTENT_MAX_WIDTH: f32 = 760.;
 const SELECTION_BAR: f32 = 3.;
+/// How often the live timer repaints while an exercise is running.
+const TICK: Duration = Duration::from_millis(250);
+/// App use is added to the backup clock in steps of this size.
+const USE_STEP: Duration = Duration::from_secs(60);
+
+/// What a key did to the answer box.
+pub enum KeyResult {
+    Edited,
+    Submit,
+    Escape,
+    Ignored,
+}
 
 pub struct Shell {
-    ui: Rc<Ui>,
-    palette: Palette,
-    screen: Screen,
+    pub(crate) ui: Rc<Ui>,
+    pub(crate) palette: Palette,
+    pub(crate) app: App,
+    pub(crate) screen: Screen,
+    pub(crate) focus: FocusHandle,
+    /// The content pane's scroll position (reset on every screen change).
+    scroll: ScrollHandle,
+    /// The answer being typed (calc, numeric quiz questions, reviews).
+    pub(crate) input: String,
+    pub(crate) lesson: LessonView,
+    pub(crate) calc: CalcView,
+    pub(crate) review: ReviewView,
+    pub(crate) settings: SettingsView,
     table: Entity<TableScreen>,
+    _ticker: Task<()>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl Shell {
-    pub fn new(ui: Rc<Ui>, cx: &mut Context<Self>) -> Self {
+    pub fn new(ui: Rc<Ui>, app: App, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let palette = Palette::new(&ui.theme.colors);
+        let focus = cx.focus_handle();
         let table = cx.new(|_| TableScreen::new(ui.clone()));
-        // Dev override (and CI screenshots): TAFUL_SCREEN=table opens a screen.
-        let screen = std::env::var("TAFUL_SCREEN")
-            .ok()
-            .and_then(|id| Screen::from_id(&id))
-            .unwrap_or(Screen::Home);
+        window.focus(&focus);
+        let ticker = cx.spawn(async move |this, cx| {
+            let mut since_use = Duration::ZERO;
+            loop {
+                cx.background_executor().timer(TICK).await;
+                since_use += TICK;
+                let add_use = since_use >= USE_STEP;
+                if add_use {
+                    since_use = Duration::ZERO;
+                }
+                let alive = this.update(cx, |shell, cx| {
+                    if add_use && let Err(e) = shell.app.note_use(USE_STEP.as_millis() as i64) {
+                        eprintln!("taful: backup failed: {e}");
+                    }
+                    if shell.timer_running() {
+                        cx.notify();
+                    }
+                });
+                if alive.is_err() {
+                    break;
+                }
+            }
+        });
+        let subscriptions = vec![
+            cx.on_release(|shell, _| shell.exit_backup()),
+            cx.on_app_quit(|shell, _| {
+                shell.exit_backup();
+                async {}
+            }),
+        ];
         Self {
             ui,
             palette,
-            screen,
+            app,
+            // Dev override (and CI screenshots): TAFUL_SCREEN=table opens a screen.
+            screen: std::env::var("TAFUL_SCREEN")
+                .ok()
+                .and_then(|id| Screen::from_id(&id))
+                .unwrap_or(Screen::Home),
+            focus,
+            scroll: ScrollHandle::new(),
+            input: String::new(),
+            lesson: LessonView::default(),
+            calc: CalcView::default(),
+            review: ReviewView::default(),
+            settings: SettingsView::default(),
             table,
+            _ticker: ticker,
+            _subscriptions: subscriptions,
         }
     }
 
-    fn select(&mut self, screen: Screen, cx: &mut Context<Self>) {
+    fn exit_backup(&mut self) {
+        if let Err(e) = self.app.on_exit() {
+            eprintln!("taful: backup on exit failed: {e}");
+        }
+    }
+
+    /// Whether a timed exercise is on screen (the timer needs repaints).
+    fn timer_running(&self) -> bool {
+        match self.screen {
+            Screen::Calc => self.calc.running(),
+            Screen::Review => self.review.calc_running(),
+            _ => false,
+        }
+    }
+
+    pub(crate) fn select(&mut self, screen: Screen, window: &mut Window, cx: &mut Context<Self>) {
         if self.screen != screen {
             self.screen = screen;
-            cx.notify();
+            self.input.clear();
+            self.scroll_to_top();
+            if screen == Screen::Review {
+                self.review_enter();
+            }
+            if screen == Screen::Calc {
+                self.calc_enter();
+            }
+        }
+        window.focus(&self.focus);
+        cx.notify();
+    }
+
+    pub(crate) fn scroll_to_top(&self) {
+        self.scroll.set_offset(gpui::point(px(0.), px(0.)));
+    }
+
+    /// Edits the shared answer box.
+    fn edit_input(&mut self, ev: &KeyDownEvent) -> KeyResult {
+        let ks = &ev.keystroke;
+        if ks.modifiers.control || ks.modifiers.alt || ks.modifiers.platform {
+            return KeyResult::Ignored;
+        }
+        match ks.key.as_str() {
+            "enter" => return KeyResult::Submit,
+            "escape" => return KeyResult::Escape,
+            "backspace" => {
+                self.input.pop();
+                return KeyResult::Edited;
+            }
+            _ => {}
+        }
+        let Some(ch) = ks.key_char.as_deref().and_then(|s| s.chars().next()) else {
+            return KeyResult::Ignored;
+        };
+        let allowed = ch.is_ascii_digit()
+            || (matches!(ch, '.' | ',') && !self.input.contains(['.', ',']))
+            || (ch == '-' && self.input.is_empty());
+        if allowed && self.input.len() < 12 {
+            self.input.push(ch);
+            KeyResult::Edited
+        } else {
+            KeyResult::Ignored
         }
     }
 
-    fn nav(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let result = self.edit_input(ev);
+        match self.screen {
+            Screen::Calc => self.calc_key(result, cx),
+            Screen::Review => self.review_key(result, cx),
+            Screen::Lesson => self.quiz_key(result, cx),
+            _ => {}
+        }
+        let _ = window;
+        cx.notify();
+    }
+
+    /// Re-reads strings after a locale change.
+    pub(crate) fn set_ui(&mut self, ui: Rc<Ui>, window: &mut Window, cx: &mut Context<Self>) {
+        window.set_window_title(&ui.i18n.tr("window-title"));
+        let table_ui = ui.clone();
+        self.table.update(cx, |table, cx| {
+            table.set_ui(table_ui);
+            cx.notify();
+        });
+        self.ui = ui;
+        // Rendered lesson text and quiz prompts are per locale.
+        self.lesson = LessonView::default();
+        self.review = ReviewView::default();
+        // A status line from before the switch is in the old language.
+        self.settings.message = None;
+    }
+
+    fn nav(&self, cx: &mut Context<Self>) -> AnyElement {
         let (p, t, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
+        let due = self.app.due_count().unwrap_or(0);
         let items = Screen::ALL.into_iter().enumerate().map(|(i, screen)| {
             let selected = screen == self.screen;
             let label: SharedString = i18n.tr(screen.nav_key()).into();
@@ -53,6 +213,7 @@ impl Shell {
                 .id(("nav", i))
                 .flex()
                 .items_center()
+                .justify_between()
                 .px(px(t.spacing.md))
                 .py(px(t.spacing.sm))
                 .rounded(px(t.radii.md))
@@ -69,8 +230,19 @@ impl Shell {
                     d.text_color(p.text_muted)
                         .hover(|s| s.bg(p.surface_raised).border_color(p.surface_raised))
                 })
-                .on_click(cx.listener(move |this, _, _, cx| this.select(screen, cx)))
+                .on_click(cx.listener(move |this, _, window, cx| this.select(screen, window, cx)))
                 .child(label)
+                .when(screen == Screen::Review && due > 0, |d| {
+                    d.child(
+                        div()
+                            .px(px(t.spacing.sm))
+                            .rounded(px(t.radii.pill))
+                            .bg(p.accent)
+                            .text_color(p.on_accent)
+                            .text_size(px(t.text_size.sm))
+                            .child(due.to_string()),
+                    )
+                })
         });
 
         div()
@@ -126,77 +298,107 @@ impl Shell {
                         &[("version", env!("CARGO_PKG_VERSION").into())],
                     )),
             )
+            .into_any_element()
     }
 
-    fn content(&self) -> impl IntoElement {
+    /// The "coming in Mx" card for screens later milestones build.
+    pub(crate) fn placeholder(&self, screen: Screen) -> AnyElement {
         let (p, t, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
-        let screen = self.screen;
-        if screen == Screen::Table {
+        crate::widgets::card(&self.ui, p)
+            .child(
+                div()
+                    .text_size(px(t.text_size.lg))
+                    .child(i18n.tr(screen.body_key())),
+            )
+            .child(
+                div()
+                    .text_size(px(t.text_size.md))
+                    .text_color(p.accent)
+                    .child(i18n.tr_args(
+                        "screen-coming-in",
+                        &[("milestone", screen.milestone().into())],
+                    )),
+            )
+            .into_any_element()
+    }
+
+    fn content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let t = &self.ui.theme;
+        let (xl, xxl) = (t.spacing.xl, t.spacing.xxl);
+        let title = self.ui.i18n.tr(self.screen.nav_key());
+        let title_size = t.text_size.xl;
+        if self.screen == Screen::Table {
+            // The table takes the whole pane (no reading column).
             return div()
                 .flex_1()
                 .h_full()
                 .flex()
                 .flex_col()
                 .gap(px(t.spacing.lg))
-                .p(px(t.spacing.xxl))
+                .p(px(xxl))
                 .child(
                     div()
-                        .text_size(px(t.text_size.xl))
+                        .text_size(px(title_size))
                         .font_weight(FontWeight::BOLD)
-                        .child(i18n.tr(screen.nav_key())),
+                        .child(title),
                 )
-                .child(self.table.clone());
+                .child(self.table.clone())
+                .into_any_element();
         }
+        let viewport = f32::from(window.viewport_size().width);
+        let column_width = (viewport - NAV_WIDTH).clamp(0., CONTENT_MAX_WIDTH + 2. * xxl);
+        let body = match self.screen {
+            Screen::Home => self.home_view(cx),
+            Screen::SkillTree => self.tree_view(cx),
+            Screen::Lesson => self.lesson_view(cx),
+            Screen::Calc => self.calc_view(cx),
+            Screen::Review => self.review_view(cx),
+            Screen::Settings => self.settings_view(window, cx),
+            Screen::Table | Screen::HandReview => self.placeholder(self.screen),
+        };
         div()
+            .id("content")
             .flex_1()
             .h_full()
             .flex()
             .flex_col()
-            .gap(px(t.spacing.xl))
-            .p(px(t.spacing.xxl))
+            .overflow_y_scroll()
+            .track_scroll(&self.scroll)
             .child(
                 div()
-                    .text_size(px(t.text_size.xl))
-                    .font_weight(FontWeight::BOLD)
-                    .child(i18n.tr(screen.nav_key())),
-            )
-            .child(
-                div()
-                    .max_w(px(CONTENT_MAX_WIDTH))
                     .flex()
                     .flex_col()
-                    .gap(px(t.spacing.md))
-                    .p(px(t.spacing.xl))
-                    .rounded(px(t.radii.lg))
-                    .bg(p.surface)
-                    .border_1()
-                    .border_color(p.border)
+                    .flex_none()
+                    .gap(px(xl))
+                    // A definite width: text measured under `w_full` + `max_w`
+                    // wraps at the unclamped width and the column comes out
+                    // too short to scroll to its end.
+                    .w(px(column_width))
+                    .p(px(xxl))
                     .child(
                         div()
-                            .text_size(px(t.text_size.lg))
-                            .child(i18n.tr(screen.body_key())),
+                            .text_size(px(title_size))
+                            .font_weight(FontWeight::BOLD)
+                            .child(title),
                     )
-                    .child(
-                        div()
-                            .text_size(px(t.text_size.md))
-                            .text_color(p.accent)
-                            .child(i18n.tr_args(
-                                "screen-coming-in",
-                                &[("milestone", screen.milestone().into())],
-                            )),
-                    ),
+                    .child(body),
             )
+            .into_any_element()
     }
 }
 
 impl Render for Shell {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let content = self.content(window, cx);
+        let nav = self.nav(cx);
         div()
             .size_full()
             .flex()
             .bg(self.palette.background)
             .text_color(self.palette.text)
-            .child(self.nav(cx))
-            .child(self.content())
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(Self::on_key))
+            .child(nav)
+            .child(content)
     }
 }

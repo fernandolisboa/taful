@@ -1,0 +1,41 @@
+id = "stacks-and-blinds-quiz"
+version = 1
+lesson = "stacks-and-blinds"
+pass = 0.75
+
+[[questions]]
+id = "bb-count"
+kind = "numeric"
+prompt = { en-US = "At $1/$2, how many big blinds is a $300 stack?", pt-BR = "Num jogo $1/$2, quantos big blinds tem um stack de $300?" }
+answer = "{{ calc: div(a=300, b=2) | int }}"
+tolerance = 0.0
+
+[[questions]]
+id = "effective"
+kind = "numeric"
+prompt = { en-US = "You have 150 bb, your opponent 80 bb. What is the effective stack, in bb?", pt-BR = "Você tem 150 bb e o adversário 80 bb. Qual é o stack efetivo, em bb?" }
+answer = "{{ calc: min(a=150, b=80) | int }}"
+tolerance = 0.0
+
+[[questions]]
+id = "blinds-pot"
+kind = "choice"
+prompt = { en-US = "How big is the pot before anyone acts preflop (no antes)?", pt-BR = "Qual o tamanho do pote antes de alguém agir no pré-flop (sem ante)?" }
+choices = [
+    { en-US = "1 bb", pt-BR = "1 bb" },
+    { en-US = "1.5 bb", pt-BR = "1,5 bb" },
+    { en-US = "2 bb", pt-BR = "2 bb" },
+]
+answer = 1
+
+[[questions]]
+id = "srp-pot"
+kind = "choice"
+prompt = { en-US = "BTN opens to 2.5 bb, SB folds, BB calls. Pot on the flop?", pt-BR = "BTN abre para 2,5 bb, SB folda, BB paga. Pote no flop?" }
+choices = [
+    { en-US = "5 bb", pt-BR = "5 bb" },
+    { en-US = "5.5 bb", pt-BR = "5,5 bb" },
+    { en-US = "6 bb", pt-BR = "6 bb" },
+]
+answer = 1
+explanation = { en-US = "2.5 + 2.5 + the small blind's 0.5.", pt-BR = "2,5 + 2,5 + o 0,5 do small blind." }

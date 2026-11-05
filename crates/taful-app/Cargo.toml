@@ -21,3 +21,8 @@ unic-langid.workspace = true
 fluent-syntax.workspace = true
 rand.workspace = true
 rand_chacha.workspace = true
+fsrs.workspace = true
+jiff.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

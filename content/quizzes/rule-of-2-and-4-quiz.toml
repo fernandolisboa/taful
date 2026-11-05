@@ -1,0 +1,36 @@
+id = "rule-of-2-and-4-quiz"
+version = 1
+lesson = "rule-of-2-and-4"
+pass = 0.75
+
+[[questions]]
+id = "turn-flush"
+kind = "numeric"
+prompt = { en-US = "Turn, 9 outs, one card to come. Chance to hit by the rule of 2, in %?", pt-BR = "Turn, 9 outs, uma carta por vir. Chance de acertar pela regra do 2, em %?" }
+answer = "{{ calc: rule_of_2_and_4(outs=9, cards=1) | pct(0) }}"
+tolerance = 2.0
+
+[[questions]]
+id = "flop-oesd"
+kind = "numeric"
+prompt = { en-US = "Flop, all-in, 8 outs. Chance to hit by the river, in %?", pt-BR = "Flop, all-in, 8 outs. Chance de acertar até o river, em %?" }
+answer = "{{ calc: hit_probability(outs=8, cards=2) | pct(1) }}"
+tolerance = 2.0
+
+[[questions]]
+id = "combo-draw"
+kind = "numeric"
+prompt = { en-US = "Flop, all-in, 15 outs. Rule of 4 with the correction, in %?", pt-BR = "Flop, all-in, 15 outs. Regra do 4 com a correção, em %?" }
+answer = "{{ calc: rule_of_2_and_4(outs=15, cards=2) | pct(0) }}"
+tolerance = 1.0
+
+[[questions]]
+id = "when-x4"
+kind = "choice"
+prompt = { en-US = "When should you use ×4?", pt-BR = "Quando usar ×4?" }
+choices = [
+    { en-US = "When you will see both the turn and the river, e.g. all-in on the flop", pt-BR = "Quando você vai ver turn e river, por exemplo all-in no flop" },
+    { en-US = "Whenever you are on the flop", pt-BR = "Sempre que estiver no flop" },
+    { en-US = "On the turn", pt-BR = "No turn" },
+]
+answer = 0

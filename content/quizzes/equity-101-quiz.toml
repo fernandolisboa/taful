@@ -1,0 +1,46 @@
+id = "equity-101-quiz"
+version = 1
+lesson = "equity-101"
+pass = 0.75
+
+[[questions]]
+id = "definition"
+kind = "choice"
+prompt = { en-US = "What is equity?", pt-BR = "O que é equity?" }
+choices = [
+    { en-US = "Your share of the pot if all cards were dealt with no more betting", pt-BR = "Sua parte do pote se todas as cartas fossem distribuídas sem mais apostas" },
+    { en-US = "The chips you have in front of you", pt-BR = "As fichas que você tem na frente" },
+    { en-US = "How often your opponent folds", pt-BR = "Com que frequência o adversário folda" },
+]
+answer = 0
+
+[[questions]]
+id = "draw-vs-aces"
+kind = "numeric"
+prompt = { en-US = "9♠ 8♠ against A♥ A♣ on 7♠ 6♠ 2♦. Equity of the draw, in %?", pt-BR = "9♠ 8♠ contra A♥ A♣ em 7♠ 6♠ 2♦. Equity do projeto, em %?" }
+answer = "{{ calc: equity_vs_hand(hero=\"9s8s\", villain=\"AhAc\", board=\"7s6s2d\") | pct(1) }}"
+tolerance = 5.0
+explanation = { en-US = "A flush draw plus an open-ender is a favorite even against an overpair.", pt-BR = "Projeto de flush mais sequência aberta é favorito até contra um overpair." }
+
+[[questions]]
+id = "gutshot"
+kind = "choice"
+prompt = { en-US = "J♣ 9♣ against A♥ A♣ on Q♦ 8♠ 2♥: roughly how much equity?", pt-BR = "J♣ 9♣ contra A♥ A♣ em Q♦ 8♠ 2♥: quanto de equity, mais ou menos?" }
+choices = [
+    { en-US = "About 20%", pt-BR = "Cerca de 20%" },
+    { en-US = "About 40%", pt-BR = "Cerca de 40%" },
+    { en-US = "About 60%", pt-BR = "Cerca de 60%" },
+]
+answer = 0
+explanation = { en-US = "Exactly {{ calc: equity_vs_hand(hero=\"Jc9c\", villain=\"AhAc\", board=\"Qd8s2h\") | pct(1) }}: a gutshot has 4 outs and a few runner-runner hands.", pt-BR = "Exatamente {{ calc: equity_vs_hand(hero=\"Jc9c\", villain=\"AhAc\", board=\"Qd8s2h\") | pct(1) }}: um gutshot tem 4 outs e alguns runner-runner." }
+
+[[questions]]
+id = "vs-range"
+kind = "choice"
+prompt = { en-US = "Equity against a range is…", pt-BR = "Equity contra um range é…" }
+choices = [
+    { en-US = "The average over every combo the opponent can hold", pt-BR = "A média sobre todos os combos que o adversário pode ter" },
+    { en-US = "The equity against their best hand", pt-BR = "A equity contra a melhor mão dele" },
+    { en-US = "The equity against their worst hand", pt-BR = "A equity contra a pior mão dele" },
+]
+answer = 0

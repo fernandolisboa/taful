@@ -1,0 +1,33 @@
+id = "combos-101-quiz"
+version = 1
+lesson = "combos-101"
+pass = 0.75
+
+[[questions]]
+id = "pair"
+kind = "numeric"
+prompt = { en-US = "How many combos of JJ are there?", pt-BR = "Quantos combos de JJ existem?" }
+answer = "{{ calc: combos(range=\"JJ\") | int }}"
+tolerance = 0.0
+
+[[questions]]
+id = "offsuit"
+kind = "numeric"
+prompt = { en-US = "How many combos of KQo?", pt-BR = "Quantos combos de KQo?" }
+answer = "{{ calc: combos(range=\"KQo\") | int }}"
+tolerance = 0.0
+
+[[questions]]
+id = "range"
+kind = "numeric"
+prompt = { en-US = "How many combos in the range TT+, AK?", pt-BR = "Quantos combos tem o range TT+, AK?" }
+answer = "{{ calc: combos(range=\"TT+,AK\") | int }}"
+tolerance = 0.0
+
+[[questions]]
+id = "blocker"
+kind = "numeric"
+prompt = { en-US = "You hold an ace. How many AK combos can your opponent still have?", pt-BR = "Você tem um ás. Quantos combos de AK o adversário ainda pode ter?" }
+answer = "{{ calc: mul(a=3, b=4) | int }}"
+tolerance = 0.0
+explanation = { en-US = "3 aces left × 4 kings = 12.", pt-BR = "3 ases restantes × 4 reis = 12." }

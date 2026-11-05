@@ -41,6 +41,12 @@ pub struct TableScreen {
 }
 
 impl TableScreen {
+    /// Switches the strings (locale change); the deal in progress is kept.
+    pub fn set_ui(&mut self, ui: Rc<Ui>) {
+        self.palette = Palette::new(&ui.theme.colors);
+        self.ui = ui;
+    }
+
     pub fn new(ui: Rc<Ui>) -> Self {
         let palette = Palette::new(&ui.theme.colors);
         let trainer = PreflopTrainer::builtin()

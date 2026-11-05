@@ -1,0 +1,18 @@
+# Rendered placeholder values, pinned (spec §12.3). Regenerate with
+# `cargo run -p taful-content-check -- --bless`; review the diff.
+
+[en-US]
+"calc: hit_probability(outs=15, cards=2) | pct(1)" = "54.1%"
+"calc: hit_probability(outs=9, cards=1) | pct(1)" = "19.6%"
+"calc: hit_probability(outs=9, cards=2) | pct(1)" = "35.0%"
+"calc: rule_of_2_and_4(outs=15, cards=2) | pct(0)" = "53%"
+"calc: rule_of_2_and_4(outs=9, cards=1) | pct(0)" = "18%"
+"calc: rule_of_2_and_4(outs=9, cards=2) | pct(0)" = "35%"
+
+[pt-BR]
+"calc: hit_probability(outs=15, cards=2) | pct(1)" = "54,1%"
+"calc: hit_probability(outs=9, cards=1) | pct(1)" = "19,6%"
+"calc: hit_probability(outs=9, cards=2) | pct(1)" = "35,0%"
+"calc: rule_of_2_and_4(outs=15, cards=2) | pct(0)" = "53%"
+"calc: rule_of_2_and_4(outs=9, cards=1) | pct(0)" = "18%"
+"calc: rule_of_2_and_4(outs=9, cards=2) | pct(0)" = "35%"

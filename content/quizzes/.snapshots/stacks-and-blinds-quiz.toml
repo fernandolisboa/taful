@@ -1,0 +1,10 @@
+# Rendered placeholder values, pinned (spec §12.3). Regenerate with
+# `cargo run -p taful-content-check -- --bless`; review the diff.
+
+[en-US]
+"calc: div(a=300, b=2) | int" = "150"
+"calc: min(a=150, b=80) | int" = "80"
+
+[pt-BR]
+"calc: div(a=300, b=2) | int" = "150"
+"calc: min(a=150, b=80) | int" = "80"

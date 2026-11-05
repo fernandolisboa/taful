@@ -1,0 +1,16 @@
+# Rendered placeholder values, pinned (spec §12.3). Regenerate with
+# `cargo run -p taful-content-check -- --bless`; review the diff.
+
+[en-US]
+'calc: combos(range="AK") | int' = "16"
+'calc: combos(range="AKo") | int' = "12"
+'calc: combos(range="AKs") | int' = "4"
+'calc: combos(range="QQ") | int' = "6"
+'calc: combos(range="QQ+,AK") | int' = "34"
+
+[pt-BR]
+'calc: combos(range="AK") | int' = "16"
+'calc: combos(range="AKo") | int' = "12"
+'calc: combos(range="AKs") | int' = "4"
+'calc: combos(range="QQ") | int' = "6"
+'calc: combos(range="QQ+,AK") | int' = "34"
