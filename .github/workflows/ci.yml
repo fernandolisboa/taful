@@ -1,9 +1,12 @@
 name: CI
 
+# Docs-only changes skip CI: the Windows release build takes ~10 min.
 on:
   push:
     branches: [main]
+    paths-ignore: ["docs/**", "**.md"]
   pull_request:
+    paths-ignore: ["docs/**", "**.md"]
   workflow_dispatch:
 
 concurrency:

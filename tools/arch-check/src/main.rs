@@ -55,6 +55,10 @@ const RULES: &[Rule] = &[
 /// Packages no shipped crate may reach, whatever their license field says.
 const FORBIDDEN_PACKAGES: &[&str] = &["postflop-solver"];
 
+/// Third-party packages without an SPDX `license` field whose license file
+/// was reviewed by hand and is not copyleft. Anything else without one fails.
+const UNLICENSED_OK: &[&str] = &[];
+
 fn main() -> ExitCode {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
     let output = match Command::new(cargo)
@@ -156,13 +160,19 @@ fn check(metadata: &Value, rules: &[Rule]) -> Vec<String> {
                     r.name
                 ));
             }
-            if let Some(license) = pkg["license"].as_str()
-                && is_copyleft_only(license)
-            {
-                violations.push(format!(
+            let is_member = members.values().any(|m| *m == id);
+            match pkg["license"].as_str() {
+                Some(license) if is_copyleft_only(license) => violations.push(format!(
                     "shipped crate `{}` reaches `{name} {version}` licensed `{license}`",
                     r.name
-                ));
+                )),
+                Some(_) => {}
+                None if is_member || UNLICENSED_OK.contains(&name) => {}
+                None => violations.push(format!(
+                    "shipped crate `{}` reaches `{name} {version}` with no SPDX `license` \
+                     field; review its license file and add it to UNLICENSED_OK",
+                    r.name
+                )),
             }
         }
     }
@@ -226,15 +236,62 @@ fn reachable<'a>(graph: &BTreeMap<&'a str, Vec<&'a str>>, root: &'a str) -> BTre
 }
 
 /// Whether an SPDX expression (or legacy `A/B` form) can only be satisfied
-/// with a GPL-family license. `MIT OR GPL-3.0` is fine: we take MIT. LGPL is
-/// not flagged.
+/// with a GPL-family license: `OR` picks any branch, `AND` needs all,
+/// parentheses group. `MIT OR GPL-3.0` is fine (we take MIT);
+/// `(MIT OR Apache-2.0) AND GPL-3.0` is not. LGPL is not flagged. An
+/// expression that does not parse counts as copyleft, so it gets a look.
 fn is_copyleft_only(expr: &str) -> bool {
-    let normalized = expr.replace('/', " OR ");
-    normalized.split(" OR ").all(|alternative| {
-        alternative
-            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '+'))
-            .any(|token| token.starts_with("GPL") || token.starts_with("AGPL"))
-    })
+    let spaced = expr
+        .replace('(', " ( ")
+        .replace(')', " ) ")
+        .replace('/', " OR ");
+    let tokens: Vec<&str> = spaced.split_whitespace().collect();
+    let mut pos = 0;
+    match permissive_or(&tokens, &mut pos) {
+        Some(ok) if pos == tokens.len() => !ok,
+        _ => true,
+    }
+}
+
+/// `expr := and ("OR" and)*`; returns whether a non-copyleft choice exists.
+fn permissive_or(t: &[&str], pos: &mut usize) -> Option<bool> {
+    let mut ok = permissive_and(t, pos)?;
+    while t.get(*pos) == Some(&"OR") {
+        *pos += 1;
+        ok |= permissive_and(t, pos)?;
+    }
+    Some(ok)
+}
+
+/// `and := atom ("AND" atom)*`.
+fn permissive_and(t: &[&str], pos: &mut usize) -> Option<bool> {
+    let mut ok = permissive_atom(t, pos)?;
+    while t.get(*pos) == Some(&"AND") {
+        *pos += 1;
+        ok &= permissive_atom(t, pos)?;
+    }
+    Some(ok)
+}
+
+/// `atom := "(" expr ")" | id ["WITH" exception]`.
+fn permissive_atom(t: &[&str], pos: &mut usize) -> Option<bool> {
+    let token = *t.get(*pos)?;
+    *pos += 1;
+    let ok = if token == "(" {
+        let ok = permissive_or(t, pos)?;
+        (t.get(*pos) == Some(&")")).then_some(())?;
+        *pos += 1;
+        ok
+    } else if matches!(token, ")" | "OR" | "AND" | "WITH") {
+        return None;
+    } else {
+        !(token.starts_with("GPL") || token.starts_with("AGPL"))
+    };
+    if t.get(*pos) == Some(&"WITH") {
+        *pos += 2;
+        t.get(*pos - 1)?;
+    }
+    Some(ok)
 }
 
 #[cfg(test)]
@@ -356,6 +413,32 @@ mod tests {
     }
 
     #[test]
+    fn missing_license_field_is_caught() {
+        let mut nolicense = pkg("mystery", "", &[]);
+        nolicense["license"] = Value::Null;
+        let m = metadata(
+            vec![
+                pkg("core", "UNLICENSED", &[]),
+                pkg("app", "UNLICENSED", &["core", "mystery"]),
+                pkg("build", "UNLICENSED", &[]),
+                nolicense,
+            ],
+            vec![
+                node("core", &[]),
+                node("app", &[("core", None), ("mystery", None)]),
+                node("build", &[]),
+                node("mystery", &[]),
+            ],
+            &["core", "app", "build"],
+        );
+        let v = check(&m, TEST_RULES);
+        assert!(
+            v.iter().any(|s| s.contains("`mystery 1.0.0` with no SPDX")),
+            "{v:?}"
+        );
+    }
+
+    #[test]
     fn unknown_member_is_caught() {
         let m = metadata(
             vec![
@@ -382,5 +465,11 @@ mod tests {
         assert!(!is_copyleft_only("MIT/GPL-2.0"));
         assert!(!is_copyleft_only("LGPL-2.1-or-later"));
         assert!(!is_copyleft_only("Apache-2.0 WITH LLVM-exception"));
+        assert!(!is_copyleft_only("(MIT OR Apache-2.0) AND Unicode-3.0"));
+        assert!(is_copyleft_only("(MIT OR Apache-2.0) AND GPL-3.0-only"));
+        assert!(!is_copyleft_only("(MIT OR GPL-3.0) AND Apache-2.0"));
+        assert!(is_copyleft_only("MIT AND (GPL-2.0 OR AGPL-3.0)"));
+        assert!(is_copyleft_only("MIT OR"), "malformed counts as copyleft");
+        assert!(is_copyleft_only("(MIT"), "malformed counts as copyleft");
     }
 }

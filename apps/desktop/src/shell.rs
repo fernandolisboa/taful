@@ -57,7 +57,8 @@ impl Shell {
                         .font_weight(FontWeight::SEMIBOLD)
                 })
                 .when(!selected, |d| {
-                    d.text_color(p.text_muted).hover(|s| s.bg(p.surface_raised))
+                    d.text_color(p.text_muted)
+                        .hover(|s| s.bg(p.surface_raised).border_color(p.surface_raised))
                 })
                 .on_click(cx.listener(move |this, _, _, cx| this.select(screen, cx)))
                 .child(label)

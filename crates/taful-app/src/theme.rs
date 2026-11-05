@@ -46,9 +46,23 @@ impl Color {
         0.2126 * channel(self.r) + 0.7152 * channel(self.g) + 0.0722 * channel(self.b)
     }
 
-    /// WCAG contrast ratio between two opaque colors, 1.0–21.0.
-    pub fn contrast(self, other: Color) -> f64 {
-        let (a, b) = (self.luminance(), other.luminance());
+    /// This color alpha-composited over an opaque `bg`.
+    pub fn over(self, bg: Color) -> Color {
+        let a = u32::from(self.a);
+        let mix = |f: u8, b: u8| ((u32::from(f) * a + u32::from(b) * (255 - a) + 127) / 255) as u8;
+        Color {
+            r: mix(self.r, bg.r),
+            g: mix(self.g, bg.g),
+            b: mix(self.b, bg.b),
+            a: 255,
+        }
+    }
+
+    /// WCAG contrast ratio of this color drawn over `bg`, 1.0–21.0. A
+    /// translucent foreground is composited over `bg` first; `bg` is treated
+    /// as opaque.
+    pub fn contrast(self, bg: Color) -> f64 {
+        let (a, b) = (self.over(bg).luminance(), bg.luminance());
         let (hi, lo) = if a > b { (a, b) } else { (b, a) };
         (hi + 0.05) / (lo + 0.05)
     }
@@ -307,11 +321,17 @@ pub struct TextPair {
 impl Theme {
     /// Parses a theme file.
     pub fn from_json(json: &str) -> Result<Self, ThemeError> {
-        let theme: Theme = serde_json::from_str(json).map_err(ThemeError::Parse)?;
-        if theme.schema != SCHEMA_VERSION {
-            return Err(ThemeError::Schema(theme.schema));
+        // Read the version first: a newer schema may add tokens that the
+        // strict parse below would reject as unknown fields.
+        #[derive(Deserialize)]
+        struct Probe {
+            schema: u32,
         }
-        Ok(theme)
+        let probe: Probe = serde_json::from_str(json).map_err(ThemeError::Parse)?;
+        if probe.schema != SCHEMA_VERSION {
+            return Err(ThemeError::Schema(probe.schema));
+        }
+        serde_json::from_str(json).map_err(ThemeError::Parse)
     }
 
     /// The built-in default theme.
@@ -477,6 +497,10 @@ mod tests {
         let white: Color = "#ffffff".parse().unwrap();
         assert!((black.contrast(white) - 21.0).abs() < 1e-9);
         assert!((white.contrast(white) - 1.0).abs() < 1e-9);
+        // Translucent text is composited first: 25% white over black is dark.
+        let faint: Color = "#ffffff40".parse().unwrap();
+        assert!(faint.contrast(black) < 4.5);
+        assert_eq!(faint.over(black).to_string(), "#404040");
     }
 
     #[test]
@@ -491,6 +515,7 @@ mod tests {
 
         let mut v: serde_json::Value = serde_json::from_str(DEFAULT_THEME_JSON).unwrap();
         v["schema"] = 2.into();
+        v["colors"]["focus_ring"] = "#ffffff".into();
         assert!(matches!(
             Theme::from_json(&v.to_string()),
             Err(ThemeError::Schema(2))

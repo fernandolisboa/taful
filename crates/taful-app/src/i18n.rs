@@ -168,8 +168,10 @@ fn format_in(bundle: &Bundle, id: &str, args: Option<&FluentArgs>) -> Option<Str
     let pattern = bundle.get_message(id)?.value()?;
     let mut errors = Vec::new();
     let text = bundle.format_pattern(pattern, args, &mut errors);
-    // A formatting error (e.g. a missing argument) still yields usable text
-    // with the placeholder visible; tests catch these before release.
+    // A formatting error (e.g. a missing argument) still yields text with the
+    // placeholder visible. Debug builds fail loudly; the variable-parity test
+    // catches a translation that renames a variable.
+    debug_assert!(errors.is_empty(), "formatting `{id}`: {errors:?}");
     Some(text.into_owned())
 }
 
@@ -214,6 +216,70 @@ pub fn keys(src: &Source) -> Result<Vec<String>, I18nError> {
     Ok(keys)
 }
 
+/// Variables (`$name`) each message of one source uses, keyed like [`keys`].
+pub fn variables(
+    src: &Source,
+) -> Result<std::collections::BTreeMap<String, std::collections::BTreeSet<String>>, I18nError> {
+    use fluent_syntax::ast::{Entry, Expression, InlineExpression, Pattern, PatternElement};
+
+    fn pattern(p: &Pattern<&str>, out: &mut std::collections::BTreeSet<String>) {
+        for el in &p.elements {
+            if let PatternElement::Placeable { expression } = el {
+                expr(expression, out);
+            }
+        }
+    }
+    fn expr(e: &Expression<&str>, out: &mut std::collections::BTreeSet<String>) {
+        match e {
+            Expression::Inline(i) => inline(i, out),
+            Expression::Select { selector, variants } => {
+                inline(selector, out);
+                for v in variants {
+                    pattern(&v.value, out);
+                }
+            }
+        }
+    }
+    fn inline(i: &InlineExpression<&str>, out: &mut std::collections::BTreeSet<String>) {
+        match i {
+            InlineExpression::VariableReference { id } => {
+                out.insert(id.name.to_owned());
+            }
+            InlineExpression::Placeable { expression } => expr(expression, out),
+            InlineExpression::FunctionReference { arguments, .. } => {
+                for a in &arguments.positional {
+                    inline(a, out);
+                }
+                for a in &arguments.named {
+                    inline(&a.value, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let resource = parse(src)?;
+    let mut map = std::collections::BTreeMap::new();
+    for entry in resource.entries() {
+        let (prefix, id, value, attrs) = match entry {
+            Entry::Message(m) => ("", m.id.name, m.value.as_ref(), &m.attributes),
+            Entry::Term(t) => ("-", t.id.name, Some(&t.value), &t.attributes),
+            _ => continue,
+        };
+        let mut vars = std::collections::BTreeSet::new();
+        if let Some(v) = value {
+            pattern(v, &mut vars);
+        }
+        map.insert(format!("{prefix}{id}"), vars);
+        for a in attrs {
+            let mut vars = std::collections::BTreeSet::new();
+            pattern(&a.value, &mut vars);
+            map.insert(format!("{prefix}{id}.{}", a.id.name), vars);
+        }
+    }
+    Ok(map)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
@@ -255,6 +321,36 @@ mod tests {
                 locale.tag(),
                 Locale::SOURCE.tag(),
             );
+        }
+    }
+
+    /// A translation must use the same `$variables` as the source, or the
+    /// UI shows a raw placeholder.
+    #[test]
+    fn locales_use_the_same_variables() {
+        let vars = |locale: Locale| {
+            let mut all = std::collections::BTreeMap::new();
+            for src in SOURCES.iter().filter(|s| s.locale == locale) {
+                all.extend(variables(src).unwrap());
+            }
+            all
+        };
+        let source = vars(Locale::SOURCE);
+        assert!(
+            source.values().any(|v| !v.is_empty()),
+            "scan found no variables"
+        );
+        for locale in Locale::ALL {
+            let other = vars(locale);
+            for (key, expected) in &source {
+                assert_eq!(
+                    other.get(key),
+                    Some(expected),
+                    "{}: `{key}` variables differ from {}",
+                    locale.tag(),
+                    Locale::SOURCE.tag()
+                );
+            }
         }
     }
 

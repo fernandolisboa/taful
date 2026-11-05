@@ -1,5 +1,5 @@
-# Strings do app shell. en-US é a fonte; toda chave de lá precisa existir
-# aqui (teste em taful-app).
+# App shell strings, pt-BR. en-US is the source locale; every key and
+# variable there must exist here (checked by tests in taful-app).
 
 -product = Taful
 
@@ -7,7 +7,7 @@ app-name = { -product }
 app-tagline = Treinador de No-Limit Hold'em
 window-title = { -product } · Treinador de No-Limit Hold'em
 
-## Navegação (spec §15.1)
+## Navigation (spec §15.1)
 
 nav-home = Início
 nav-skill-tree = Trilha
@@ -18,7 +18,7 @@ nav-calc = Cálculo mental
 nav-review = Revisões
 nav-settings = Configurações
 
-## Descrição das telas enquanto não existem
+## Screen descriptions shown until each screen is built
 
 screen-home-body = Revisões do dia, seus maiores vazamentos, a próxima lição e atalhos.
 screen-skill-tree-body = Trilhas e lições, liberadas conforme você passa em cada quiz ou exercício.
@@ -30,7 +30,7 @@ screen-review-body = Sua fila de repetição espaçada: erros, quizzes e cálcul
 screen-settings-body = Idioma, layout, tema, backups e a biblioteca de estratégia.
 screen-coming-in = Chega no { $milestone }.
 
-## Rodapé
+## Footer
 
 footer-version = Versão { $version }
 footer-offline = Local-first: seus dados ficam neste computador.

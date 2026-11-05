@@ -47,11 +47,27 @@ fn sources() -> Vec<PathBuf> {
     out
 }
 
-/// Strips `//` comments so prose may mention `rgb(` or `#fff`.
+/// Strips `//` comments so prose may mention `rgb(` or `#fff`. A `//` inside
+/// a string literal (a URL) is kept.
 fn code_lines(text: &str) -> impl Iterator<Item = (usize, &str)> {
     text.lines()
         .enumerate()
-        .map(|(i, line)| (i + 1, line.split("//").next().unwrap_or("")))
+        .map(|(i, line)| (i + 1, strip_comment(line)))
+}
+
+fn strip_comment(line: &str) -> &str {
+    let bytes = line.as_bytes();
+    let (mut in_str, mut escaped) = (false, false);
+    for (i, &b) in bytes.iter().enumerate() {
+        match b {
+            _ if escaped => escaped = false,
+            b'\\' if in_str => escaped = true,
+            b'"' => in_str = !in_str,
+            b'/' if !in_str && bytes.get(i + 1) == Some(&b'/') => return &line[..i],
+            _ => {}
+        }
+    }
+    line
 }
 
 /// Finds `#rgb`, `#rrggbb` or `#rrggbbaa` and `0xrrggbb` literals.
@@ -74,7 +90,9 @@ fn hex_color(line: &str) -> Option<&str> {
         let hash_len_ok = bytes[i] == b'#' && matches!(digits, 3 | 6 | 8);
         let hex_len_ok = bytes[i] == b'x' && matches!(digits, 6 | 8);
         if hash_len_ok || hex_len_ok {
-            return Some(&line[i.saturating_sub(1)..end]);
+            // `0x`: the `0` before `x` is ASCII, so `i - 1` is a char boundary.
+            let start = if bytes[i] == b'x' { i - 1 } else { i };
+            return Some(&line[start..end]);
         }
     }
     None
@@ -115,6 +133,20 @@ fn hex_detector() {
     assert!(hex_color("#[derive(Debug)]").is_none());
     assert!(hex_color("let n = 0x10;").is_none());
     assert!(hex_color("let s = \"#1 seat\";").is_none());
+    assert_eq!(hex_color("\"Mão#abc\""), Some("#abc"));
+}
+
+#[test]
+fn comment_stripping_keeps_urls() {
+    let line = r#".child(link("https://taful.filx.app", tr("nav-x"))) // note"#;
+    assert_eq!(
+        strip_comment(line),
+        r#".child(link("https://taful.filx.app", tr("nav-x"))) "#
+    );
+    assert_eq!(
+        strip_comment(r#"let s = "a\"//b"; // c"#),
+        r#"let s = "a\"//b"; "#
+    );
 }
 
 /// String literals that look like Fluent ids (`lower-case-with-dashes`).
