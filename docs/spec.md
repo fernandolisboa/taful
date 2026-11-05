@@ -2,7 +2,7 @@
 
 > **Status:** draft for review, 2026-11-04. Derived from [brief.md](brief.md), [decisions.md](decisions.md) (D1–D13) and [spikes.md](spikes.md) / [spikes/9.1-gpui-table.md](spikes/9.1-gpui-table.md). All three §9 spikes passed, so the stack stands.
 >
-> **Precedence:** decisions.md > this spec > brief.md. Items marked **(proposed)** are choices this spec makes that were not grilled; they stand unless changed in review. Items marked **(open)** are listed in §19 and need a decision before the milestone that depends on them.
+> **Precedence:** decisions.md > this spec > brief.md. Items marked **(proposed)** are choices this spec makes that were not grilled; they stand unless changed in review. Open items are listed in §19 and need a decision before the milestone that depends on them.
 
 ---
 
@@ -54,7 +54,7 @@ The first slice is done when, on Windows, the user can:
 Three pipelines, one shared core:
 
 ```
-                 ┌──────────────────────── offline (author's machine / rented box) ───────────────────────┐
+                 ┌──────────────────────── offline (author's PC) ─────────────────────────────────────────┐
  preflop solver ─┤ tools/library-build  ──(links postflop-solver fork, AGPL)──▶  library files (Taful fmt) │──▶ static host / local dir
                  └─────────────────────────────────────────────────────────────────────────────────────────┘
  content/ (Markdown + TOML) ──▶ taful-content (render + checks, run in CI and in app)
@@ -111,7 +111,7 @@ taful/
 |---|---|---|
 | UI | `gpui = "=0.2.2"` | Verified on Windows (spike §9.1). Linux/macOS break on `xattr`; irrelevant for now. |
 | Hand evaluator | `rs_poker` 5.x, `default-features = false` | Behind `HandEvaluator` trait (spike §9.3). |
-| Spaced repetition | `fsrs` 6.x (`fsrs-rs`) | **BSD-3-Clause** (verified on crates.io, 6.6.2, 2026-08-29). Closes brief §8 open item. |
+| Spaced repetition | `fsrs` 6.x (`fsrs-rs`) | **BSD-3-Clause** (crates.io, v6.6.2 released 2026-08-29; checked 2026-11-04). Closes brief §8 open item. |
 | RNG | `rand_chacha` (`ChaCha8Rng`) | Seedable, portable across platforms and WASM. |
 | SQLite | `rusqlite` (bundled) + `rusqlite_migration` **(proposed)** | Backup API used for snapshots. |
 | i18n | Fluent (`fluent-bundle`) **(proposed)** | pt-BR first, en-US source. |
@@ -215,7 +215,7 @@ Trees as measured in spike §9.2 (medium: flop 33/75%; turn and river 50/100%/al
 - Per solve, while the full tree is in memory: export the **turn-truncated** strategy and EVs (D11), and, after the first slice, per-profile best-response EVs (D8).
 - Validation: the own river solver is checked against `postflop-solver` on a fixed set of river spots (EVs and exploitability within tolerance, D11). Runs in the tool's tests, not in app CI.
 - Hardware: ≥ 32GB RAM for SRP dry boards (spike §9.2). Runs on the author's PC (Q4), one solve at a time, at low priority and pausable.
-- Measured on that PC (Ryzen 9 9950X3D, 32 threads, 2026-11-04; [spikes.md](spikes.md) §9.4): SRP medium ~4–7 min per flop (Td9d6h: 245s, 8GB peak), 3-bet pot large ~1.5 min per flop (83s, 6GB peak). About 7–9x the 4-vCPU spike machine; SMT adds ~17%.
+- Measured on that PC (Ryzen 9 9950X3D, 32 threads, 2026-11-04; [spikes.md](spikes.md) §9.4): SRP medium ~4–7 min per flop (Td9d6h: 245s, 8GB peak), 3-bet pot large ~1.5 min per flop (83s, 6GB peak). About 7–9x the 4-vCPU spike machine on 16-bit SRP solves (~4x on the f32 3-bet-pot run); SMT cuts solve time ~17%.
 - Budget: the first slice (245 solves) takes ~16 h, one night plus a few hours. Full coverage (5 × 1,755 = 8,775 solves) takes ~430–700 h of solving, about 3–4 weeks running 24/7 or 6–10 weeks of nights and weekends.
 
 ### 7.4 Boards outside the subset
@@ -224,7 +224,7 @@ Trees as measured in spike §9.2 (medium: flop 33/75%; turn and river 50/100%/al
 
 - A *board family* (for spot templates, D6) = subset flops in the same texture class. Re-instantiating a template picks another flop from the family.
 - Mapping a real random flop to a "nearest" library flop is rejected: hero's actual hand strength changes with the board, so the grade would be wrong in exactly the hands that matter.
-- Variety grows as the library grows; the subset is a manifest parameter. The goal is all 1,755 canonical flops (100% of real flops), added in order of frequency after the first ~49 (D13).
+- Variety grows as the library grows; the subset is a manifest parameter. The goal is all 1,755 canonical flops (100% of real flops), added in order of real-flop weight after the first ~49, ties broken by stratified sampling over texture classes (§7.2) (D13).
 
 ### 7.5 Library format (Taful's own, D11)
 
@@ -529,7 +529,7 @@ As in spike §9.1: oval rail + felt, seats on an ellipse, avatars, stacks, posit
 | M5 | Full-hand mode end to end, hand review/replay, drills from mistakes, leak detection. | M4 |
 | M6 | Remaining lessons (to ~40), layout presets, theme polish, grade colors, performance pass. Slice acceptance (§1.1). | M5 |
 
-The calc trainer and lessons (M2) give daily value before the library exists, so the loop is usable while the multi-day build of M4 runs.
+The calc trainer and lessons (M2) give daily value before the library exists, so the loop is usable while the M4 build runs (~16 h for the first slice, weeks for full coverage).
 
 ---
 

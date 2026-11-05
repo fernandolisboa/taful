@@ -91,7 +91,7 @@ This is the main technical risk: grading needs a trustworthy reference.
   - Postflop: the main single-raised and 3-bet pot configurations (e.g. BTN vs BB, CO vs BB, SB vs BB, BTN vs SB 3-bet, CO vs BTN 3-bet), each on a representative subset of about 49 flops.
   - The final spot count is set by the solver spike (§9.2), as is the budget for node-locked bot-profile solves (D8).
   - Entries are keyed by `GameConfig` + preflop line + board, so new formats are additive. Each spot stores its solver exploitability, so "best" is never stricter than the reference.
-  - Boards outside the subset need a mapping strategy (nearest equivalent flop or on-demand solve). To be decided in the spec.
+  - Boards outside the subset: decided in D13 (only solved flops are dealt; coverage grows to all 1,755).
 
 ## 5. Architecture
 
@@ -141,7 +141,7 @@ Every spot, drill, grade and simulation takes a `GameConfig` as input: table siz
 - **Customizable layout (D7):**
   - Panel, HUD and action-button positions and sizes are stored as versioned JSON, in resolution-independent units (relative units + grid cells).
   - First slice: built-in presets with save / load / reset, and themes as token files.
-  - Right after: an **edit mode with drag-and-drop and grid snapping** over the same model, and an in-app theme editor. GPUI drag-and-drop is still validated in spike §9.1.
+  - Right after: an **edit mode with drag-and-drop and grid snapping** over the same model, and an in-app theme editor. GPUI drag-and-drop was validated in spike §9.1.
   - No widget hard-codes a color; a lint/test rejects literal colors outside theme files.
 - **i18n:** the codebase and docs are in English, and the UI ships in pt-BR first.
 
@@ -173,11 +173,13 @@ The original open questions were decided on 2026-11-04. Details, reasoning and i
 | D9 | Sync | No backend until a second client exists; rotating local backups meanwhile. |
 | D10 | App name and host | Keep "Taful"; host on `taful.filx.app`; `.com.br` dropped, `.app` open. |
 | D11 | Solver licensing | `postflop-solver` (AGPL) only in the offline build tool; own river solver in the app; library downloaded on demand in a compact format. |
+| D12 | Preflop charts | Own offline preflop solver, realization calibrated from the postflop library. |
+| D13 | Boards outside the subset | Deal only solved flops; grow coverage to all 1,755. |
 
 ### Still open
 - Formal trademark checks for "Taful" (INPI classes 9 and 41; USPTO/EUIPO if publishing abroad) before any public release.
-- Spot count and bot-profile solve budget, from the solver spike.
-- Mapping strategy for boards outside the pre-solved flop subset.
+- ~~Spot count and bot-profile solve budget~~: decided in D2 and D8.
+- ~~Mapping strategy for boards outside the pre-solved flop subset~~: decided in D13 (deal only solved flops).
 - ~~License and API of `fsrs-rs`~~: BSD-3-Clause, verified 2026-11-04 (see [spec.md](spec.md) §4.1).
 
 ## 9. Early spikes (before implementation)
@@ -188,4 +190,4 @@ The original open questions were decided on 2026-11-04. Details, reasoning and i
 
 If any spike fails, revisit the stack before writing the spec.
 
-Spikes 2 and 3 passed on 2026-11-04. Results are in [spikes.md](spikes.md).
+All three spikes passed on 2026-11-04. Results are in [spikes.md](spikes.md) and [spikes/9.1-gpui-table.md](spikes/9.1-gpui-table.md).

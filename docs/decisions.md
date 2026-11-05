@@ -50,7 +50,7 @@ It exercises the whole closed loop (simulate → grade → review → drill → 
 
 ### Implications
 - Library entries are keyed by `GameConfig` + preflop line + board, so new formats are additive (D1).
-- Boards outside the subset need a mapping strategy (nearest strategically-equivalent flop, or on-demand solve later). To be decided in the spec.
+- Boards outside the subset need a mapping strategy (nearest strategically-equivalent flop, or on-demand solve later). To be decided in the spec. **Superseded by D13** (deal only solved flops; no mapping).
 - Push/fold and ICM charts for tournaments are cheap to compute and can be generated independently of the postflop library when the MTT/SNG work starts.
 
 ### Solver spike results (amended 2026-11-04)
@@ -319,7 +319,7 @@ D3 grades by EV loss, so preflop needs per-combo EVs, not just frequencies; freq
 
 ### Decision
 - **Postflop deals only flops the library has solved.** When a hand reaches a solved configuration, the flop is drawn from the solved canonical flops, each with a random suit isomorph, weighted by the number of real flops it represents and conditioned on the hole cards already dealt. Grading stays exact.
-- **Coverage grows to all 1,755 canonical flops** (100% of the 22,100 real flops). The first build solves ~49 flops per configuration to unblock M4; later builds add flops in order of real-flop frequency until the library is complete.
+- **Coverage grows to all 1,755 canonical flops** (100% of the 22,100 real flops). The first build solves ~49 flops per configuration to unblock M4; later builds add flops in order of real-flop weight (ties broken by stratified sampling over texture classes) until the library is complete.
 
 ### Why
 Mapping a random flop to the "nearest" solved flop changes hero's real hand strength, so grades would be wrong exactly where they matter. Ending the hand on unsolved flops would stop ~97% of hands at the flop. 49 canonical flops (~620 real flops) are too little variety for a trainer used daily, which is why full coverage is the goal rather than a fixed subset.
@@ -327,4 +327,4 @@ Mapping a random flop to the "nearest" solved flop changes hero's real hand stre
 ### Implications
 - The flop subset is a build-manifest parameter; adding flops is a build job, never a code change.
 - Build machine: the author's PC (Ryzen 9 9950X3D, 16 cores / 32 threads, 32GB), at low priority at night and on weekends; the build must be resumable and pausable. Benchmarked 2026-11-04 (spec §7.3): SRP medium ~4–7 min per flop, 3-bet pot large ~1.5 min. The first slice takes ~16 h; full coverage takes ~430–700 h, about 3–4 weeks 24/7 or 6–10 weeks of nights and weekends.
-- 32GB RAM fits one SRP solve at a time (up to ~14GB in 16-bit). Shipped size grows proportionally (to be measured with the compact format, §7.5).
+- 32GB RAM fits one SRP solve at a time (up to ~14GB in 16-bit). Shipped size grows proportionally (to be measured with the compact format, spec §7.5).

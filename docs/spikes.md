@@ -133,14 +133,14 @@ Run 2026-11-04 on the author's PC: AMD Ryzen 9 9950X3D (16 cores / 32 threads, S
 
 | Run | Wall | Solve | Peak RAM | Exploitability | Spike machine | Speedup |
 |---|---|---|---|---|---|---|
-| SRP Ks7d2c small, 16-bit | 39.7s | 35.0s, 120 iters | 4.3GB | 0.43% pot | 286s | 7.2x |
-| 3BP Ks7d2c large, f32 | 82.9s | 74.0s, 230 iters | 5.9GB | 0.47% pot | 302s | 3.6x |
-| SRP Td9d6h medium, 16-bit | 244.6s | 242.9s, 300 iters | 8.0GB | 0.49% pot | 2112s | 8.6x |
+| SRP Ks7d2c small, 16-bit | 39.7s | 35.0s, 120 iters | 4.3GB | 0.43% pot | 286s | 8.2x |
+| 3BP Ks7d2c large, f32 | 82.9s | 74.0s, 230 iters | 5.9GB | 0.47% pot | 302s | 4.1x |
+| SRP Td9d6h medium, 16-bit | 244.6s | 242.9s, 300 iters | 8.0GB | 0.49% pot | 2112s | 8.7x |
 | Same, `RAYON_NUM_THREADS=16` | 293.5s | 292.1s, 300 iters | 8.0GB | 0.49% pot | 2112s | 7.2x |
 | SRP Ks7d2c medium, estimate only | – | – | est. 14.0GB (16-bit), 27.5GB (f32) | – | – | – |
 
 - Peak RAM is the polled working set and includes the spike's save/reload check, so it sits above the solver's own estimate. `peak_rss` is not reported on Windows.
-- SMT helps: 32 threads are ~17% faster than 16 on the medium tree, with identical results.
-- The smaller speedup on the short 3BP run is mostly fixed overhead (tree build and save). The long SRP solve, which dominates the build, scales ~8.6x.
+- Speedup compares solve times. SMT helps: 32 threads cut solve time ~17% vs 16 (~20% more throughput), with identical results.
+- The 3BP run scales only ~4x even excluding overhead (~9s). It is the only f32 run, so it is likely memory-bandwidth bound on single-channel DDR5. The 16-bit SRP solves, which dominate the build, scale ~8–9x.
 - Dry-board SRP medium (~14GB in 16-bit) fits in 32GB only with other heavy apps closed, so SRP solves run at night. 3-bet pots (~6GB) also fit during the day.
 - Budget derived in [spec.md](spec.md) §7.3.
