@@ -89,12 +89,12 @@ impl Shell {
             KeyResult::Submit if self.review.feedback.is_some() => self.review_load_next(),
             KeyResult::Submit => match &self.review.prompt {
                 Some(ReviewPrompt::Calc { .. }) => {
-                    if let Some(x) = fmt::parse_number(&self.input) {
+                    if let Some(x) = fmt::parse_number(&self.input, self.ui.i18n.locale()) {
                         self.review_calc_answer(Some(x));
                     }
                 }
                 Some(ReviewPrompt::Quiz { question, .. }) if question.numeric.is_some() => {
-                    if let Some(x) = fmt::parse_number(&self.input) {
+                    if let Some(x) = fmt::parse_number(&self.input, self.ui.i18n.locale()) {
                         self.review_quiz_answer(Answer::Numeric(x));
                     }
                 }
@@ -188,7 +188,7 @@ impl Shell {
                         &p,
                     )
                     .on_click(cx.listener(|this, _, window, cx| {
-                        if let Some(x) = fmt::parse_number(&this.input) {
+                        if let Some(x) = fmt::parse_number(&this.input, this.ui.i18n.locale()) {
                             this.review_calc_answer(Some(x));
                         }
                         window.focus(&this.focus);
@@ -239,7 +239,9 @@ impl Shell {
                     c = c.child(
                         button("review_quiz_check", ui.i18n.tr("quiz-check"), true, &ui, &p)
                             .on_click(cx.listener(|this, _, window, cx| {
-                                if let Some(x) = fmt::parse_number(&this.input) {
+                                if let Some(x) =
+                                    fmt::parse_number(&this.input, this.ui.i18n.locale())
+                                {
                                     this.review_quiz_answer(Answer::Numeric(x));
                                 }
                                 window.focus(&this.focus);

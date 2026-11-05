@@ -66,18 +66,30 @@ pub fn datetime(ms: Millis, locale: Locale) -> String {
     z.strftime(pattern).to_string()
 }
 
-/// Parses a number typed by the user: either decimal separator, optional
-/// `%` or `:1` suffix, surrounding spaces.
-pub fn parse_number(s: &str) -> Option<f64> {
-    let t = s
-        .trim()
-        .trim_end_matches('%')
-        .trim_end_matches(":1")
-        .trim()
-        .replace(',', ".");
+/// Parses a number typed by the user: optional `%` or `:1` suffix,
+/// surrounding spaces. The answer box allows one separator. The locale's
+/// decimal separator is a decimal point; the other one is a thousands
+/// separator when exactly three digits follow it (`1.326` in pt-BR, `1,326`
+/// in en-US) and a decimal point otherwise, so `33.3` works in either locale.
+pub fn parse_number(s: &str, locale: Locale) -> Option<f64> {
+    let t = s.trim().trim_end_matches('%').trim_end_matches(":1").trim();
     if t.is_empty() {
         return None;
     }
+    let group = if locale == Locale::PtBr { '.' } else { ',' };
+    let t = match t.split_once(group) {
+        Some((int, frac))
+            if frac.len() == 3
+                && frac.bytes().all(|b| b.is_ascii_digit())
+                && int
+                    .trim_start_matches('-')
+                    .starts_with(|c: char| c.is_ascii_digit() && c != '0')
+                && !int.contains(['.', ',']) =>
+        {
+            format!("{int}{frac}")
+        }
+        _ => t.replace(',', "."),
+    };
     t.parse::<f64>().ok().filter(|x| x.is_finite())
 }
 
@@ -92,10 +104,16 @@ mod tests {
         assert_eq!(number_trim(33.3, 1, Locale::PtBr), "33,3");
         assert_eq!(cards("AhKs"), "A♥ K♠");
         assert_eq!(cards("nope"), "nope");
-        assert_eq!(parse_number(" 33,3% "), Some(33.3));
-        assert_eq!(parse_number("17.7:1"), Some(17.7));
-        assert_eq!(parse_number("-"), None);
-        assert_eq!(parse_number(""), None);
+        let (pt, en) = (Locale::PtBr, Locale::EnUs);
+        assert_eq!(parse_number(" 33,3% ", pt), Some(33.3));
+        assert_eq!(parse_number("33.3", pt), Some(33.3));
+        assert_eq!(parse_number("17.7:1", en), Some(17.7));
+        assert_eq!(parse_number("1.326", pt), Some(1326.0));
+        assert_eq!(parse_number("1,326", en), Some(1326.0));
+        assert_eq!(parse_number("1,326", pt), Some(1.326));
+        assert_eq!(parse_number("0,125", en), Some(0.125));
+        assert_eq!(parse_number("-", en), None);
+        assert_eq!(parse_number("", pt), None);
         assert!(!datetime(1_762_340_000_000, Locale::PtBr).is_empty());
     }
 }

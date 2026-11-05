@@ -51,24 +51,20 @@ impl App {
     }
 
     /// Starts a round of `kind` in parameter `band` (review items keep their
-    /// band). Falls back to any band after a bounded search.
-    pub fn calc_start_in_band(&mut self, kind: ExerciseKind, band: &str) -> CalcRound {
-        let mut first = None;
+    /// band), or `None` when the band does not come up in a bounded search
+    /// (every kind has a handful of bands, so a live band takes a few tries).
+    pub fn calc_start_in_band(&mut self, kind: ExerciseKind, band: &str) -> Option<CalcRound> {
         for _ in 0..200 {
             let seed = self.next_seed();
             let e = calc::generate(kind, seed);
             if e.band == band {
-                return CalcRound {
+                return Some(CalcRound {
                     exercise: e,
                     started_at: self.now(),
-                };
+                });
             }
-            first.get_or_insert(e);
         }
-        CalcRound {
-            exercise: first.expect("200 tries"),
-            started_at: self.now(),
-        }
+        None
     }
 
     /// Grades `given` (in the exercise's unit; `None` = skipped), stores the
@@ -168,7 +164,13 @@ mod tests {
         assert_eq!(item.reps, 1);
 
         // Same band again, answered right: the item is reviewed (not a new one).
-        let again = app.calc_start_in_band(ExerciseKind::PotOdds, &round.exercise.band);
+        let again = app
+            .calc_start_in_band(ExerciseKind::PotOdds, &round.exercise.band)
+            .unwrap();
+        assert!(
+            app.calc_start_in_band(ExerciseKind::PotOdds, "bet_7")
+                .is_none()
+        );
         assert_eq!(again.exercise.band, round.exercise.band);
         t.fetch_add(1_000, Ordering::SeqCst);
         let out = app

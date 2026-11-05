@@ -32,17 +32,22 @@ pub enum ReviewPrompt {
     },
 }
 
+/// Item kinds this build can present (spot templates arrive with M4).
+pub(crate) const PRESENTABLE: &[&str] = &["calc_exercise", "lesson_quiz"];
+
 impl App {
-    /// Number of items due now.
+    /// Number of items due now that this build can present.
     pub fn due_count(&self) -> Result<u32> {
-        Ok(self.store.count_due(self.now())?)
+        Ok(self.store.count_due(self.now(), PRESENTABLE)?)
     }
 
     /// The earliest due item this build can present, or `None` when the
     /// queue is clear for now.
     pub fn next_review(&mut self, locale: Locale) -> Result<Option<ReviewPrompt>> {
         let now = self.now();
-        for item in self.store.due_items(now, 100)? {
+        // Bounded: invalid items found on the way are deleted, so a later
+        // call moves past them.
+        for item in self.store.due_items(now, PRESENTABLE, 100)? {
             match ItemKind::parse(&item.kind) {
                 Some(ItemKind::CalcExercise) => {
                     let Some((kind, band)) = item.key.split_once('/') else {
@@ -53,7 +58,11 @@ impl App {
                         self.store.delete_review_item(&item.id)?;
                         continue;
                     };
-                    let round = self.calc_start_in_band(kind, band);
+                    let Some(round) = self.calc_start_in_band(kind, band) else {
+                        // The band no longer exists (generator changed).
+                        self.store.delete_review_item(&item.id)?;
+                        continue;
+                    };
                     return Ok(Some(ReviewPrompt::Calc {
                         item_id: item.id,
                         round,
@@ -73,7 +82,7 @@ impl App {
                         continue;
                     }
                 },
-                Some(ItemKind::SpotTemplate) | None => continue,
+                Some(ItemKind::SpotTemplate) | None => continue, // not queried
             }
         }
         Ok(None)
@@ -200,7 +209,12 @@ mod tests {
         app.store
             .ensure_review_item("spot_template", "srp/x", None, 0)
             .unwrap();
+        app.store
+            .ensure_review_item("calc_exercise", "pot_odds/bet_7", None, 0)
+            .unwrap();
+        assert_eq!(app.due_count().unwrap(), 2, "spot items are not counted");
         assert_eq!(app.next_review(Locale::PtBr).unwrap(), None);
         assert_eq!(app.store.review_totals().unwrap().0, 1, "spot item kept");
+        assert_eq!(app.due_count().unwrap(), 0);
     }
 }

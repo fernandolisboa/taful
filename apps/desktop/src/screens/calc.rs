@@ -276,7 +276,7 @@ impl Shell {
         match key {
             KeyResult::Submit if self.calc.outcome.is_some() => self.calc_new_round(),
             KeyResult::Submit => {
-                if let Some(x) = fmt::parse_number(&self.input) {
+                if let Some(x) = fmt::parse_number(&self.input, self.ui.i18n.locale()) {
                     self.calc_answer(Some(x));
                 }
             }
@@ -347,7 +347,9 @@ impl Shell {
                         .child(
                             button("calc-submit", ui.i18n.tr("calc-submit"), true, &ui, &p)
                                 .on_click(cx.listener(|this, _, window, cx| {
-                                    if let Some(x) = fmt::parse_number(&this.input) {
+                                    if let Some(x) =
+                                        fmt::parse_number(&this.input, this.ui.i18n.locale())
+                                    {
                                         this.calc_answer(Some(x));
                                     }
                                     window.focus(&this.focus);

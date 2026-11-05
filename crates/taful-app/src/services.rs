@@ -59,8 +59,7 @@ pub fn export_file_name(ms: Millis) -> String {
     taful_store::backup_file_name(ms).replacen("taful-", "taful-export-", 1)
 }
 
-/// Range the retention setting is clamped to.
-pub const RETENTION_RANGE: (f64, f64) = (0.80, 0.97);
+pub use crate::review::RETENTION_RANGE;
 
 /// The application services.
 pub struct App {
@@ -115,6 +114,7 @@ impl App {
                 .expect("calc.toml is valid (tested in taful-core)"),
             thresholds: Thresholds::from_toml(include_str!("../../../config/grading.toml"))
                 .expect("grading.toml is valid (tested in taful-core)"),
+            // Replaced below once the retention setting can be read.
             scheduler: Scheduler::new(DEFAULT_RETENTION),
             data_dir,
             policy: BackupPolicy::default(),
@@ -281,8 +281,20 @@ impl App {
     /// Replaces the database with `src` (manual import). A safety snapshot
     /// of the current data is taken first when a backup folder exists.
     pub fn import_from(&mut self, src: &Path) -> Result<()> {
-        self.backup_now()?;
-        self.store.import_from(src)?;
+        // The safety snapshot rotates the backup folder, which may hold
+        // `src` itself: read from a private copy.
+        let copy = std::env::temp_dir().join(format!(
+            "taful-import-{}-{}.sqlite",
+            std::process::id(),
+            self.store.now()
+        ));
+        std::fs::copy(src, &copy)?;
+        let result = self.backup_now().map(|_| ()).and_then(|()| {
+            self.store.import_from(&copy)?;
+            Ok(())
+        });
+        let _ = std::fs::remove_file(&copy);
+        result?;
         self.scheduler = Scheduler::new(self.retention());
         Ok(())
     }
@@ -300,7 +312,9 @@ impl App {
         let recent = self.store.recent_calc_attempts(50)?;
         let (items, reviews) = self.store.review_totals()?;
         Ok(Home {
-            due_now: self.store.count_due(now)?,
+            due_now: self
+                .store
+                .count_due(now, crate::review_session::PRESENTABLE)?,
             next_due: self.store.next_due_after(now)?,
             next_lesson,
             lessons_done: cards

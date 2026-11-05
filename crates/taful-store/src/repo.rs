@@ -377,7 +377,9 @@ impl Store {
         Ok(self
             .conn()
             .query_row(
-                &format!("SELECT {ITEM_COLS} FROM review_items WHERE id = ?1"),
+                &format!(
+                    "SELECT {ITEM_COLS} FROM review_items WHERE id = ?1 AND deleted_at IS NULL"
+                ),
                 [id],
                 item_row,
             )
@@ -385,7 +387,8 @@ impl Store {
     }
 
     /// Returns the item for `(kind, key)`, creating it (new, due at `due`) if
-    /// it does not exist. A soft-deleted item is revived with its history.
+    /// it does not exist. A soft-deleted item is revived as a new item (memory
+    /// state, due and version reset); its old reviews stay in the log.
     pub fn ensure_review_item(
         &self,
         kind: &str,
@@ -399,7 +402,9 @@ impl Store {
                  content_version, due)
              VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6)
              ON CONFLICT (kind, item_key) DO UPDATE SET deleted_at = NULL,
-                 updated_at = excluded.updated_at
+                 updated_at = excluded.updated_at, content_version = excluded.content_version,
+                 due = excluded.due, stability = NULL, difficulty = NULL, last_review = NULL,
+                 reps = 0, lapses = 0
              WHERE review_items.deleted_at IS NOT NULL",
             params![new_id(), now, kind, key, content_version, due],
         )?;
@@ -450,19 +455,26 @@ impl Store {
     }
 
     /// Items due at or before `now`, earliest first.
-    pub fn due_items(&self, now: Millis, limit: u32) -> Result<Vec<ReviewItem>> {
+    /// Items of `kinds` (all kinds when empty) due at or before `now`,
+    /// earliest first.
+    pub fn due_items(&self, now: Millis, kinds: &[&str], limit: u32) -> Result<Vec<ReviewItem>> {
         let mut stmt = self.conn().prepare(&format!(
             "SELECT {ITEM_COLS} FROM review_items
-             WHERE deleted_at IS NULL AND due <= ?1 ORDER BY due, id LIMIT ?2"
+             WHERE deleted_at IS NULL AND due <= ?1 AND {}
+             ORDER BY due, id LIMIT ?2",
+            kind_filter(kinds)
         ))?;
         let rows = stmt.query_map(params![now, limit], item_row)?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
-    /// Number of items due at or before `now`.
-    pub fn count_due(&self, now: Millis) -> Result<u32> {
+    /// Number of items of `kinds` (all kinds when empty) due at or before `now`.
+    pub fn count_due(&self, now: Millis, kinds: &[&str]) -> Result<u32> {
         Ok(self.conn().query_row(
-            "SELECT count(*) FROM review_items WHERE deleted_at IS NULL AND due <= ?1",
+            &format!(
+                "SELECT count(*) FROM review_items WHERE deleted_at IS NULL AND due <= ?1 AND {}",
+                kind_filter(kinds)
+            ),
             [now],
             |r| r.get(0),
         )?)
@@ -594,6 +606,19 @@ impl Store {
     }
 }
 
+/// `kind IN (...)` for a fixed set of kind ids (never user input; quoted
+/// defensively anyway), or `1` for all kinds.
+fn kind_filter(kinds: &[&str]) -> String {
+    if kinds.is_empty() {
+        return "1".into();
+    }
+    let list: Vec<String> = kinds
+        .iter()
+        .map(|k| format!("'{}'", k.replace('\'', "''")))
+        .collect();
+    format!("kind IN ({})", list.join(", "))
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -649,8 +674,10 @@ mod tests {
         assert_eq!(a, again, "ensure does not reset an existing item");
         s.ensure_review_item("lesson_quiz", "q#1", Some(2), 2_000)
             .unwrap();
-        assert_eq!(s.count_due(1_000).unwrap(), 1);
-        assert_eq!(s.due_items(5_000, 10).unwrap().len(), 2);
+        assert_eq!(s.count_due(1_000, &[]).unwrap(), 1);
+        assert_eq!(s.count_due(5_000, &["lesson_quiz"]).unwrap(), 1);
+        assert_eq!(s.due_items(5_000, &[], 10).unwrap().len(), 2);
+        assert_eq!(s.due_items(5_000, &["calc_exercise"], 10).unwrap().len(), 1);
         assert_eq!(s.next_due_after(1_000).unwrap(), Some(2_000));
 
         t.store(1_500, std::sync::atomic::Ordering::SeqCst);
@@ -680,11 +707,22 @@ mod tests {
             s.review_item("calc_exercise", "pot_odds/bet_50").unwrap(),
             None
         );
+        assert_eq!(s.review_item_by_id(&a.id).unwrap(), None, "deleted is gone");
         let revived = s
-            .ensure_review_item("calc_exercise", "pot_odds/bet_50", None, 0)
+            .ensure_review_item("calc_exercise", "pot_odds/bet_50", Some(3), 7)
             .unwrap();
         assert_eq!(revived.id, a.id);
-        assert_eq!(revived.reps, 1, "history kept");
+        assert_eq!(
+            (
+                revived.reps,
+                revived.stability,
+                revived.due,
+                revived.content_version
+            ),
+            (0, None, 7, Some(3)),
+            "revived as new"
+        );
+        assert_eq!(s.review_totals().unwrap(), (2, 1), "the log is kept");
     }
 
     #[test]

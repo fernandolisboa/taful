@@ -135,7 +135,7 @@ impl Shell {
             .questions
             .get(run.index)
             .is_some_and(|q| q.numeric.is_some());
-        if numeric && let Some(x) = fmt::parse_number(&self.input) {
+        if numeric && let Some(x) = fmt::parse_number(&self.input, self.ui.i18n.locale()) {
             self.quiz_answer(Answer::Numeric(x));
         }
     }
@@ -327,7 +327,7 @@ impl Shell {
             c = c.child(
                 button("quiz-check", ui.i18n.tr("quiz-check"), true, ui, p).on_click(cx.listener(
                     |this, _, window, cx| {
-                        if let Some(x) = fmt::parse_number(&this.input) {
+                        if let Some(x) = fmt::parse_number(&this.input, this.ui.i18n.locale()) {
                             this.quiz_answer(Answer::Numeric(x));
                         }
                         window.focus(&this.focus);

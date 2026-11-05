@@ -20,6 +20,8 @@ const DAY_MS: Millis = 86_400_000;
 
 /// Desired retention when the user has not set one (§13).
 pub const DEFAULT_RETENTION: f64 = 0.9;
+/// Allowed desired retention (settings clamp to it, and so does [`Scheduler`]).
+pub const RETENTION_RANGE: (f64, f64) = (0.80, 0.97);
 
 /// Item kinds (`review_items.kind`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -76,7 +78,7 @@ impl Scheduler {
     pub fn new(retention: f64) -> Scheduler {
         Scheduler {
             fsrs: FSRS::default(),
-            retention: retention.clamp(0.7, 0.99) as f32,
+            retention: retention.clamp(RETENTION_RANGE.0, RETENTION_RANGE.1) as f32,
         }
     }
 
