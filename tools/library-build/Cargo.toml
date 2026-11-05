@@ -14,3 +14,9 @@ workspace = true
 [dependencies]
 taful-core.workspace = true
 taful-solver.workspace = true
+serde.workspace = true
+toml.workspace = true
+blake3.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
+rayon.workspace = true

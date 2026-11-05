@@ -86,6 +86,8 @@ jobs:
       - name: Smoke run + screenshot
         shell: pwsh
         run: |
+          # Open the table screen (M3) so the screenshot shows the preflop trainer.
+          $env:TAFUL_SCREEN = "table"
           $app = Start-Process -FilePath target\release\taful.exe -PassThru `
             -RedirectStandardOutput stdout.log -RedirectStandardError stderr.log
           Start-Sleep -Seconds 15

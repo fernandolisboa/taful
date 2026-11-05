@@ -65,6 +65,34 @@ impl HandClass {
         v
     }
 
+    /// Number of hand classes (13 pairs + 78 suited + 78 offsuit).
+    pub const COUNT: usize = 169;
+
+    /// Dense index `0..169`: the grid cell in row-major order (`AA` = 0).
+    /// Preflop charts store one row per class in this order.
+    pub fn index(self) -> usize {
+        let (r, c) = self.grid_pos();
+        r * 13 + c
+    }
+
+    pub fn from_index(i: usize) -> Option<HandClass> {
+        (i < Self::COUNT).then(|| HandClass::from_grid_pos(i / 13, i % 13))
+    }
+
+    /// Every class, in [`index`](Self::index) order.
+    pub fn all() -> impl ExactSizeIterator<Item = HandClass> {
+        (0..Self::COUNT).map(|i| HandClass::from_grid_pos(i / 13, i % 13))
+    }
+
+    /// Combos in the class: 6, 4 or 12.
+    pub fn num_combos(self) -> usize {
+        match self {
+            HandClass::Pair(_) => 6,
+            HandClass::Suited(..) => 4,
+            HandClass::Offsuit(..) => 12,
+        }
+    }
+
     /// Grid cell: row/col 0 = ace. Suited above the diagonal, offsuit below.
     pub fn grid_pos(self) -> (usize, usize) {
         let idx = |r: Rank| 12 - r.index() as usize;
@@ -381,6 +409,23 @@ impl fmt::Display for Range {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn class_index_roundtrip() {
+        let mut combos = 0;
+        for (i, c) in HandClass::all().enumerate() {
+            assert_eq!(c.index(), i);
+            assert_eq!(HandClass::from_index(i), Some(c));
+            assert_eq!(c.combos().len(), c.num_combos());
+            assert!(c.combos().iter().all(|&h| HandClass::of(h) == c));
+            combos += c.num_combos();
+        }
+        assert_eq!(combos, NUM_COMBOS);
+        assert_eq!(HandClass::from_index(169), None);
+        assert_eq!(HandClass::from_index(0).unwrap().to_string(), "AA");
+        assert_eq!(HandClass::from_index(1).unwrap().to_string(), "AKs");
+        assert_eq!(HandClass::from_index(13).unwrap().to_string(), "AKo");
+    }
 
     #[test]
     fn parse_counts() {

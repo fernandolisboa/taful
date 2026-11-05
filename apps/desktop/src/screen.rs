@@ -26,6 +26,13 @@ impl Screen {
         Screen::Settings,
     ];
 
+    /// The screen whose nav key is `nav-<id>` (e.g. `table`, `skill-tree`).
+    pub fn from_id(id: &str) -> Option<Screen> {
+        Screen::ALL
+            .into_iter()
+            .find(|s| s.nav_key().split_once('-').map(|(_, rest)| rest) == Some(id))
+    }
+
     /// Fluent id of the navigation label, also used as the screen title.
     pub fn nav_key(self) -> &'static str {
         match self {

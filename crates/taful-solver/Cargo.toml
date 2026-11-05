@@ -11,3 +11,7 @@ workspace = true
 
 [dependencies]
 taful-core.workspace = true
+ruzstd.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

@@ -8,6 +8,7 @@
 //! rather than in `apps/desktop` so every future client shares them.
 
 pub mod i18n;
+pub mod preflop;
 pub mod theme;
 
 /// The product name, in one place (D10). User-facing text uses the `-product`
