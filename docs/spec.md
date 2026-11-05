@@ -1,6 +1,6 @@
 # Taful — Specification
 
-> **Status:** draft for review, 2026-11-04. Derived from [brief.md](brief.md), [decisions.md](decisions.md) (D1–D13) and [spikes.md](spikes.md) / [spikes/9.1-gpui-table.md](spikes/9.1-gpui-table.md). All three §9 spikes passed, so the stack stands.
+> **Status:** draft for review, 2026-11-04. Derived from [brief.md](brief.md), [decisions.md](decisions.md) (D1–D14) and [spikes.md](spikes.md) / [spikes/9.1-gpui-table.md](spikes/9.1-gpui-table.md). All three §9 spikes passed, so the stack stands.
 >
 > **Precedence:** decisions.md > this spec > brief.md. Items marked **(proposed)** are choices this spec makes that were not grilled; they stand unless changed in review. Open items are listed in §19 and need a decision before the milestone that depends on them.
 
@@ -269,7 +269,7 @@ chance   turn cards: per turn card, offset of the turn subtree (truncated at riv
 - The desktop cache lives in the OS cache dir (not in the user DB; never backed up or synced, D9). Files are verified against the manifest hash before use. LRU eviction above a configurable cap (default 10GB).
 - Prefetch packs = manifest subsets (e.g. "BTN vs BB SRP"), downloadable from settings.
 - Offline: cached spots work; an uncached spot ends the hand early with a message (D11).
-- **(proposed)** For the first slice the base URL points at a local folder produced by the build tool (single user, single machine). The static host is picked when the web client starts (D9/D10); any static file host works with this layout.
+- For the first slice the base URL points at a local folder produced by the build tool (single user, single machine). **Host (D14):** Cloudflare R2 behind a Worker on `workers.dev`; the client requests `{path}?h={BLAKE3 prefix}` (immutable cache), the manifest uses a short max-age + ETag, updates are a manifest diff, and `library-build publish` uploads files before the manifest.
 - **As built (M4):** `taful-app::postflop::LibrarySource` with `LocalDir`; the desktop reads `TAFUL_LIBRARY_DIR`, else `<data dir>/library`. Every file is checked against `manifest.json` (size + BLAKE3) before decoding; a small in-memory cache holds decoded files. `Http`, the disk cache with LRU eviction and prefetch packs come with the web client (Q5).
 
 ### 7.7 River solver (`taful-solver`, D11)
@@ -563,4 +563,4 @@ The calc trainer and lessons (M2) give daily value before the library exists, so
 | Q2 | Boards outside the flop subset | **Decided (D13):** deal only solved flops; grow coverage to all 1,755 (§7.4) | — |
 | Q3 | Trademark checks for "Taful" (INPI 9/41, USPTO/EUIPO) | Before any public release | release |
 | Q4 | Machine for the library build (≥ 32GB RAM, many cores) | **Decided:** author's PC (Ryzen 9 9950X3D, 16 cores / 32 threads, 32GB), low priority at night; benchmarked in §7.3 | — |
-| Q5 | Static host for the library | Deferred to the web client; local folder for the first slice (§7.6) | web |
+| Q5 | Static host for the library | **Decided (D14):** Cloudflare R2 behind a `workers.dev` Worker; local folder until `Http` is built (§7.6) | — |

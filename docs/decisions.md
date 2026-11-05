@@ -328,3 +328,35 @@ Mapping a random flop to the "nearest" solved flop changes hero's real hand stre
 - The flop subset is a build-manifest parameter; adding flops is a build job, never a code change.
 - Build machine: the author's PC (Ryzen 9 9950X3D, 16 cores / 32 threads, 32GB), at low priority at night and on weekends; the build must be resumable and pausable. Benchmarked 2026-11-04 (spec §7.3): SRP medium ~4–7 min per flop, 3-bet pot large ~1.5 min. The first slice takes ~16 h; full coverage takes ~430–700 h, about 3–4 weeks 24/7 or 6–10 weeks of nights and weekends.
 - 32GB RAM fits one SRP solve at a time (up to ~14GB in 16-bit). Shipped size grows proportionally (to be measured with the compact format, spec §7.5).
+
+---
+
+## D14 — Library host
+
+**Date:** 2026-11-05 · **Ref:** [spec.md](spec.md) §7.6, Q5
+
+### Decision
+- **Storage: Cloudflare R2**, one bucket, Standard class. The bucket holds the same tree the build tool writes locally: `library/v{layout}/…/*.tafl` plus `manifest.json`.
+- **Public URL: a small Cloudflare Worker on `workers.dev`** in front of the bucket. It serves `GET`/`HEAD` (with `Range`), sets CORS for the Taful origins, sets the cache headers below, and uses the Workers Cache API. The bucket itself stays private. The base URL is configuration (D10), so the Worker can later move behind a custom domain (e.g. `lib.taful.filx.app`) once `filx.app` is a Cloudflare zone, without touching clients.
+- **Versioning: keep the local layout; the manifest hash is the version.** The client requests `{path}?h={first 16 hex of BLAKE3}` from the manifest. `.tafl` responses are `Cache-Control: public, max-age=31536000, immutable`; `manifest.json` is `max-age=300` with an `ETag`. A file that is re-solved keeps its path and gets a new hash, so no client or edge cache serves the old bytes.
+- **Updates are deltas by manifest diff.** The client fetches the manifest (conditional GET), compares hashes with its cache, and downloads only new or changed files, lazily per spot or eagerly for prefetch packs. Coverage grows by adding files (49 → 1,755 flops per configuration, D13), so most updates only add entries.
+- **Upload: `library-build publish`** syncs the output directory to the bucket over R2's S3-compatible API: it uploads files whose hash is not yet remote, then uploads the manifest last, so a client never sees a manifest entry before its file. Credentials come from the environment on the author's PC and are never committed.
+- Not bundled in the installer (D11). The desktop keeps the local folder as a source (`LocalDir`) for development and for the author's own machine.
+
+### Why
+- **Size and traffic.** Files are 2–5 MB (3bp large AcKdQh: 3.2 MB). The first slice (245 files) is ~1 GB, and full coverage (8,775 files) is ~20–40 GB, well above the 1–2 GB the spec estimated. Each user downloads several MB per new spot, so egress grows with users and is the cost that matters.
+- **R2 has no egress fees.** It includes 10 GB-month storage, 1M Class A and 10M Class B operations per month for free; past that, storage is $0.015/GB-month (~$0.30/month at 30 GB). Its S3 API keeps a move to S3, B2 or MinIO a configuration change.
+- **Alternatives (prices checked 2026-11-05):**
+  - *S3 + CloudFront flat-rate Free plan:* $0, but 100 GB transfer, 1M requests and 5 GB of S3 per month; the next tier is $15/month.
+  - *GitHub Releases:* free and no stated bandwidth limit, but at most 1,000 assets per release (9+ releases for full coverage), browser CORS is not documented by GitHub, and using a repo's releases as an app data CDN is outside their intended use.
+  - *Azure Blob:* familiar, but internet egress is billed past the free allowance, and HTTPS on a custom domain needs Front Door.
+  - *Vercel Blob:* Hobby includes 10 GB transfer per month and blocks access when it is exceeded; Pro bills $0.05/GB.
+- **Worker instead of a custom domain now.** An R2 custom domain needs the domain to be a zone in the same Cloudflare account (the CNAME-only setup needs a paid plan). `filx.app` is on Vercel DNS and serves other projects, so moving it is a separate decision. `r2.dev` is rate-limited and documented as development-only.
+- **Hash in the query, not in the path.** Paths stay identical to the local folder, so `LocalDir` and `Http` share one layout, and the hash already exists in the manifest (M4).
+
+### Implications
+- `LibrarySource::Http(base_url)` (spec §7.6) gains the `?h=` request, conditional manifest fetches and a manifest diff; the disk cache is keyed by path + hash.
+- `tools/library-build` gains a `publish` command (S3 API, hash-skip, manifest last). It is the only writer to the bucket.
+- The manifest grows to ~9k entries at full coverage; if its size matters for the web client, split it per configuration with a small top-level index.
+- Accounts: a Cloudflare account with R2 enabled (R2 needs a payment method even on the free tier). Nothing is created until `Http` is built; until then the library stays a local folder (§7.6).
+- The Worker is a few dozen lines in the repo (e.g. `infra/library-worker/`), deployed with `wrangler`.

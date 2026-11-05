@@ -175,6 +175,7 @@ The original open questions were decided on 2026-11-04. Details, reasoning and i
 | D11 | Solver licensing | `postflop-solver` (AGPL) only in the offline build tool; own river solver in the app; library downloaded on demand in a compact format. |
 | D12 | Preflop charts | Own offline preflop solver, realization calibrated from the postflop library. |
 | D13 | Boards outside the subset | Deal only solved flops; grow coverage to all 1,755. |
+| D14 | Library host | Cloudflare R2 behind a `workers.dev` Worker; manifest hash as version; delta updates by manifest diff. |
 
 ### Still open
 - Formal trademark checks for "Taful" (INPI classes 9 and 41; USPTO/EUIPO if publishing abroad) before any public release.
