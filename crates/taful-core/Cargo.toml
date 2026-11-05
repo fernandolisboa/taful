@@ -10,4 +10,19 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+rs_poker.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
+blake3.workspace = true
+serde.workspace = true
+toml.workspace = true
 
+[dev-dependencies]
+proptest.workspace = true
+
+
+# rs_poker depends on rand 0.10 → getrandom 0.4, which refuses to compile for
+# wasm32-unknown-unknown without a backend. Taful never asks it for entropy
+# (all randomness is seeded ChaCha8), so this only satisfies the build.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+getrandom = { version = "0.4", features = ["wasm_js"] }
