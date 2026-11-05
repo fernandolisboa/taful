@@ -80,7 +80,15 @@ macro_rules! sources {
 
 /// Every embedded Fluent file. Adding a file under `i18n/` without listing it
 /// here fails a test.
-pub const SOURCES: &[Source] = sources!["app.ftl", "table.ftl"];
+pub const SOURCES: &[Source] = sources![
+    "app.ftl",
+    "calc.ftl",
+    "glossary.ftl",
+    "lessons.ftl",
+    "review.ftl",
+    "settings.ftl",
+    "table.ftl",
+];
 
 /// A Fluent file failed to parse or clashed with another file.
 #[derive(Debug, Clone, PartialEq, Eq)]

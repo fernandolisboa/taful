@@ -1,0 +1,14 @@
+# Rendered placeholder values, pinned (spec §12.3). Regenerate with
+# `cargo run -p taful-content-check -- --bless`; review the diff.
+
+[en-US]
+"calc: pot_odds(pot=10, bet=10) | pct(1)" = "33.3%"
+"calc: pot_odds(pot=100, bet=50) | pct(1)" = "25.0%"
+"calc: pot_odds(pot=12, bet=12) | pct(1)" = "33.3%"
+"calc: pot_odds(pot=9, bet=6) | pct(1)" = "28.6%"
+
+[pt-BR]
+"calc: pot_odds(pot=10, bet=10) | pct(1)" = "33,3%"
+"calc: pot_odds(pot=100, bet=50) | pct(1)" = "25,0%"
+"calc: pot_odds(pot=12, bet=12) | pct(1)" = "33,3%"
+"calc: pot_odds(pot=9, bet=6) | pct(1)" = "28,6%"

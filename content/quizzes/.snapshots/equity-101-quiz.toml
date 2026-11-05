@@ -1,0 +1,10 @@
+# Rendered placeholder values, pinned (spec §12.3). Regenerate with
+# `cargo run -p taful-content-check -- --bless`; review the diff.
+
+[en-US]
+'calc: equity_vs_hand(hero="9s8s", villain="AhAc", board="7s6s2d") | pct(1)' = "56.3%"
+'calc: equity_vs_hand(hero="Jc9c", villain="AhAc", board="Qd8s2h") | pct(1)' = "18.7%"
+
+[pt-BR]
+'calc: equity_vs_hand(hero="9s8s", villain="AhAc", board="7s6s2d") | pct(1)' = "56,3%"
+'calc: equity_vs_hand(hero="Jc9c", villain="AhAc", board="Qd8s2h") | pct(1)' = "18,7%"

@@ -1,0 +1,10 @@
+# Rendered placeholder values, pinned (spec §12.3). Regenerate with
+# `cargo run -p taful-content-check -- --bless`; review the diff.
+
+[en-US]
+'calc: outs(hero="AhJh", villain="KsKc", board="Kh7h2d") | int' = "8"
+'calc: outs(hero="AhJh", villain="KsQc", board="Kh7h2d") | int' = "12"
+
+[pt-BR]
+'calc: outs(hero="AhJh", villain="KsKc", board="Kh7h2d") | int' = "8"
+'calc: outs(hero="AhJh", villain="KsQc", board="Kh7h2d") | int' = "12"

@@ -1,0 +1,19 @@
+# The skill tree (spec §12.1): tracks in order, each an ordered list of
+# lesson ids. A track's title is the Fluent message `track-<id>` in
+# i18n/*/lessons.ftl. A lesson's prerequisites must come earlier in the tree.
+
+[[tracks]]
+id = "foundations"
+lessons = ["hand-rankings", "positions-6max", "stacks-and-blinds", "combos-101"]
+
+[[tracks]]
+id = "poker-math"
+lessons = [
+    "equity-101",
+    "outs-101",
+    "rule-of-2-and-4",
+    "pot-odds-101",
+    "mdf-101",
+    "alpha-101",
+    "spr-101",
+]

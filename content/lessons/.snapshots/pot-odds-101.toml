@@ -1,0 +1,26 @@
+# Rendered placeholder values, pinned (spec §12.3). Regenerate with
+# `cargo run -p taful-content-check -- --bless`; review the diff.
+
+[en-US]
+"calc: call_ev(equity=0.196, pot=10, bet=5) | bb(2)" = "-1.08 bb"
+"calc: pot_odds(pot=1, bet=1) | pct(1)" = "33.3%"
+"calc: pot_odds(pot=10, bet=5) | pct(1)" = "25.0%"
+"calc: pot_odds(pot=100, bet=100) | pct(1)" = "33.3%"
+"calc: pot_odds(pot=100, bet=50) | pct(1)" = "25.0%"
+"calc: pot_odds(pot=2, bet=1) | pct(1)" = "25.0%"
+"calc: pot_odds(pot=3, bet=1) | pct(1)" = "20.0%"
+"calc: pot_odds(pot=3, bet=2) | pct(1)" = "28.6%"
+"calc: pot_odds(pot=90, bet=30) | pct(1)" = "20.0%"
+"calc: rule_of_2_and_4(outs=9, cards=1) | pct(0)" = "18%"
+
+[pt-BR]
+"calc: call_ev(equity=0.196, pot=10, bet=5) | bb(2)" = "-1,08 bb"
+"calc: pot_odds(pot=1, bet=1) | pct(1)" = "33,3%"
+"calc: pot_odds(pot=10, bet=5) | pct(1)" = "25,0%"
+"calc: pot_odds(pot=100, bet=100) | pct(1)" = "33,3%"
+"calc: pot_odds(pot=100, bet=50) | pct(1)" = "25,0%"
+"calc: pot_odds(pot=2, bet=1) | pct(1)" = "25,0%"
+"calc: pot_odds(pot=3, bet=1) | pct(1)" = "20,0%"
+"calc: pot_odds(pot=3, bet=2) | pct(1)" = "28,6%"
+"calc: pot_odds(pot=90, bet=30) | pct(1)" = "20,0%"
+"calc: rule_of_2_and_4(outs=9, cards=1) | pct(0)" = "18%"

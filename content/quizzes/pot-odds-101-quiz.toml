@@ -1,0 +1,35 @@
+id = "pot-odds-101-quiz"
+version = 1
+lesson = "pot-odds-101"
+pass = 0.75
+
+[[questions]]
+id = "half-pot"
+kind = "numeric"
+prompt = { en-US = "Pot 100, bet 50. Equity needed to call, in %?", pt-BR = "Pote 100, aposta 50. Equity necessária para pagar, em %?" }
+answer = "{{ calc: pot_odds(pot=100, bet=50) | pct(1) }}"
+tolerance = 1.0
+
+[[questions]]
+id = "pot-bet"
+kind = "numeric"
+prompt = { en-US = "Pot 12 bb, bet 12 bb. Equity needed, in %?", pt-BR = "Pote 12 bb, aposta 12 bb. Equity necessária, em %?" }
+answer = "{{ calc: pot_odds(pot=12, bet=12) | pct(1) }}"
+tolerance = 1.0
+
+[[questions]]
+id = "two-thirds"
+kind = "numeric"
+prompt = { en-US = "Pot 9 bb, bet 6 bb. Equity needed, in %?", pt-BR = "Pote 9 bb, aposta 6 bb. Equity necessária, em %?" }
+answer = "{{ calc: pot_odds(pot=9, bet=6) | pct(1) }}"
+tolerance = 1.0
+
+[[questions]]
+id = "call-or-fold"
+kind = "choice"
+prompt = { en-US = "Turn: flush draw (9 outs), pot 10 bb, bet 10 bb, no implied odds. Call?", pt-BR = "Turn: projeto de flush (9 outs), pote 10 bb, aposta 10 bb, sem odds implícitas. Paga?" }
+choices = [
+    { en-US = "Fold: about 20% equity against {{ calc: pot_odds(pot=10, bet=10) | pct(1) }} needed", pt-BR = "Folda: cerca de 20% de equity contra {{ calc: pot_odds(pot=10, bet=10) | pct(1) }} necessários" },
+    { en-US = "Call: a flush draw is always worth a call", pt-BR = "Paga: projeto de flush sempre vale o call" },
+]
+answer = 0

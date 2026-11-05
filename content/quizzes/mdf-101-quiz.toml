@@ -1,0 +1,36 @@
+id = "mdf-101-quiz"
+version = 1
+lesson = "mdf-101"
+pass = 0.75
+
+[[questions]]
+id = "half-pot"
+kind = "numeric"
+prompt = { en-US = "MDF against a half-pot bet, in %?", pt-BR = "MDF contra uma aposta de meio pote, em %?" }
+answer = "{{ calc: mdf(pot=2, bet=1) | pct(1) }}"
+tolerance = 1.0
+
+[[questions]]
+id = "pot"
+kind = "numeric"
+prompt = { en-US = "MDF against a pot-size bet, in %?", pt-BR = "MDF contra uma aposta do tamanho do pote, em %?" }
+answer = "{{ calc: mdf(pot=1, bet=1) | pct(0) }}"
+tolerance = 1.0
+
+[[questions]]
+id = "overbet"
+kind = "numeric"
+prompt = { en-US = "MDF against a 2× pot overbet, in %?", pt-BR = "MDF contra um overbet de 2× o pote, em %?" }
+answer = "{{ calc: mdf(pot=1, bet=2) | pct(1) }}"
+tolerance = 1.0
+
+[[questions]]
+id = "exploit"
+kind = "choice"
+prompt = { en-US = "Your opponent almost never bluffs. Against their bets you should…", pt-BR = "Seu adversário quase nunca blefa. Contra as apostas dele você deve…" }
+choices = [
+    { en-US = "Fold more often than 1 − MDF says", pt-BR = "Foldar mais do que 1 − MDF indica" },
+    { en-US = "Defend exactly MDF", pt-BR = "Defender exatamente o MDF" },
+    { en-US = "Defend more than MDF", pt-BR = "Defender mais que o MDF" },
+]
+answer = 0

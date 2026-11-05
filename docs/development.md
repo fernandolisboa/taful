@@ -16,7 +16,7 @@ See [spec §4](spec.md#4-workspace). In short:
 | `tools/content-check` | Runs the content checks over `content/`. |
 | `tools/library-build` | Offline library build: preflop solver (M3), postflop batch (M4). The only crate allowed to link `postflop-solver`. |
 | `library/` | Built library files in the static layout of spec §7.6 (`v1/<config key>/…`). For now only the preflop chart, embedded by `taful-app`. |
-| `content/` | Themes now; lessons, quizzes, layouts later. |
+| `content/` | Themes, `skill-tree.toml`, lessons (`lessons/<locale>/*.md`), quizzes (`quizzes/*.toml`) and their render snapshots (`.snapshots/`). Embedded into `taful-app` by its `build.rs`. |
 | `config/` | Tunable numbers loaded at runtime: `grading.toml` (D3 thresholds), `calc.toml` (trainer tolerances and target times). Tests pin them to the code defaults. |
 | `i18n/<locale>/*.ftl` | Fluent strings. en-US is the source, pt-BR ships. |
 
@@ -29,6 +29,7 @@ cargo clippy --workspace --exclude taful-desktop --all-targets -- -D warnings
 cargo test --workspace --exclude taful-desktop       # UI-free crates and tools
 cargo test --release -p taful-core -- --include-ignored  # + exhaustive evaluator/equity tests
 cargo run -p taful-content-check -- content
+cargo run -p taful-content-check -- --bless content   # after an intended change to a rendered value
 
 # Windows only (gpui 0.2.2 does not build on Linux/macOS, see docs/spikes/9.1-gpui-table.md):
 cargo test -p taful-desktop                          # color-literal lint, Fluent ids
@@ -64,6 +65,17 @@ cargo run --release -p taful-library-build -- summary library/v1/*/preflop.tafl 
 About 5 minutes on 4 vCPU (the 169×169 equity table is cached in `library/cache/`, which is git-ignored). A test fails if the committed chart was built from a different manifest. Model and format details: spec §6 and §7.5.
 
 The desktop table screen opens directly with `TAFUL_SCREEN=table` (any `nav-<id>` works).
+
+## Data and content (M2)
+
+- **Data dir:** `TAFUL_DATA_DIR`, else `%APPDATA%\Taful`, else `$XDG_DATA_HOME/taful`, else `~/.local/share/taful`. One `taful.sqlite` plus `backups/` (the folder can be changed in settings).
+- **Schema changes:** add `crates/taful-store/src/migrations/NNNN_*.sql` and list it in `schema::MIGRATIONS`. Never edit a shipped migration. `schema_rules` checks the D9 columns and `migrates_from_every_past_version` runs every prefix.
+- **A new lesson:** write it in both locales with the same front matter, add it to `content/skill-tree.toml`, give it a quiz (or a drill unlock once spot templates exist), add any glossary terms to both `glossary.ftl`, then run `content-check --bless` and review the snapshot diff.
+- **A new placeholder function:** add it to `FUNCTIONS` and `eval` in `crates/taful-content/src/expr.rs`; it must be a pure call into `taful-core`.
+
+## Running the desktop on Linux (unsupported, for screenshots)
+
+gpui 0.2.2 fails on Linux because `xattr` 0.2.3 uses `ENOATTR`. A local copy of the crate with `ENOATTR` → `ENODATA` in `src/sys/mod.rs`, wired in through `--config 'patch.crates-io.xattr.path="…"'`, builds it. Never commit that patch or the `Cargo.lock` it produces. Running under Xvfb needs `libxkbcommon-x11-dev`, `mesa-vulkan-drivers` and `libvulkan1`, and the first frame needs a mouse move (`xdotool mousemove`).
 
 ## Adding a string
 

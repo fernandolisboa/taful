@@ -1,0 +1,40 @@
+id = "spr-101-quiz"
+version = 1
+lesson = "spr-101"
+pass = 0.75
+
+[[questions]]
+id = "srp"
+kind = "numeric"
+prompt = { en-US = "Pot 5.5 bb on the flop, 97.5 bb behind. SPR?", pt-BR = "Pote de 5,5 bb no flop, 97,5 bb atrás. SPR?" }
+answer = "{{ calc: spr(stack=97.5, pot=5.5) | ratio }}"
+tolerance = 0.3
+
+[[questions]]
+id = "three-bet"
+kind = "numeric"
+prompt = { en-US = "Pot 22.5 bb, 89 bb behind. SPR?", pt-BR = "Pote de 22,5 bb, 89 bb atrás. SPR?" }
+answer = "{{ calc: spr(stack=89, pot=22.5) | ratio }}"
+tolerance = 0.2
+
+[[questions]]
+id = "low-spr"
+kind = "choice"
+prompt = { en-US = "SPR 1.5 and you flop top pair, good kicker. Usually…", pt-BR = "SPR 1,5 e você acerta top pair com bom kicker. Normalmente…" }
+choices = [
+    { en-US = "You are happy to get all-in", pt-BR = "Você topa ir all-in" },
+    { en-US = "You should play for one small pot", pt-BR = "Você deve jogar por um pote pequeno" },
+    { en-US = "You should fold to any bet", pt-BR = "Você deve foldar para qualquer aposta" },
+]
+answer = 0
+
+[[questions]]
+id = "high-spr"
+kind = "choice"
+prompt = { en-US = "In a high-SPR pot, one pair…", pt-BR = "Num pote de SPR alto, um par…" }
+choices = [
+    { en-US = "Rarely wants to play for stacks", pt-BR = "Raramente quer jogar pelo stack inteiro" },
+    { en-US = "Should always go all-in", pt-BR = "Deve sempre ir all-in" },
+    { en-US = "Is the nuts", pt-BR = "É o nuts" },
+]
+answer = 0
