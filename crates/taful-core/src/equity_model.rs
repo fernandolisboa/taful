@@ -28,17 +28,28 @@ pub const ICM_MAX_PLAYERS: usize = 16;
 
 /// Malmuth–Harville ICM: each player's expected prize given stacks.
 ///
-/// Players with no chips get nothing (they are already out). Payouts beyond
-/// the number of players with chips are ignored. Exact over all finishing
-/// orders in `O(2^n · n)`; panics above [`ICM_MAX_PLAYERS`].
+/// `stacks` lists every player still in the tournament. A zero stack is a
+/// player who busted in this hand: busted players take the places right after
+/// everyone with chips and share those payouts evenly (they busted together).
+/// Exact over all finishing orders in `O(2^n · n)`; panics above
+/// [`ICM_MAX_PLAYERS`] players with chips.
 pub fn icm_equities(stacks: &[Chips], payouts: &[f64]) -> Vec<f64> {
     let alive: Vec<usize> = (0..stacks.len()).filter(|&i| stacks[i] > 0).collect();
     let n = alive.len();
+    let busted: Vec<usize> = (0..stacks.len()).filter(|&i| stacks[i] == 0).collect();
     assert!(
         n <= ICM_MAX_PLAYERS,
         "ICM supports at most {ICM_MAX_PLAYERS} players"
     );
     let mut ev = vec![0.0; stacks.len()];
+    if !busted.is_empty() {
+        let shared: f64 = (n..n + busted.len())
+            .map(|p| payouts.get(p).copied().unwrap_or(0.0))
+            .sum();
+        for &i in &busted {
+            ev[i] = shared / busted.len() as f64;
+        }
+    }
     if n == 0 {
         return ev;
     }
@@ -120,10 +131,18 @@ mod tests {
         assert!((e[1] - 32.750).abs() < 1e-3, "{e:?}");
         assert!((e[2] - 28.857).abs() < 1e-3, "{e:?}");
         assert!((e.iter().sum::<f64>() - 100.0).abs() < 1e-9);
-        // Busted players get nothing; winner-take-all is chip-proportional.
+        // Winner-take-all is chip-proportional; a player busting outside the
+        // money gets nothing.
         let e = icm_equities(&[0, 300, 100], &[1.0]);
         assert_eq!(e[0], 0.0);
         assert!((e[1] - 0.75).abs() < 1e-12);
+        // Busting in this hand still pays the place reached: no prize is lost.
+        let e = icm_equities(&[4000, 6000, 0], &[50.0, 30.0, 20.0]);
+        assert_eq!(e[2], 20.0);
+        assert!((e.iter().sum::<f64>() - 100.0).abs() < 1e-9);
+        // Two busting together split 2nd and 3rd.
+        let e = icm_equities(&[10_000, 0, 0], &[50.0, 30.0, 20.0]);
+        assert_eq!(e, vec![50.0, 25.0, 25.0]);
     }
 
     #[test]

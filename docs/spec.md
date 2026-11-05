@@ -338,7 +338,7 @@ Exercise types for the first slice, each a generator in `taful-core::calc` (seed
 
 | Exercise | Prompt | Shortcut shown | Exact answer |
 |---|---|---|---|
-| Outs | hole cards + board | count by draw type, discount for dirty outs | enumeration |
+| Outs | hole cards + board + villain's hand (shown, so the exact count is well defined) | count by draw type, discount for dirty outs (drop draw cards that pair the board) | enumeration of next cards that put hero ahead |
 | Rule of 2 and 4 | outs + street | `outs × 2` / `outs × 4` (with the >8-outs correction) | exact hit probability |
 | Pot odds | pot, bet | `bet / (pot + 2·bet)` | same, exact |
 | MDF | bet size as % pot | `pot / (pot + bet)` | same |

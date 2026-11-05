@@ -6,8 +6,8 @@
 
 use std::time::Duration;
 
-use rand::seq::IndexedRandom;
-use rand::{Rng, SeedableRng};
+use rand::seq::{IndexedRandom, SliceRandom};
+use rand::{RngExt, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
 
@@ -78,8 +78,10 @@ pub fn outs(hero: Hand, villain: Hand, board: &Board) -> Vec<Card> {
 }
 
 /// Outs by the table shortcut: flush draw (9), open-ended (8) or gutshot (4)
-/// straight draws and unpaired overcards (3 each), counted once each, with no
-/// discount for dirty outs.
+/// straight draws and unpaired overcards (3 each), each card counted once,
+/// then discounted for dirty outs: a flush or straight card that pairs the
+/// board is dropped (it can fill up a set or two pair). The exact count
+/// ([`outs`]) also catches the dirty outs no table rule sees.
 pub fn shortcut_outs(hero: Hand, board: &Board) -> Vec<Card> {
     let seen = hero.mask().union(board.mask());
     let cards: Vec<Card> = hero
@@ -88,11 +90,20 @@ pub fn shortcut_outs(hero: Hand, board: &Board) -> Vec<Card> {
         .chain(board.cards().iter().copied())
         .collect();
     let mut out = CardSet::EMPTY;
+    let board_ranks: u16 = board
+        .cards()
+        .iter()
+        .fold(0, |m, c| m | 1 << c.rank().index());
+    let clean = |c: &Card| board_ranks & (1 << c.rank().index()) == 0;
     // Flush draw: four to a suit, using at least one hole card.
     for s in crate::cards::Suit::all() {
         let n = cards.iter().filter(|c| c.suit() == s).count();
         if n == 4 && hero.cards().iter().any(|c| c.suit() == s) {
-            for c in seen.complement().iter().filter(|c| c.suit() == s) {
+            for c in seen
+                .complement()
+                .iter()
+                .filter(|c| c.suit() == s && clean(c))
+            {
                 out.insert(c);
             }
         }
@@ -111,7 +122,11 @@ pub fn shortcut_outs(hero: Hand, board: &Board) -> Vec<Card> {
             if made & (1 << r.index()) == 0 && has_straight(with) {
                 // Must use a hole card: the board alone plus r is not a straight.
                 if !has_straight(ranks(board.cards()) | 1 << r.index()) {
-                    for c in seen.complement().iter().filter(|c| c.rank() == r) {
+                    for c in seen
+                        .complement()
+                        .iter()
+                        .filter(|c| c.rank() == r && clean(c))
+                    {
                         out.insert(c);
                     }
                 }
@@ -142,6 +157,14 @@ pub fn shortcut_outs(hero: Hand, board: &Board) -> Vec<Card> {
     out.iter().collect()
 }
 
+fn hero_paired(hero: Hand, board: &Board) -> bool {
+    hero.is_pair()
+        || hero
+            .cards()
+            .iter()
+            .any(|h| board.cards().iter().any(|b| b.rank() == h.rank()))
+}
+
 /// Rough equity of `hero` against a calling range, by made-hand class (the
 /// "heuristic bands" shown next to the exact value).
 pub fn equity_band(hero: Hand, board: &Board) -> f64 {
@@ -160,7 +183,8 @@ pub fn equity_band(hero: Hand, board: &Board) -> f64 {
     match r.category {
         c if c >= Category::Straight => 0.85,
         Category::ThreeOfAKind | Category::TwoPair => 0.75,
-        Category::OnePair => {
+        // A pair that is only on the board is not hero's pair.
+        Category::OnePair if hero_paired(hero, board) => {
             let top = hero.is_pair() && hero.high().rank() > board_max
                 || hero.cards().iter().any(|h| h.rank() == board_max);
             if top { 0.65 } else { 0.45 }
@@ -319,7 +343,23 @@ impl Default for CalcSettings {
 
 impl CalcSettings {
     pub fn from_toml(s: &str) -> Result<CalcSettings, String> {
-        toml::from_str(s).map_err(|e| e.to_string())
+        let c: CalcSettings = toml::from_str(s).map_err(|e| e.to_string())?;
+        c.validate()?;
+        Ok(c)
+    }
+
+    /// Tolerances must be finite and >= 0; target times finite and > 0.
+    pub fn validate(&self) -> Result<(), String> {
+        for kind in ExerciseKind::ALL {
+            let k = self.get(kind);
+            if !(k.tolerance.is_finite() && k.tolerance >= 0.0) {
+                return Err(format!("{}: tolerance must be finite and >= 0", kind.id()));
+            }
+            if !(k.target_secs.is_finite() && k.target_secs > 0.0) {
+                return Err(format!("{}: target_secs must be finite and > 0", kind.id()));
+            }
+        }
+        Ok(())
     }
 
     pub fn get(&self, kind: ExerciseKind) -> KindSettings {
@@ -361,13 +401,7 @@ fn half_bb(x: f64) -> f64 {
 
 fn deal(rng: &mut ChaCha8Rng, n: usize, avoid: CardSet) -> Vec<Card> {
     let mut deck: Vec<Card> = avoid.complement().iter().collect();
-    let mut out = Vec::with_capacity(n);
-    for i in 0..n {
-        let j = rng.random_range(i..deck.len());
-        deck.swap(i, j);
-        out.push(deck[i]);
-    }
-    out
+    deck.partial_shuffle(rng, n).0.to_vec()
 }
 
 fn hand_of(cs: &[Card]) -> Hand {
@@ -596,13 +630,13 @@ mod tests {
     #[test]
     fn outs_known_spots() {
         // Nut flush draw vs a set: 9 hearts, but 2h pairs the board and gives
-        // the set a full house, so 8 clean outs. The shortcut also counts the
-        // ace overcards: 9 + 3 = 12.
+        // the set a full house, so 8 clean outs. The shortcut drops 2h too but
+        // also counts the ace overcards: 8 + 3 = 11.
         let (hero, vil, board) = (h("AhJh"), h("KsKc"), b("Kh7h2d"));
         let o = outs(hero, vil, &board);
         assert_eq!(o.len(), brute_outs(hero, vil, &board));
         assert_eq!(o.len(), 8);
-        assert_eq!(shortcut_outs(hero, &board).len(), 12);
+        assert_eq!(shortcut_outs(hero, &board).len(), 11);
         // Open-ender vs an overpair: 8 clean outs; shortcut adds 6 overcard outs.
         let (hero, vil, board) = (h("9c8c"), h("AsAd"), b("7d6s2h"));
         assert_eq!(outs(hero, vil, &board).len(), 8);
@@ -652,6 +686,26 @@ mod tests {
             CalcSettings::from_toml(file).unwrap(),
             CalcSettings::default()
         );
+    }
+
+    #[test]
+    fn rejects_bad_settings() {
+        let file = include_str!("../../../config/calc.toml");
+        assert!(
+            CalcSettings::from_toml(&file.replace("target_secs = 6.0", "target_secs = inf"))
+                .is_err()
+        );
+        assert!(
+            CalcSettings::from_toml(&file.replace("tolerance = 0.2", "tolerance = -1.0")).is_err()
+        );
+    }
+
+    #[test]
+    fn equity_band_ignores_board_pairs() {
+        let paired = equity_band(h("AsQd"), &b("7c7dKh"));
+        let dry = equity_band(h("AsQd"), &b("7c6dKh"));
+        assert_eq!(paired, dry);
+        assert_eq!(equity_band(h("KsQd"), &b("7c6dKh")), 0.65);
     }
 
     #[test]

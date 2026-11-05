@@ -207,7 +207,7 @@ mod tests {
     use super::*;
     use crate::cards::parse_cards;
     use rand::seq::SliceRandom;
-    use rand::{Rng, SeedableRng};
+    use rand::{RngExt, SeedableRng};
     use rand_chacha::ChaCha8Rng;
 
     fn seven(s: &str) -> [Card; 7] {

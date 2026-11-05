@@ -4,7 +4,8 @@
 //! over every remaining runout. Card removal is exact: a pair of combos is
 //! only counted when neither shares a card with the other or the board.
 
-use rand::{Rng, SeedableRng};
+use rand::seq::SliceRandom;
+use rand::{RngExt, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
 use crate::cards::{Board, Card, CardSet, Hand, NUM_COMBOS};
@@ -114,6 +115,9 @@ pub fn hand_vs_hand(a: Hand, b: Hand, board: &Board) -> Result<Equity, EquityErr
 
 /// Exact equity of `hero` vs a weighted `villain` range on a flop, turn or river.
 pub fn hand_vs_range(hero: Hand, villain: &Range, board: &Board) -> Result<Equity, EquityError> {
+    if hero.mask().intersects(board.mask()) {
+        return Err(EquityError::CardConflict);
+    }
     range_vs_range(&single(hero), villain, board)
 }
 
@@ -267,12 +271,11 @@ pub fn range_vs_range_mc(
         let dead = bmask.union(h.mask()).union(v.mask());
         deck.clear();
         deck.extend(dead.complement().iter());
-        let mut acc = base;
-        for i in 0..need {
-            let j = rng.random_range(i..deck.len());
-            deck.swap(i, j);
-            acc = acc.with(deck[i]);
-        }
+        let acc = deck
+            .partial_shuffle(&mut rng, need)
+            .0
+            .iter()
+            .fold(base, |acc, &c| acc.with(c));
         let [h1, h2] = h.cards();
         let [v1, v2] = v.cards();
         let sh = acc.with(h1).with(h2).score();
@@ -361,6 +364,10 @@ mod tests {
             "{} vs {}",
             fast.equity,
             num / den
+        );
+        assert_eq!(
+            hand_vs_range(h("Td2c"), &vil, &board),
+            Err(EquityError::CardConflict)
         );
         let one = hand_vs_range(h("AsAh"), &vil, &board).unwrap();
         assert!(one.equity > 0.5 && one.equity < 1.0);

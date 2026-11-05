@@ -88,9 +88,20 @@ impl FromStr for Action {
 
 /// Per-street actions by position. Canonical form: actions as `POS:act`
 /// joined by `,`, streets joined by `/`, e.g. `BTN:r250,SB:f,BB:c/BB:x,BTN:b120`.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+///
+/// A history always has at least the preflop street, so `""` is the empty
+/// preflop street and every value round-trips through its string form.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ActionHistory {
     pub streets: Vec<Vec<(Position, Action)>>,
+}
+
+impl Default for ActionHistory {
+    fn default() -> Self {
+        ActionHistory {
+            streets: vec![Vec::new()],
+        }
+    }
 }
 
 /// The preflop part of an [`ActionHistory`]: identifies a configuration.
@@ -254,6 +265,8 @@ mod tests {
         assert_eq!(h.to_string(), s);
         assert_eq!(h.line().to_string(), "BTN:r250,SB:f,BB:c");
         assert!("BTN:q".parse::<ActionHistory>().is_err());
+        let d = ActionHistory::default();
+        assert_eq!(d.to_string().parse::<ActionHistory>().unwrap(), d);
     }
 
     #[test]

@@ -301,9 +301,8 @@ fn fmt_weight(w: f32) -> String {
     if w == 1.0 {
         String::new()
     } else {
-        let s = format!("{w:.4}");
-        let s = s.trim_end_matches('0').trim_end_matches('.');
-        format!(":{s}")
+        // Shortest representation that parses back to the same f32.
+        format!(":{w}")
     }
 }
 
@@ -323,9 +322,11 @@ impl fmt::Display for Range {
         // Emit runs of equal uniform weight along a sequence of classes ordered
         // from strongest to weakest. `top` is true when the run may use "+".
         let mut emit = |seq: &[HandClass], plus_ok_at_top: bool, toks: &mut Vec<String>| {
+            // One uniformity check (and one combos() allocation) per class.
+            let uni: Vec<Option<f32>> = seq.iter().map(|&c| uniform(self, c)).collect();
             let mut i = 0;
             while i < seq.len() {
-                let Some(w) = uniform(self, seq[i]) else {
+                let Some(w) = uni[i] else {
                     for h in seq[i].combos() {
                         let w = self.weight(h);
                         if w > 0.0 {
@@ -340,7 +341,7 @@ impl fmt::Display for Range {
                     continue;
                 }
                 let mut j = i;
-                while j + 1 < seq.len() && uniform(self, seq[j + 1]) == Some(w) {
+                while j + 1 < seq.len() && uni[j + 1] == Some(w) {
                     j += 1;
                 }
                 let tok = if i == j {
@@ -417,6 +418,12 @@ mod tests {
             assert_eq!(r, back, "{s} → {printed}");
         }
         assert_eq!("TT+".parse::<Range>().unwrap().to_string(), "TT+");
+        // Weights survive printing exactly, however small or repeating.
+        let mut odd = Range::empty();
+        odd.set("AsKs".parse().unwrap(), 1.0 / 3.0);
+        odd.set("QsJs".parse().unwrap(), 0.00004);
+        odd.set_class(HandClass::Pair(Rank::ACE), 0.123_456_7);
+        assert_eq!(odd.to_string().parse::<Range>().unwrap(), odd, "{odd}");
         assert_eq!("A2s-A5s".parse::<Range>().unwrap().to_string(), "A5s-A2s");
         assert_eq!("AKs,AQs".parse::<Range>().unwrap().to_string(), "AQs+");
     }
