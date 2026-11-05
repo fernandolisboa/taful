@@ -5,8 +5,9 @@
 //! until its next review, which moves it to the quiz's current version. An
 //! item whose question no longer exists is retired (soft-deleted).
 //!
-//! Spot-template items arrive with the strategy library (M3/M4); until then
-//! the session skips them.
+//! Spot-template items (M5) deal a fresh spot of their template. A postflop
+//! template waits (stays due, not shown) while the postflop library is not
+//! installed.
 
 use taful_content::quiz::{Answer, RenderedQuestion};
 use taful_core::calc::ExerciseKind;
@@ -14,11 +15,14 @@ use taful_core::srs::Rating;
 
 use crate::calc_trainer::CalcRound;
 use crate::i18n::Locale;
+use crate::preflop::{Action, GradedDecision};
 use crate::review::ItemKind;
+use crate::template::SpotTemplate;
+use crate::training::DrillSpot;
 use crate::{App, Error, Result};
 
 /// The next thing to review.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum ReviewPrompt {
     /// A calc exercise in the item's kind and band. Answer with
     /// [`App::calc_submit`], which reviews the item.
@@ -30,10 +34,17 @@ pub enum ReviewPrompt {
         lesson_title: String,
         question: RenderedQuestion,
     },
+    /// A spot of a past mistake's template. Answer with
+    /// [`App::answer_spot_review`].
+    Spot {
+        item_id: String,
+        template: SpotTemplate,
+        spot: Box<DrillSpot>,
+    },
 }
 
-/// Item kinds this build can present (spot templates arrive with M4).
-pub(crate) const PRESENTABLE: &[&str] = &["calc_exercise", "lesson_quiz"];
+/// Item kinds the review session presents.
+pub(crate) const PRESENTABLE: &[&str] = &["calc_exercise", "lesson_quiz", "spot_template"];
 
 impl App {
     /// Number of items due now that this build can present.
@@ -82,7 +93,33 @@ impl App {
                         continue;
                     }
                 },
-                Some(ItemKind::SpotTemplate) | None => continue, // not queried
+                Some(ItemKind::SpotTemplate) => {
+                    let Some(template) = SpotTemplate::parse(&item.key) else {
+                        self.store.delete_review_item(&item.id)?;
+                        continue;
+                    };
+                    let trainers = self.trainers()?;
+                    if !template.is_preflop() && trainers.post().is_none() {
+                        continue; // waits for the library
+                    }
+                    let seed = self.next_seed();
+                    match trainers.spot_for_template(&template, seed) {
+                        Ok(spot) => {
+                            return Ok(Some(ReviewPrompt::Spot {
+                                item_id: item.id,
+                                template,
+                                spot: Box::new(spot),
+                            }));
+                        }
+                        // The template is no longer in the library (other
+                        // config, rebuilt tree): retire it.
+                        Err(_) => {
+                            self.store.delete_review_item(&item.id)?;
+                            continue;
+                        }
+                    }
+                }
+                None => continue,
             }
         }
         Ok(None)
@@ -112,6 +149,22 @@ impl App {
             .map(|l| l.meta.title.clone())
             .unwrap_or_default();
         Ok(Some((quiz.lesson.clone(), title, rendered)))
+    }
+
+    /// Grades a spot review, stores the decision and reschedules the item.
+    pub fn answer_spot_review(
+        &mut self,
+        item_id: &str,
+        spot: &DrillSpot,
+        action: Action,
+    ) -> Result<GradedDecision> {
+        let trainers = self.trainers()?;
+        let d = trainers
+            .answer(spot, action)
+            .map_err(|e| Error::NotFound(e.to_string()))?;
+        let ctx = spot.context(&trainers);
+        self.record_spot_decision(&d, &ctx, Some(item_id))?;
+        Ok(d)
     }
 
     /// Grades a quiz review and reschedules the item. Returns whether the
@@ -147,7 +200,7 @@ mod tests {
     #[test]
     fn session_mixes_kinds_and_reschedules() {
         let (mut app, t) = app_at(10_000_000);
-        assert_eq!(app.next_review(Locale::PtBr).unwrap(), None);
+        assert!(app.next_review(Locale::PtBr).unwrap().is_none());
 
         // A wrong calc answer and a wrong quiz answer.
         let round = app.calc_start(Some(ExerciseKind::Mdf));
@@ -192,6 +245,7 @@ mod tests {
                     assert!(app.answer_quiz_review(&item_id, right).unwrap());
                     seen.push("quiz");
                 }
+                ReviewPrompt::Spot { .. } => unreachable!("no spot items"),
             }
             assert!(seen.len() <= 2, "answered items leave the session");
         }
@@ -212,9 +266,50 @@ mod tests {
         app.store
             .ensure_review_item("calc_exercise", "pot_odds/bet_7", None, 0)
             .unwrap();
-        assert_eq!(app.due_count().unwrap(), 2, "spot items are not counted");
-        assert_eq!(app.next_review(Locale::PtBr).unwrap(), None);
-        assert_eq!(app.store.review_totals().unwrap().0, 1, "spot item kept");
+        assert_eq!(app.due_count().unwrap(), 3);
+        assert!(app.next_review(Locale::PtBr).unwrap().is_none());
+        assert_eq!(app.store.review_totals().unwrap().0, 0, "all retired");
         assert_eq!(app.due_count().unwrap(), 0);
+    }
+
+    #[test]
+    fn spot_items_deal_their_template_and_reschedule() {
+        let (mut app, t) = app_at(0);
+        let trainers = app.trainers().unwrap();
+        // Fold a hand UTG should open: a mistake, so the template gets an item.
+        let tpl =
+            SpotTemplate::parse(&format!("v1|{}|preflop||-|UTG", trainers.config_key())).unwrap();
+        let (d, ctx) = (0..200)
+            .find_map(|seed| {
+                let spot = trainers.spot_for_template(&tpl, seed).unwrap();
+                let d = trainers.answer(&spot, Action::Fold).unwrap();
+                (d.grade > taful_core::grading::Grade::Correct)
+                    .then(|| (d, spot.context(&trainers)))
+            })
+            .unwrap();
+        assert_eq!(ctx.template, tpl);
+        app.record_spot_decision(&d, &ctx, None).unwrap();
+        assert!(
+            app.store
+                .review_item("spot_template", &ctx.template.key())
+                .unwrap()
+                .is_some()
+        );
+        t.fetch_add(RELEARN_MS, Ordering::SeqCst);
+        let Some(ReviewPrompt::Spot {
+            item_id,
+            template,
+            spot,
+        }) = app.next_review(Locale::PtBr).unwrap()
+        else {
+            panic!("spot prompt expected");
+        };
+        assert_eq!(template, ctx.template);
+        let acts = spot.actions(&trainers);
+        let first = trainers.answer(&spot, acts[0]).unwrap();
+        let best = acts[first.best()];
+        let g = app.answer_spot_review(&item_id, &spot, best).unwrap();
+        assert_eq!(g.ev_loss_bb, 0.0);
+        assert_eq!(app.due_count().unwrap(), 0, "rescheduled");
     }
 }

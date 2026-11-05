@@ -1,24 +1,21 @@
 //! Preflop training (spec §10, M3): spot mode and full-hand mode up to the
 //! flop, graded against the preflop chart (spec §6, §8).
 //!
-//! Both modes drive the rules engine; the chart only supplies strategies and
-//! EVs. A line the chart does not cover ends the hand (D4). Postflop play
-//! arrives with the postflop library (M4), so a hand that reaches a flop
-//! without an all-in ends there for now.
+//! Spot mode drives the rules engine; the chart only supplies strategies and
+//! EVs. Full hands (preflop to river) live in [`crate::hand`].
 
 use std::sync::Arc;
 
 use rand::seq::IndexedRandom;
 use rand::{RngExt, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use taful_core::action::{Line, Street};
+use taful_core::action::Line;
 use taful_core::config::GameConfig;
-use taful_core::engine::{EngineError, Phase, Settlement};
-use taful_core::eval::RsPokerEvaluator;
+use taful_core::engine::EngineError;
 use taful_core::grading::{Grade, Thresholds, grade};
 use taful_core::range::HandClass;
 use taful_solver::format::FormatError;
-use taful_solver::preflop::{Lookup, NodeId, PreflopChart};
+use taful_solver::preflop::{NodeId, PreflopChart};
 
 /// Domain types the UI needs to draw a table (the UI talks only to
 /// `taful-app`, spec §4).
@@ -37,7 +34,7 @@ const BUILTIN_CHART: &[u8] = include_bytes!(
 /// Grading thresholds shipped with the app (spec §8).
 const GRADING_TOML: &str = include_str!("../../../config/grading.toml");
 
-/// The button seat in every preflop hand; positions follow from it.
+/// The button seat in every preflop spot; positions follow from it.
 const BUTTON: Seat = 0;
 
 /// Kinds of preflop spot (spec §6, D2).
@@ -324,11 +321,45 @@ impl PreflopTrainer {
         let &&(_, node, _) = candidates
             .choose_weighted(&mut rng, |(_, _, w)| *w)
             .map_err(|_| PreflopError::NoData)?;
+        self.deal_at(kind, node, &mut rng)
+    }
+
+    /// A spot at chart `node` (a review of a spot template): hero's hand is
+    /// drawn from hero's range there.
+    pub fn spot_at(&self, node: NodeId, seed: u64) -> Result<Spot, PreflopError> {
+        if node >= self.chart.len() {
+            return Err(PreflopError::NoData);
+        }
+        let kind = SpotKind::classify(&self.chart.line(node), self.chart.node(node).player);
+        self.deal_at(kind, node, &mut ChaCha8Rng::seed_from_u64(seed))
+    }
+
+    /// The chart node reached by `line`, if any.
+    pub fn node_at(&self, line: &Line) -> Option<NodeId> {
+        let mut at = self.chart.root();
+        for &(p, a) in &line.0 {
+            if self.chart.node(at).player != p {
+                return None;
+            }
+            match self.chart.step(at, a) {
+                taful_solver::preflop::Lookup::Node(n) => at = n,
+                _ => return None,
+            }
+        }
+        Some(at)
+    }
+
+    fn deal_at(
+        &self,
+        kind: SpotKind,
+        node: NodeId,
+        rng: &mut ChaCha8Rng,
+    ) -> Result<Spot, PreflopError> {
         let n = self.chart.node(node);
         let range = self.chart.acting_range(node);
         let classes: Vec<usize> = (0..HandClass::COUNT).collect();
         let class = *classes
-            .choose_weighted(&mut rng, |&c| range[c])
+            .choose_weighted(rng, |&c| range[c])
             .map_err(|_| PreflopError::NoData)?;
         let combos = HandClass::from_index(class).expect("< 169").combos();
         let hand = combos[rng.random_range(0..combos.len())];
@@ -387,179 +418,6 @@ impl Spot {
             .action_index(action)
             .ok_or(PreflopError::NotInTree(action))?;
         trainer.grade(self.node, self.hand, chosen)
-    }
-}
-
-/// Why a full hand stopped.
-#[derive(Debug, Clone, PartialEq)]
-pub enum HandEnd {
-    /// Everyone but one folded, or an all-in ran out; settled.
-    Settled(Settlement),
-    /// The flop was reached with chips behind: postflop play comes with M4.
-    ReachedFlop,
-    /// The line left the chart (D4); it is a candidate for a future build.
-    LeftLibrary(Line),
-    /// Hero folded; the rest of the hand does not matter for hero.
-    HeroFolded,
-}
-
-/// A full hand vs reference bots, preflop only (spec §10.2).
-#[derive(Debug, Clone)]
-pub struct FullHand {
-    pub hero: Seat,
-    pub state: GameState,
-    /// Current chart node, if still inside the chart and on preflop.
-    pub node: Option<NodeId>,
-    pub decisions: Vec<GradedDecision>,
-    pub end: Option<HandEnd>,
-    /// Bot actions so far, in order, for the hand log.
-    pub log: Vec<(Seat, Action)>,
-    rng: ChaCha8Rng,
-}
-
-impl FullHand {
-    /// Deal a hand with hero at `hero` (`None` = random seat); bots act until
-    /// hero's first decision or the end of the hand.
-    pub fn new(
-        trainer: &PreflopTrainer,
-        hero: Option<Seat>,
-        seed: u64,
-    ) -> Result<FullHand, PreflopError> {
-        let mut rng = ChaCha8Rng::seed_from_u64(seed);
-        let seats = usize::from(trainer.config().table_size);
-        let hero = hero.unwrap_or_else(|| rng.random_range(0..seats)) % seats;
-        let state = GameState::new(trainer.config().clone(), BUTTON, rng.random())?;
-        let mut h = FullHand {
-            hero,
-            state,
-            node: Some(trainer.chart().root()),
-            decisions: Vec::new(),
-            end: None,
-            log: Vec::new(),
-            rng,
-        };
-        h.run_bots(trainer)?;
-        Ok(h)
-    }
-
-    pub fn hero_hand(&self) -> Hand {
-        self.state.players()[self.hero].hole
-    }
-
-    /// Hero's options now, or empty when it is not hero's turn.
-    pub fn hero_actions(&self, trainer: &PreflopTrainer) -> Vec<Action> {
-        match (self.end.is_none(), self.state.to_act(), self.node) {
-            (true, Some(s), Some(n)) if s == self.hero => trainer.actions(n),
-            _ => Vec::new(),
-        }
-    }
-
-    /// Hero acts; the decision is graded and the bots play on.
-    pub fn act(
-        &mut self,
-        trainer: &PreflopTrainer,
-        action: Action,
-    ) -> Result<&GradedDecision, PreflopError> {
-        let node = match (self.end.is_none(), self.state.to_act(), self.node) {
-            (true, Some(s), Some(n)) if s == self.hero => n,
-            _ => return Err(PreflopError::NotHeroTurn),
-        };
-        let chosen = trainer
-            .chart()
-            .node(node)
-            .action_index(action)
-            .ok_or(PreflopError::NotInTree(action))?;
-        let graded = trainer.grade(node, self.hero_hand(), chosen)?;
-        self.decisions.push(graded);
-        self.advance(trainer, node, action)?;
-        if action == Action::Fold && self.end.is_none() {
-            self.end = Some(HandEnd::HeroFolded);
-        }
-        self.run_bots(trainer)?;
-        Ok(self.decisions.last().expect("just pushed"))
-    }
-
-    fn advance(
-        &mut self,
-        trainer: &PreflopTrainer,
-        node: NodeId,
-        action: Action,
-    ) -> Result<(), PreflopError> {
-        let seat = self.state.to_act().expect("someone acts");
-        self.state = self.state.apply(action)?;
-        self.log.push((seat, action));
-        match trainer.chart().step(node, action) {
-            Lookup::Node(n) => self.node = Some(n),
-            Lookup::End => {
-                self.node = None;
-                self.finish_preflop()?;
-            }
-            Lookup::Left => {
-                self.node = None;
-                self.end = Some(HandEnd::LeftLibrary(self.state.history().line()));
-            }
-        }
-        Ok(())
-    }
-
-    /// Preflop closed inside the chart: settle folds and all-ins, or stop at
-    /// the flop.
-    fn finish_preflop(&mut self) -> Result<(), PreflopError> {
-        let live: Vec<&taful_core::engine::Player> =
-            self.state.players().iter().filter(|p| !p.folded).collect();
-        let all_in = live.iter().filter(|p| !p.all_in()).count() <= 1;
-        if matches!(self.state.phase(), Phase::Finished) || all_in {
-            while let Phase::NeedsBoard(_) = self.state.phase() {
-                self.state = self.state.deal_next()?;
-            }
-            self.end = Some(HandEnd::Settled(self.state.settle(&RsPokerEvaluator)?));
-        } else {
-            debug_assert_eq!(self.state.phase(), Phase::NeedsBoard(Street::Flop));
-            self.end = Some(HandEnd::ReachedFlop);
-        }
-        Ok(())
-    }
-
-    /// Reference bots (spec §9): sample the chart's strategy for their hand.
-    fn run_bots(&mut self, trainer: &PreflopTrainer) -> Result<(), PreflopError> {
-        while self.end.is_none() {
-            let Some(seat) = self.state.to_act() else {
-                break;
-            };
-            if seat == self.hero {
-                break;
-            }
-            let node = self.node.expect("inside the chart while running");
-            let hand = self.state.players()[seat].hole;
-            let freqs = trainer
-                .chart()
-                .strategy(node, hand)
-                .ok_or(PreflopError::NoData)?;
-            let actions = trainer.actions(node);
-            let idx: Vec<usize> = (0..actions.len()).collect();
-            let a = *idx
-                .choose_weighted(&mut self.rng, |&i| freqs[i])
-                .map_err(|_| PreflopError::NoData)?;
-            self.advance(trainer, node, actions[a])?;
-        }
-        Ok(())
-    }
-
-    /// Total EV lost by hero this hand, bb.
-    pub fn total_ev_loss_bb(&self) -> f64 {
-        self.decisions.iter().map(|d| d.ev_loss_bb).sum()
-    }
-
-    /// Hero's net result in bb once it is known (settled, or hero folded).
-    pub fn hero_net_bb(&self) -> Option<f64> {
-        match &self.end {
-            Some(HandEnd::Settled(s)) => Some(s.net[self.hero] as f64 / BB_CHIPS as f64),
-            Some(HandEnd::HeroFolded) => {
-                let lost = self.state.players()[self.hero].total_commit;
-                Some(-(lost as f64) / BB_CHIPS as f64)
-            }
-            _ => None,
-        }
     }
 }
 
@@ -663,48 +521,6 @@ mod tests {
         let g = t.grade(root, trash, raise).unwrap();
         assert!(g.grade > Grade::Correct, "{g:?}");
         assert!(g.hand_freqs[raise] < 0.01);
-    }
-
-    #[test]
-    fn full_hands_play_out_and_grade_every_hero_decision() {
-        let t = trainer();
-        let mut ends = [0usize; 3];
-        for seed in 0..200 {
-            let mut h = FullHand::new(&t, None, seed).unwrap();
-            let mut hero_turns = 0;
-            while h.end.is_none() {
-                let acts = h.hero_actions(&t);
-                assert!(!acts.is_empty(), "seed {seed}: stuck");
-                // Hero follows the chart's most frequent action.
-                let freqs = t.chart().strategy(h.node.unwrap(), h.hero_hand()).unwrap();
-                let best = (0..acts.len())
-                    .max_by(|&a, &b| freqs[a].total_cmp(&freqs[b]))
-                    .unwrap();
-                h.act(&t, acts[best]).unwrap();
-                hero_turns += 1;
-            }
-            assert_eq!(h.decisions.len(), hero_turns);
-            assert!(h.decisions.iter().all(|d| d.grade == Grade::Best));
-            match h.end.as_ref().unwrap() {
-                HandEnd::Settled(s) => {
-                    assert_eq!(s.net.iter().sum::<i64>(), 0);
-                    ends[0] += 1;
-                }
-                HandEnd::ReachedFlop => ends[1] += 1,
-                HandEnd::LeftLibrary(_) => ends[2] += 1,
-                HandEnd::HeroFolded => {
-                    assert!(h.hero_net_bb().unwrap() <= 0.0);
-                    ends[0] += 1;
-                }
-            }
-            assert!(h.hero_actions(&t).is_empty());
-            assert!(matches!(
-                h.act(&t, Action::Fold),
-                Err(PreflopError::NotHeroTurn)
-            ));
-        }
-        // Most hands end preflop by folds; some see a flop.
-        assert!(ends[0] > 50 && ends[1] > 10, "{ends:?}");
     }
 
     #[test]

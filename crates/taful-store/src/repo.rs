@@ -528,6 +528,20 @@ pub struct NewHand<'a> {
     pub hero_seat: u32,
     pub bot_ids: Value,
     pub library_format_version: Option<u32>,
+    /// The hand as data for replay (JSON), once known.
+    pub replay: Option<Value>,
+}
+
+/// Decision context (spec §13): its spot template and leak bucket.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct DecisionContext<'a> {
+    pub template_key: &'a str,
+    pub spot: &'a str,
+    pub street: &'a str,
+    pub node_type: &'a str,
+    pub texture: Option<&'a str>,
+    /// Index into the hand's replay states (full hands).
+    pub step: Option<u32>,
 }
 
 /// One graded hero decision.
@@ -544,15 +558,120 @@ pub struct NewDecision<'a> {
     pub ev_loss: f64,
     pub grade: &'a str,
     pub thresholds_version: u32,
+    pub context: Option<DecisionContext<'a>>,
+}
+
+/// A stored hand.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HandRow {
+    pub id: String,
+    pub created_at: Millis,
+    pub mode: String,
+    pub config_key: String,
+    pub config_toml: String,
+    pub seed: u64,
+    pub hero_seat: u32,
+    pub ended_reason: Option<String>,
+    pub total_ev_loss: Option<f64>,
+    pub hero_net: Option<f64>,
+    pub replay: Option<Value>,
+}
+
+/// A stored decision.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DecisionRow {
+    pub id: String,
+    pub created_at: Millis,
+    pub hand_id: Option<String>,
+    pub node_key: String,
+    pub hero_combo: String,
+    pub chosen_action: String,
+    pub ev_per_action: Value,
+    pub frequencies: Value,
+    pub pot: f64,
+    pub ev_loss: f64,
+    pub grade: String,
+    pub thresholds_version: u32,
+    pub template_key: Option<String>,
+    pub spot: Option<String>,
+    pub street: Option<String>,
+    pub node_type: Option<String>,
+    pub texture: Option<String>,
+    pub step: Option<u32>,
+}
+
+/// EV loss of one leak bucket over the window (spec §13).
+#[derive(Debug, Clone, PartialEq)]
+pub struct BucketStats {
+    pub spot: String,
+    pub street: String,
+    pub node_type: String,
+    pub texture: Option<String>,
+    pub decisions: u32,
+    pub total_ev_loss: f64,
+    /// Decisions graded below `correct`.
+    pub mistakes: u32,
+}
+
+const HAND_COLS: &str = "id, created_at, mode, config_key, config_toml, seed, hero_seat, \
+    ended_reason, total_ev_loss, hero_net, replay";
+
+fn hand_row(r: &Row<'_>) -> rusqlite::Result<HandRow> {
+    let replay: Option<String> = r.get(10)?;
+    Ok(HandRow {
+        id: r.get(0)?,
+        created_at: r.get(1)?,
+        mode: r.get(2)?,
+        config_key: r.get(3)?,
+        config_toml: r.get(4)?,
+        seed: r.get::<_, i64>(5)? as u64,
+        hero_seat: r.get(6)?,
+        ended_reason: r.get(7)?,
+        total_ev_loss: r.get(8)?,
+        hero_net: r.get(9)?,
+        replay: replay.and_then(|s| serde_json::from_str(&s).ok()),
+    })
+}
+
+const DECISION_COLS: &str = "id, created_at, hand_id, node_key, hero_combo, chosen_action, \
+    ev_per_action, frequencies, pot, ev_loss, grade, thresholds_version, template_key, spot, \
+    street, node_type, texture, step";
+
+fn decision_row(r: &Row<'_>) -> rusqlite::Result<DecisionRow> {
+    let json = |i: usize| -> rusqlite::Result<Value> {
+        let s: String = r.get(i)?;
+        Ok(serde_json::from_str(&s).unwrap_or(Value::Null))
+    };
+    Ok(DecisionRow {
+        id: r.get(0)?,
+        created_at: r.get(1)?,
+        hand_id: r.get(2)?,
+        node_key: r.get(3)?,
+        hero_combo: r.get(4)?,
+        chosen_action: r.get(5)?,
+        ev_per_action: json(6)?,
+        frequencies: json(7)?,
+        pot: r.get(8)?,
+        ev_loss: r.get(9)?,
+        grade: r.get(10)?,
+        thresholds_version: r.get(11)?,
+        template_key: r.get(12)?,
+        spot: r.get(13)?,
+        street: r.get(14)?,
+        node_type: r.get(15)?,
+        texture: r.get(16)?,
+        step: r.get(17)?,
+    })
 }
 
 impl Store {
     pub fn insert_hand(&self, h: &NewHand<'_>) -> Result<String> {
         let id = new_id();
+        let replay = h.replay.as_ref().map(serde_json::to_string).transpose()?;
         self.conn().execute(
             "INSERT INTO hands (id, created_at, updated_at, mode, config_key, config_toml, seed,
-                 hero_seat, bot_ids, library_format_version)
-             VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                 hero_seat, bot_ids, library_format_version, replay)
+             VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 id,
                 self.now(),
@@ -563,30 +682,41 @@ impl Store {
                 h.seed as i64,
                 h.hero_seat,
                 serde_json::to_string(&h.bot_ids)?,
-                h.library_format_version
+                h.library_format_version,
+                replay
             ],
         )?;
         Ok(id)
     }
 
     /// Marks a hand finished.
-    pub fn finish_hand(&self, id: &str, ended_reason: &str, total_ev_loss: f64) -> Result<()> {
+    pub fn finish_hand(
+        &self,
+        id: &str,
+        ended_reason: &str,
+        total_ev_loss: f64,
+        hero_net: Option<f64>,
+    ) -> Result<()> {
         let now = self.now();
         self.conn().execute(
-            "UPDATE hands SET ended_reason = ?1, total_ev_loss = ?2, updated_at = ?3
-             WHERE id = ?4",
-            params![ended_reason, total_ev_loss, now, id],
+            "UPDATE hands SET ended_reason = ?1, total_ev_loss = ?2, hero_net = ?3,
+                 updated_at = ?4
+             WHERE id = ?5",
+            params![ended_reason, total_ev_loss, hero_net, now, id],
         )?;
         Ok(())
     }
 
     pub fn insert_decision(&self, d: &NewDecision<'_>) -> Result<String> {
         let id = new_id();
+        let c = d.context.clone().unwrap_or_default();
+        let some = |s: &str| (!s.is_empty()).then(|| s.to_string());
         self.conn().execute(
             "INSERT INTO decisions (id, created_at, updated_at, hand_id, node_key, hero_combo,
                  chosen_action, ev_per_action, frequencies, pot, ev_loss, grade,
-                 thresholds_version)
-             VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                 thresholds_version, template_key, spot, street, node_type, texture, step)
+             VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
+                 ?16, ?17, ?18)",
             params![
                 id,
                 self.now(),
@@ -599,10 +729,98 @@ impl Store {
                 d.pot,
                 d.ev_loss,
                 d.grade,
-                d.thresholds_version
+                d.thresholds_version,
+                some(c.template_key),
+                some(c.spot),
+                some(c.street),
+                some(c.node_type),
+                c.texture,
+                c.step
             ],
         )?;
         Ok(id)
+    }
+
+    /// The latest hands of `mode`, newest first.
+    pub fn recent_hands(&self, mode: &str, limit: u32) -> Result<Vec<HandRow>> {
+        let mut stmt = self.conn().prepare(&format!(
+            "SELECT {HAND_COLS} FROM hands
+             WHERE deleted_at IS NULL AND mode = ?1 AND ended_reason IS NOT NULL
+             ORDER BY created_at DESC, id DESC LIMIT ?2"
+        ))?;
+        let rows = stmt.query_map(params![mode, limit], hand_row)?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn hand(&self, id: &str) -> Result<Option<HandRow>> {
+        Ok(self
+            .conn()
+            .query_row(
+                &format!("SELECT {HAND_COLS} FROM hands WHERE id = ?1 AND deleted_at IS NULL"),
+                params![id],
+                hand_row,
+            )
+            .optional()?)
+    }
+
+    /// A hand's decisions in play order.
+    pub fn hand_decisions(&self, hand_id: &str) -> Result<Vec<DecisionRow>> {
+        let mut stmt = self.conn().prepare(&format!(
+            "SELECT {DECISION_COLS} FROM decisions
+             WHERE hand_id = ?1 AND deleted_at IS NULL ORDER BY step, created_at, id"
+        ))?;
+        let rows = stmt.query_map(params![hand_id], decision_row)?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// EV loss per leak bucket over the last `window` decisions that have a
+    /// context, worst total first.
+    pub fn bucket_stats(&self, window: u32) -> Result<Vec<BucketStats>> {
+        let mut stmt = self.conn().prepare(
+            "SELECT spot, street, node_type, texture, count(*), sum(ev_loss),
+                 sum(CASE WHEN grade IN ('inaccuracy', 'mistake', 'blunder') THEN 1 ELSE 0 END)
+             FROM (SELECT * FROM decisions
+                   WHERE deleted_at IS NULL AND spot IS NOT NULL
+                   ORDER BY created_at DESC, id DESC LIMIT ?1)
+             GROUP BY spot, street, node_type, texture
+             ORDER BY sum(ev_loss) DESC",
+        )?;
+        let rows = stmt.query_map(params![window], |r| {
+            Ok(BucketStats {
+                spot: r.get(0)?,
+                street: r.get(1)?,
+                node_type: r.get(2)?,
+                texture: r.get(3)?,
+                decisions: r.get(4)?,
+                total_ev_loss: r.get(5)?,
+                mistakes: r.get(6)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Counts a line that left the library (spec §10.2, `solve_candidates`).
+    pub fn note_solve_candidate(&self, config_key: &str, line: &str, history: &str) -> Result<()> {
+        let now = self.now();
+        self.conn().execute(
+            "INSERT INTO solve_candidates (id, created_at, updated_at, config_key, line, history,
+                 count, last_seen)
+             VALUES (?1, ?2, ?2, ?3, ?4, ?5, 1, ?2)
+             ON CONFLICT (config_key, line, history) DO UPDATE SET
+                 count = count + 1, last_seen = ?2, updated_at = ?2, deleted_at = NULL",
+            params![new_id(), now, config_key, line, history],
+        )?;
+        Ok(())
+    }
+
+    /// `(line, history, count)` of the most frequent solve candidates.
+    pub fn solve_candidates(&self, limit: u32) -> Result<Vec<(String, String, u32)>> {
+        let mut stmt = self.conn().prepare(
+            "SELECT line, history, count FROM solve_candidates WHERE deleted_at IS NULL
+             ORDER BY count DESC, last_seen DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![limit], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 }
 
@@ -768,7 +986,7 @@ mod tests {
 
     #[test]
     fn hands_and_decisions() {
-        let (s, _) = store();
+        let (s, t) = store();
         let h = s
             .insert_hand(&NewHand {
                 mode: "full_hand",
@@ -778,37 +996,84 @@ mod tests {
                 hero_seat: 2,
                 bot_ids: json!(["ref"]),
                 library_format_version: Some(1),
+                replay: Some(json!({"board": "AsKd7c"})),
             })
             .unwrap();
-        s.insert_decision(&NewDecision {
-            hand_id: Some(&h),
-            node_key: "n",
-            hero_combo: "AsKs",
-            chosen_action: "raise",
-            ev_per_action: json!({}),
-            frequencies: json!({}),
-            pot: 1.5,
-            ev_loss: 0.0,
-            grade: "best",
-            thresholds_version: 1,
-        })
-        .unwrap();
-        s.finish_hand(&h, "showdown", 0.0).unwrap();
-        // Foreign keys are enforced.
-        assert!(
-            s.insert_decision(&NewDecision {
-                hand_id: Some("nope"),
+        fn decision<'a>(hand: Option<&'a str>, grade: &'a str, loss: f64) -> NewDecision<'a> {
+            NewDecision {
+                hand_id: hand,
                 node_key: "n",
                 hero_combo: "AsKs",
                 chosen_action: "raise",
-                ev_per_action: json!({}),
-                frequencies: json!({}),
+                ev_per_action: json!([1.0, 2.0]),
+                frequencies: json!([0.5, 0.5]),
                 pot: 1.5,
-                ev_loss: 0.0,
-                grade: "best",
+                ev_loss: loss,
+                grade,
                 thresholds_version: 1,
-            })
-            .is_err()
+                context: Some(DecisionContext {
+                    template_key: "v1|k|btn-bb-srp||A-r-u-0|BB",
+                    spot: "btn-bb-srp",
+                    street: "flop",
+                    node_type: "unopened",
+                    texture: Some("A-r-u-0"),
+                    step: Some(7),
+                }),
+            }
+        }
+        let hid = h.as_str();
+        s.insert_decision(&decision(Some(hid), "best", 0.0))
+            .unwrap();
+        t.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        s.insert_decision(&decision(Some(hid), "mistake", 1.25))
+            .unwrap();
+        assert!(
+            s.recent_hands("full_hand", 10).unwrap().is_empty(),
+            "unfinished"
         );
+        s.finish_hand(&h, "settled", 1.25, Some(-3.0)).unwrap();
+        let hands = s.recent_hands("full_hand", 10).unwrap();
+        assert_eq!(hands.len(), 1);
+        assert_eq!(hands[0].seed, u64::MAX);
+        assert_eq!(hands[0].hero_net, Some(-3.0));
+        assert_eq!(hands[0].replay, Some(json!({"board": "AsKd7c"})));
+        assert_eq!(s.hand(&h).unwrap().unwrap(), hands[0]);
+        let ds = s.hand_decisions(&h).unwrap();
+        assert_eq!(ds.len(), 2);
+        assert_eq!(ds[1].grade, "mistake");
+        assert_eq!(ds[1].step, Some(7));
+        assert_eq!(ds[1].ev_per_action, json!([1.0, 2.0]));
+        assert_eq!(ds[0].texture.as_deref(), Some("A-r-u-0"));
+
+        // Spot-mode decisions count for leaks too; no context = ignored.
+        s.insert_decision(&decision(None, "blunder", 3.0)).unwrap();
+        s.insert_decision(&NewDecision {
+            context: None,
+            ..decision(None, "blunder", 9.0)
+        })
+        .unwrap();
+        let b = s.bucket_stats(100).unwrap();
+        assert_eq!(b.len(), 1);
+        assert_eq!((b[0].decisions, b[0].mistakes), (3, 2));
+        assert!((b[0].total_ev_loss - 4.25).abs() < 1e-9);
+        assert_eq!(s.bucket_stats(1).unwrap()[0].decisions, 1, "window");
+
+        // Foreign keys are enforced.
+        assert!(
+            s.insert_decision(&decision(Some("nope"), "best", 0.0))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn solve_candidates_count() {
+        let (s, _) = store();
+        s.note_solve_candidate("k", "UTG:r250,HJ:c", "").unwrap();
+        s.note_solve_candidate("k", "UTG:r250,HJ:c", "").unwrap();
+        s.note_solve_candidate("k", "BTN:r250,BB:c", "BB:x")
+            .unwrap();
+        let c = s.solve_candidates(10).unwrap();
+        assert_eq!(c[0], ("UTG:r250,HJ:c".into(), "".into(), 2));
+        assert_eq!(c.len(), 2);
     }
 }

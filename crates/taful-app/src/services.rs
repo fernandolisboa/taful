@@ -68,7 +68,10 @@ pub struct App {
     pub(crate) calc: CalcSettings,
     pub(crate) thresholds: Thresholds,
     pub(crate) scheduler: Scheduler,
-    data_dir: Option<PathBuf>,
+    pub(crate) data_dir: Option<PathBuf>,
+    /// Overrides the postflop library folder (tests, settings).
+    pub(crate) library_dir: Option<PathBuf>,
+    pub(crate) trainers: Option<std::sync::Arc<crate::training::Trainers>>,
     policy: BackupPolicy,
     seed: u64,
 }
@@ -117,6 +120,8 @@ impl App {
             // Replaced below once the retention setting can be read.
             scheduler: Scheduler::new(DEFAULT_RETENTION),
             data_dir,
+            library_dir: None,
+            trainers: None,
             policy: BackupPolicy::default(),
             seed,
         };

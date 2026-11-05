@@ -14,6 +14,7 @@
 pub mod calc_trainer;
 pub mod content;
 pub mod fmt;
+pub mod hand;
 pub mod i18n;
 pub mod lessons;
 pub mod model;
@@ -22,7 +23,10 @@ pub mod preflop;
 pub mod review;
 pub mod review_session;
 pub mod services;
+pub mod template;
 pub mod theme;
+pub mod training;
+pub mod walk;
 
 pub use services::{App, Home, default_data_dir, keys};
 
