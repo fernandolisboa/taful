@@ -1,0 +1,16 @@
+[package]
+name = "taful-library-build"
+description = "Offline library build: preflop solve, postflop batch solves, export to the Taful format. Never shipped."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# The postflop-solver fork (AGPL, D11) is added here in M4. This is the only
+# crate allowed to depend on it; tools/arch-check enforces that.
+[dependencies]
+taful-core.workspace = true
+taful-solver.workspace = true

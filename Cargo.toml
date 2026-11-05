@@ -1,12 +1,38 @@
 [workspace]
 resolver = "3"
-members = ["apps/desktop"]
+members = ["crates/*", "apps/desktop", "tools/*"]
 exclude = ["spikes/solver", "spikes/evaluator"]
 
 [workspace.package]
+version = "0.0.1"
 edition = "2024"
 license = "UNLICENSED"
 publish = false
+
+[workspace.dependencies]
+# Workspace crates. The allowed edges between them are enforced by
+# tools/arch-check (spec §4): core ← solver ← app ← desktop, core ← content ← app,
+# store ← app.
+taful-core = { path = "crates/taful-core" }
+taful-solver = { path = "crates/taful-solver" }
+taful-content = { path = "crates/taful-content" }
+taful-store = { path = "crates/taful-store" }
+taful-app = { path = "crates/taful-app" }
+
+# Third party (spec §4.1).
+fluent-bundle = "0.16"
+gpui = "=0.2.2"
+serde = { version = "1", features = ["derive"] }
+fluent-syntax = "0.12"
+serde_json = "1"
+unic-langid = "0.9"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
 
 [profile.release]
 codegen-units = 1

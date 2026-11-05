@@ -1,0 +1,13 @@
+[package]
+name = "taful-content"
+description = "Taful lesson/quiz/drill loader, expression language, renderer and content checks."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+taful-core.workspace = true

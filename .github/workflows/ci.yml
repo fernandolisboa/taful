@@ -1,19 +1,60 @@
-name: desktop (Windows)
+name: CI
 
+# Docs-only changes skip CI: the Windows release build takes ~10 min.
 on:
   push:
     branches: [main]
-    paths: ["apps/**", "crates/**", "Cargo.*", ".github/workflows/desktop-windows.yml"]
+    paths-ignore: ["docs/**", "**.md"]
   pull_request:
-    paths: ["apps/**", "crates/**", "Cargo.*", ".github/workflows/desktop-windows.yml"]
+    paths-ignore: ["docs/**", "**.md"]
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
 jobs:
-  build:
+  # UI-free crates and tools. gpui 0.2.2 does not build on Linux (xattr vs
+  # libc >= 0.2.182, see docs/spikes/9.1-gpui-table.md), so the desktop app
+  # is excluded here and covered by the Windows job.
+  linux:
+    name: Linux (core crates, tools, checks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Architecture checks (dependency direction, no AGPL in shipped crates)
+        run: cargo run --locked -q -p taful-arch-check
+
+      - name: Clippy
+        run: cargo clippy --locked --workspace --exclude taful-desktop --all-targets
+
+      - name: Tests
+        run: cargo test --locked --workspace --exclude taful-desktop
+
+      - name: WASM-safe crates build for wasm32
+        run: cargo build --locked --target wasm32-unknown-unknown -p taful-core -p taful-solver
+
+      - name: Content check
+        run: cargo run --locked -q -p taful-content-check -- content
+
+  windows:
+    name: Windows (desktop app)
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -21,18 +62,18 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy, rustfmt
+          components: clippy
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Format
-        run: cargo fmt --all --check
-
       - name: Clippy
-        run: cargo clippy --locked --release -- -D warnings
+        run: cargo clippy --locked --release -p taful-desktop --all-targets
+
+      - name: Tests (color-literal lint, Fluent ids)
+        run: cargo test --locked --release -p taful-desktop
 
       - name: Build
-        run: cargo build --locked --release
+        run: cargo build --locked --release -p taful-desktop
 
       # Launch the app on the runner's desktop and capture the screen, so the
       # render can be checked without a local Windows machine. The runner has
