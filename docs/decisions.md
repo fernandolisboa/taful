@@ -50,7 +50,7 @@ It exercises the whole closed loop (simulate → grade → review → drill → 
 
 ### Implications
 - Library entries are keyed by `GameConfig` + preflop line + board, so new formats are additive (D1).
-- Boards outside the subset need a mapping strategy (nearest strategically-equivalent flop, or on-demand solve later). To be decided in the spec.
+- Boards outside the subset need a mapping strategy (nearest strategically-equivalent flop, or on-demand solve later). To be decided in the spec. **Superseded by D13** (deal only solved flops; no mapping).
 - Push/fold and ICM charts for tournaments are cheap to compute and can be generated independently of the postflop library when the MTT/SNG work starts.
 
 ### Solver spike results (amended 2026-11-04)
@@ -289,3 +289,42 @@ The user expects a web version, and download size matters. The ~4–5GB library 
 - **Compact format:** Taful's library format quantizes strategy frequencies (e.g. 8-bit) and EVs, and may drop nodes that are reached with negligible frequency. The estimated reduction is 2–4x vs the solver's 16-bit trees, to be measured when the format is built.
 - **An own turn solver was considered and rejected for now.** Turns took ~5s natively on 4 cores, and would take an estimated 10–30s in single-threaded WASM, which is a wait on every turn in full-hand mode. The subgame-solver trait keeps it possible later.
 - The client needs a library host (an endpoint under the configurable base URL, D10) and an offline path: spots already cached keep working offline, and uncached spots end the hand early with a message, like lines outside the library (D4).
+
+---
+
+## D12 — Source of preflop reference charts
+
+**Date:** 2026-11-04 · **Ref:** [spec.md](spec.md) §6, Q1
+
+### Decision
+Preflop charts (frequencies and per-combo action EVs) are produced by **Taful's own offline preflop solver** in `tools/library-build`:
+- DCFR over the full preflop tree of the `GameConfig` with a fixed sizing set.
+- Postflop is abstracted at terminal nodes as `pot × equity × realization`, with realization factors per position, pot type and SPR bucket.
+- Realization factors are **calibrated from the postflop library** (each combo's root EV vs pot × raw equity, averaged over the flop subset), then the charts are re-solved. The build tool reports the chart diff per iteration.
+- Nothing is copied from proprietary sources.
+
+### Why
+D3 grades by EV loss, so preflop needs per-combo EVs, not just frequencies; frequency-only charts would break the single grading ruler. An own solver also keeps the data free of licensing questions and makes every `GameConfig` (D1) a build-manifest change.
+
+### Implications
+- Build order: preflop v0 → postflop library (ranges from v0) → calibrate → preflop v1. Preflop charts block M3; the postflop library uses them as input ranges.
+- Preflop EVs are model-based approximations; their accuracy is bounded by the realization model. The exploitability of each node within the abstracted game is stored, and "best" uses it as tolerance (D3).
+- Push/fold and ICM charts for tournaments stay a separate, exact computation.
+
+---
+
+## D13 — Boards outside the solved flop subset
+
+**Date:** 2026-11-04 · **Ref:** [spec.md](spec.md) §7.2, §7.4, Q2
+
+### Decision
+- **Postflop deals only flops the library has solved.** When a hand reaches a solved configuration, the flop is drawn from the solved canonical flops, each with a random suit isomorph, weighted by the number of real flops it represents and conditioned on the hole cards already dealt. Grading stays exact.
+- **Coverage grows to all 1,755 canonical flops** (100% of the 22,100 real flops). The first build solves ~49 flops per configuration to unblock M4; later builds add flops in order of real-flop weight (ties broken by stratified sampling over texture classes) until the library is complete.
+
+### Why
+Mapping a random flop to the "nearest" solved flop changes hero's real hand strength, so grades would be wrong exactly where they matter. Ending the hand on unsolved flops would stop ~97% of hands at the flop. 49 canonical flops (~620 real flops) are too little variety for a trainer used daily, which is why full coverage is the goal rather than a fixed subset.
+
+### Implications
+- The flop subset is a build-manifest parameter; adding flops is a build job, never a code change.
+- Build machine: the author's PC (Ryzen 9 9950X3D, 16 cores / 32 threads, 32GB), at low priority at night and on weekends; the build must be resumable and pausable. Benchmarked 2026-11-04 (spec §7.3): SRP medium ~4–7 min per flop, 3-bet pot large ~1.5 min. The first slice takes ~16 h; full coverage takes ~430–700 h, about 3–4 weeks 24/7 or 6–10 weeks of nights and weekends.
+- 32GB RAM fits one SRP solve at a time (up to ~14GB in 16-bit). Shipped size grows proportionally (to be measured with the compact format, spec §7.5).
