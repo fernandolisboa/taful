@@ -23,6 +23,7 @@ rand.workspace = true
 rand_chacha.workspace = true
 fsrs.workspace = true
 jiff.workspace = true
+blake3.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

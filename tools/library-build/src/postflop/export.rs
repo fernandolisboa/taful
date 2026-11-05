@@ -1,0 +1,417 @@
+//! Export a solved `PostFlopGame` to Taful's format, truncated at the river
+//! (spec §7.5, D11): flop decisions, one chance node per closed flop line
+//! (turn cards, with suit-isomorphic turns stored as mirrors), turn
+//! decisions, and `End` where the river would be dealt.
+
+use postflop_solver::{Action as SAction, PostFlopGame};
+use taful_core::action::Action;
+use taful_core::cards::{Card, Hand, NUM_COMBOS};
+use taful_core::config::{BB_CHIPS, Chips, GameConfig};
+use taful_core::iso::SuitPerm;
+use taful_solver::format::{
+    Branch, ChanceNode, Child, Domain, Header, LibraryFile, Node, NodeAction, ev_scale_for,
+    quantize_ev, quantize_strategy,
+};
+
+use super::manifest::Manifest;
+use super::{Job, SOLVER_ID, SolveReport};
+
+struct RawNode {
+    player: usize,
+    pot: Chips,
+    actions: Vec<NodeAction>,
+    live: Vec<u16>,
+    /// `[live][action]`.
+    strategy: Vec<f32>,
+    /// `[live][action]`, bb.
+    ev: Vec<f32>,
+}
+
+struct Ex<'a> {
+    job: &'a Job<'a>,
+    prune_reach_pct: f32,
+    min_combo_reach: f32,
+    /// Per player: root weight per solver hand index, and the root total of
+    /// normalized weights.
+    root_weights: [Vec<f32>; 2],
+    root_total: [f32; 2],
+    /// Per player: solver hand index → Taful combo.
+    combos: [Vec<u16>; 2],
+    stabilizer: Vec<SuitPerm>,
+    nodes: Vec<Option<RawNode>>,
+    chance: Vec<ChanceNode>,
+    pruned: usize,
+}
+
+fn map_action(a: SAction) -> Result<Action, String> {
+    let chips = |x: i32| Chips::try_from(x).map_err(|e| e.to_string());
+    Ok(match a {
+        SAction::Fold => Action::Fold,
+        SAction::Check => Action::Check,
+        SAction::Call => Action::Call,
+        SAction::Bet(x) => Action::Bet(chips(x)?),
+        SAction::Raise(x) => Action::Raise(chips(x)?),
+        SAction::AllIn(_) => Action::AllIn,
+        other => return Err(format!("unexpected action {other:?}")),
+    })
+}
+
+impl Ex<'_> {
+    fn all_in(&self, game: &PostFlopGame) -> bool {
+        let stack = self.job.geometry.stack as i32;
+        game.total_bet_amount().iter().any(|&b| b >= stack)
+    }
+
+    /// Visit the node at `history`; returns how its parent points at it.
+    fn visit(
+        &mut self,
+        game: &mut PostFlopGame,
+        history: &mut Vec<usize>,
+    ) -> Result<Child, String> {
+        game.apply_history(history);
+        if game.is_terminal_node() {
+            return Ok(Child::End);
+        }
+        if game.is_chance_node() {
+            // River chance (turn closed) or an all-in runout: the library
+            // ends here; the app solves rivers on demand (D11).
+            if game.current_board().len() >= 4 || self.all_in(game) {
+                return Ok(Child::End);
+            }
+            return self.turn_chance(game, history);
+        }
+        game.cache_normalized_weights();
+        let p = game.current_player();
+        let normalized: f32 = game.normalized_weights(p).iter().sum();
+        if !history.is_empty() && 100.0 * normalized < self.prune_reach_pct * self.root_total[p] {
+            self.pruned += 1;
+            return Ok(Child::Pruned);
+        }
+        let idx = self.nodes.len();
+        self.nodes.push(None);
+
+        let s_actions = game.available_actions();
+        let k = s_actions.len();
+        let strategy = game.strategy();
+        let ev = game.expected_values_detail(p);
+        let weights = game.weights(p).to_vec();
+        let n = weights.len();
+        let bets = game.total_bet_amount();
+        let pot = self.job.geometry.pot + (bets[0] + bets[1]) as Chips;
+
+        let mut rows: Vec<(u16, usize)> = (0..n)
+            .filter(|&h| {
+                let root = self.root_weights[p][h];
+                weights[h] > 0.0 && root > 0.0 && weights[h] >= self.min_combo_reach * root
+            })
+            .map(|h| (self.combos[p][h], h))
+            .collect();
+        rows.sort_unstable();
+        let mut node = RawNode {
+            player: p,
+            pot,
+            actions: Vec::with_capacity(k),
+            live: rows.iter().map(|r| r.0).collect(),
+            strategy: Vec::with_capacity(rows.len() * k),
+            ev: Vec::with_capacity(rows.len() * k),
+        };
+        for &(_, h) in &rows {
+            for a in 0..k {
+                node.strategy.push(strategy[a * n + h]);
+                node.ev.push(ev[a * n + h] / BB_CHIPS as f32);
+            }
+        }
+        for (a, &sa) in s_actions.iter().enumerate() {
+            history.push(a);
+            let child = self.visit(game, history)?;
+            history.pop();
+            node.actions.push(NodeAction {
+                action: map_action(sa)?,
+                child,
+            });
+        }
+        self.nodes[idx] = Some(node);
+        Ok(Child::Node(idx as u32))
+    }
+
+    fn turn_chance(
+        &mut self,
+        game: &mut PostFlopGame,
+        history: &mut Vec<usize>,
+    ) -> Result<Child, String> {
+        let possible = game.possible_cards();
+        let mut branches: Vec<(Card, Branch)> = Vec::new();
+        for i in 0..52u8 {
+            if possible & (1u64 << i) == 0 {
+                continue;
+            }
+            let card = Card::from_index(i).expect("< 52");
+            // The smallest card this one maps to under a flop symmetry.
+            let (of, perm) = self
+                .stabilizer
+                .iter()
+                .map(|p| (p.card(card), *p))
+                .min_by_key(|(c, _)| *c)
+                .expect("identity is in the stabilizer");
+            if of < card {
+                branches.push((card, Branch::Mirror { of, perm }));
+                continue;
+            }
+            history.push(usize::from(i));
+            let child = self.visit(game, history)?;
+            history.pop();
+            game.apply_history(history);
+            branches.push((
+                card,
+                match child {
+                    Child::Node(n) => Branch::Node(n),
+                    Child::Pruned | Child::End => Branch::Pruned,
+                    Child::Chance(_) => return Err("chance after chance".into()),
+                },
+            ));
+        }
+        // A mirror of a pruned branch is pruned too.
+        for b in 0..branches.len() {
+            if let Branch::Mirror { of, .. } = branches[b].1
+                && matches!(
+                    branches.iter().find(|(c, _)| *c == of),
+                    Some((_, Branch::Pruned))
+                )
+            {
+                branches[b].1 = Branch::Pruned;
+            }
+        }
+        self.chance.push(ChanceNode { branches });
+        Ok(Child::Chance((self.chance.len() - 1) as u32))
+    }
+}
+
+fn quantize_range(weights: &[f32]) -> Vec<u8> {
+    weights
+        .iter()
+        .map(|&w| (w.clamp(0.0, 1.0) * 255.0).round() as u8)
+        .collect()
+}
+
+pub fn export(
+    game: &mut PostFlopGame,
+    job: &Job,
+    config: &GameConfig,
+    m: &Manifest,
+    report: &SolveReport,
+    manifest_hash: [u8; 32],
+) -> Result<LibraryFile, String> {
+    game.back_to_root();
+    game.cache_normalized_weights();
+    let combos = [0, 1].map(|p| {
+        game.private_cards(p)
+            .iter()
+            .map(|&(a, b)| {
+                let h = Hand::new(
+                    Card::from_index(a).expect("< 52"),
+                    Card::from_index(b).expect("< 52"),
+                )
+                .expect("distinct");
+                h.combo() as u16
+            })
+            .collect::<Vec<u16>>()
+    });
+    let root_weights = [game.weights(0).to_vec(), game.weights(1).to_vec()];
+    let root_total = [0, 1].map(|p| game.normalized_weights(p).iter().sum::<f32>());
+    let mut ex = Ex {
+        job,
+        prune_reach_pct: m.solve.prune_reach_pct,
+        min_combo_reach: m.solve.min_combo_reach,
+        root_weights,
+        root_total,
+        combos,
+        stabilizer: job.flop.stabilizer(),
+        nodes: Vec::new(),
+        chance: Vec::new(),
+        pruned: 0,
+    };
+    let mut history = Vec::new();
+    ex.visit(game, &mut history)?;
+    game.back_to_root();
+
+    let raw: Vec<RawNode> = ex
+        .nodes
+        .into_iter()
+        .map(|n| n.ok_or("unfinished node"))
+        .collect::<Result<_, _>>()?;
+    let max_ev = raw
+        .iter()
+        .flat_map(|n| n.ev.iter())
+        .fold(0.0f32, |m, e| m.max(e.abs()));
+    let ev_scale = ev_scale_for(max_ev);
+    let positions = [job.geometry.oop, job.geometry.ip];
+    let expl_chips = report.exploitability.max(0.0);
+    let nodes = raw
+        .into_iter()
+        .map(|n| {
+            let k = n.actions.len();
+            Node {
+                player: positions[n.player],
+                pot: n.pot,
+                exploitability_pct: 100.0 * expl_chips / n.pot as f32,
+                live: n.live,
+                strategy: n.strategy.chunks(k).flat_map(quantize_strategy).collect(),
+                ev: n.ev.iter().map(|&e| quantize_ev(e, ev_scale)).collect(),
+                actions: n.actions,
+            }
+        })
+        .collect();
+    debug_assert_eq!(job.ranges[0].len(), NUM_COMBOS);
+    let file = LibraryFile {
+        header: Header {
+            game_config: config.to_toml(),
+            config_key: config.key().0,
+            line: job.line.to_string(),
+            board: job.flop.cards().to_vec(),
+            bet_tree: job.tree.to_toml(),
+            domain: Domain::Combos,
+            root_ranges: vec![
+                (job.geometry.oop, quantize_range(&job.ranges[0])),
+                (job.geometry.ip, quantize_range(&job.ranges[1])),
+            ],
+            exploitability_pct: 100.0 * expl_chips / job.geometry.pot as f32,
+            ev_scale,
+            solver_id: SOLVER_ID.into(),
+            manifest_hash,
+        },
+        nodes,
+        chance: ex.chance,
+    };
+    file.validate().map_err(|e| e.to_string())?;
+    Ok(file)
+}
+
+#[cfg(test)]
+mod tests {
+    use postflop_solver::PostFlopGame;
+    use taful_core::action::{Action, Line};
+    use taful_core::cards::{Card, Hand};
+    use taful_core::iso::Flop;
+    use taful_core::range::Range;
+    use taful_solver::format::{Branch, LibraryFile};
+    use taful_solver::postflop::{PostflopFile, Step, geometry};
+    use taful_solver::preflop::PreflopChart;
+
+    use super::super::manifest::{Manifest, Tree};
+    use super::super::{Job, build_game, solve};
+    use super::export;
+
+    fn small_tree() -> Tree {
+        Tree {
+            flop: ["50%".into(), String::new()],
+            turn: ["75%".into(), String::new()],
+            river: ["75%".into(), String::new()],
+            add_allin_threshold: 1.5,
+            force_allin_threshold: 0.15,
+            merging_threshold: 0.1,
+        }
+    }
+
+    fn solved(flop: &str) -> (PostFlopGame, LibraryFile, Flop) {
+        let chart = PreflopChart::decode(include_bytes!(
+            "../../../../library/v1/c1c6782d353382947a3bbcf1493b6a17155b2e63a7218bf8f54cc38be59cf37f/preflop.tafl"
+        ))
+        .unwrap();
+        let line: Line = "UTG:f,HJ:f,CO:f,BTN:r250,SB:r950,BB:f,BTN:c"
+            .parse()
+            .unwrap();
+        let g = geometry(chart.config(), &line).unwrap();
+        let r = |s: &str| s.parse::<Range>().unwrap().weights().to_vec();
+        let tree = small_tree();
+        let flop: Flop = flop.parse::<Flop>().unwrap().canonical().0;
+        let job = Job {
+            tree: &tree,
+            line,
+            geometry: g,
+            ranges: [r("QQ+,AK,T9s,JTs,A5s"), r("JJ-88,AQs,KQs,98s,T8s,AJo")],
+            flop,
+        };
+        let mut m =
+            Manifest::parse(include_str!("../../manifests/postflop-6max-100bb.toml")).unwrap();
+        m.solve.prune_reach_pct = 0.0;
+        m.solve.min_combo_reach = 0.0;
+        m.solve.max_iterations = 60;
+        let mut game = build_game(&job).unwrap();
+        game.allocate_memory(false);
+        let report = solve(&mut game, &m.solve, job.geometry.pot as f32);
+        let file = export(&mut game, &job, chart.config(), &m, &report, [0; 32]).unwrap();
+        (game, file, flop)
+    }
+
+    #[test]
+    fn export_roundtrips_and_mirrors_match_the_solver() {
+        // Two-tone: the two off-suits are interchangeable, so half the turns
+        // that are neither the flush suit nor the flop's other suit mirror.
+        let (mut game, file, flop) = solved("Td9d6h");
+        let bytes = file.encode();
+        let pf = PostflopFile::decode(&bytes).unwrap();
+        assert_eq!(pf.flop(), flop);
+        let ch = &file.chance[0];
+        let mirrors = ch
+            .branches
+            .iter()
+            .filter(|(_, b)| matches!(b, Branch::Mirror { .. }))
+            .count();
+        assert!(mirrors > 5, "{mirrors} mirrored turns");
+
+        // Real play on the canonical flop itself: check-check, then every
+        // turn; compare the file's turn strategy with the solver's.
+        let root = pf.root(flop).unwrap();
+        let first = pf.node(&root).actions[0].action;
+        assert_eq!(first, Action::Check);
+        let Step::Node(ip) = pf.step(&root, Action::Check) else {
+            panic!()
+        };
+        let Step::Chance(k, perm) = pf.step(&ip, Action::Check) else {
+            panic!()
+        };
+        for &(card, _) in ch.branches.iter() {
+            let Step::Node(c) = pf.deal(k, perm, card) else {
+                continue;
+            };
+            game.apply_history(&[0, 0, usize::from(card.index())]);
+            game.cache_normalized_weights();
+            let p = game.current_player();
+            let s = game.strategy();
+            let n = game.private_cards(p).len();
+            let mut checked = 0;
+            for (i, &(a, b)) in game.private_cards(p).iter().enumerate() {
+                let h =
+                    Hand::new(Card::from_index(a).unwrap(), Card::from_index(b).unwrap()).unwrap();
+                if game.weights(p)[i] <= 0.0 {
+                    continue;
+                }
+                let mine = pf.strategy(&c, h).expect("live combo stored");
+                let k = mine.len();
+                for (x, m) in mine.iter().enumerate() {
+                    let theirs = s[x * n + i];
+                    assert!(
+                        (m - theirs).abs() < 0.02,
+                        "{card} {h}: {m} vs {theirs} ({k} actions)"
+                    );
+                }
+                checked += 1;
+            }
+            assert!(checked > 0);
+        }
+        // A non-canonical member of the orbit reads the same tree through
+        // its suit permutation.
+        let swap = taful_core::iso::SuitPerm::swap(
+            taful_core::cards::Suit::CLUBS,
+            taful_core::cards::Suit::DIAMONDS,
+        );
+        let real = flop.permuted(&swap);
+        let r = pf.root(real).unwrap();
+        let h: Hand = "QsQh".parse().unwrap();
+        assert_eq!(
+            pf.strategy(&r, swap.hand(h)),
+            pf.strategy(&root, h),
+            "same strategy for the relabeled hand"
+        );
+    }
+}

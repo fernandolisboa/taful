@@ -219,16 +219,18 @@ Trees as measured in spike §9.2 (medium: flop 33/75%; turn and river 50/100%/al
 
 - ~49 canonical flops per configuration, chosen by **weighted stratified sampling** over the 1,755 suit-isomorphic flops on texture features (high card, pairedness, suitedness, connectedness). Each subset flop carries a weight = number of real flops it represents, so aggregate statistics stay unbiased.
 - The same subset is used for all five configurations so lessons and drills can compare them.
+- **As built (M4):** canonical flop = the smallest sorted card triple over the 24 suit relabelings (`taful-core::iso`). Strata = high card (A, K, Q, J–T, 9 or lower) × suits (rainbow, two-tone, monotone) × paired, 25 non-empty strata; each gets ≥ 1 of the 49 and the rest by real-flop weight (largest remainder). Within a stratum a seeded systematic weighted sample over flops sorted by connectedness (straights that use two flop ranks) spreads the picks across textures. The other 1,706 follow by orbit size, ties round-robin over strata (D13). The order is committed as `library/flops.txt` and pinned by a test. Deal weights (`iso::deal_weights`): each stratum gets its real-flop share, split among its solved flops by orbit size, so any prefix deals textures at their real frequency.
 
 ### 7.3 Build tool (`tools/library-build`)
 
 - Input: a build manifest (TOML) listing configs, ranges source, tree, flop subset, accuracy target.
 - Resumable batch job, one output file per (configuration, flop); a finished file is skipped on rerun. Logs time, memory, iterations, exploitability per solve.
 - Per solve, while the full tree is in memory: export the **turn-truncated** strategy and EVs (D11), and, after the first slice, per-profile best-response EVs (D8).
-- Validation: the own river solver is checked against `postflop-solver` on a fixed set of river spots (EVs and exploitability within tolerance, D11). Runs in the tool's tests, not in app CI.
+- Validation: the own river solver is checked against `postflop-solver` on a fixed set of river spots (EVs and exploitability within tolerance, D11). Runs in the tool's tests, not in app CI. **As built (M4):** two spots (SRP and 3-bet pot ranges from the charts); same root actions, range EVs within 0.5% of the pot (measured: < 0.1%), mean per-hand root EV difference < 1% of the pot. It takes well under a second, so it runs with the tool's normal tests in CI.
 - Hardware: ≥ 32GB RAM for SRP dry boards (spike §9.2). Runs on the author's PC (Q4), one solve at a time, at low priority and pausable.
 - Measured on that PC (Ryzen 9 9950X3D, 32 threads, 2026-11-04; [spikes.md](spikes.md) §9.4): SRP medium ~4–7 min per flop (Td9d6h: 245s, 8GB peak), 3-bet pot large ~1.5 min per flop (83s, 6GB peak). About 7–9x the 4-vCPU spike machine on 16-bit SRP solves (~4x on the f32 3-bet-pot run); SMT cuts solve time ~17%.
 - Budget: the first slice (245 solves) takes ~16 h, one night plus a few hours. Full coverage (5 × 1,755 = 8,775 solves) takes ~430–700 h of solving, about 3–4 weeks running 24/7 or 6–10 weeks of nights and weekends.
+- **As built (M4):** `taful-library-build postflop <manifest> <out>` with manifest `tools/library-build/manifests/postflop-6max-100bb.toml` (the five spots of §7.1 as preflop lines in the chart; ranges = each player's chart frequencies along the line). Options for daytime runs: `--only <spots>`, `--threads N`, `--max-mem-gb X` (solves estimated above it are left for a later run), `--limit N`, `--estimate` (memory only). Pause by creating `<out>/PAUSE`; the run lowers its own priority. Solves are flop-major, so a partial run covers every spot on the first flops. Memory estimates for the first 49 flops (16-bit): BTN vs BB SRP 3.9–14.6GB (mean 9.5), CO vs BB 3.1–11.8 (7.7), SB vs BB up to ~15, BTN vs SB 3-bet 1.4–5.5 (3.5), CO vs BTN 3-bet 1.9–7.5 (4.8). `postflop-solver` is a pinned git dependency of the tool only, without its `bincode` feature.
 
 ### 7.4 Boards outside the subset
 
@@ -258,6 +260,7 @@ chance   turn cards: per turn card, offset of the turn subtree (truncated at riv
 - Expected size: 2–4x smaller than the solver's 16-bit turn-truncated files, so roughly 1–2GB for the D2 library. Measured in M4; if it misses, the next lever is dropping turn EVs for non-acting combos.
 - Preflop charts use the same container with a single "preflop" pseudo-board (no board cards) and **one row per hand class (169) instead of per combo** (row domain in the header), which loses nothing preflop and keeps every class row.
 - **As built (v1, M3):** after `"TAFL"` + version (uncompressed), one zstd frame (pure-Rust `ruzstd`, WASM-safe) holds the header and the nodes. The header also stores the canonical `GameConfig` TOML and a range per seat at the root. Per node: acting position, pot before the decision, the node's exploitability, actions as kind + size **u32** chips (u16 caps out at 655bb) + child (node index, `END` = the round or hand ends, `PRUNED` = dropped for reach), then the live rows, strategy and EVs. Nodes where the actor's range holds < 0.1% of its combos are pruned. The turn chance layer is a v2 extension for M4.
+- **As built (v2, M4):** an action that closes the flop points to a chance node (child tag `CHANCE | index`); a trailing chance section lists, per chance node, every live turn card with its branch: a node index, `pruned`, or a **mirror** (`of` card + suit permutation) for turns that a flop symmetry maps onto a smaller card (two-tone, monotone and paired flops), so isomorphic turns are stored once. The turn subtree ends at `END` where the river would be dealt; all-in runouts also end at `END`. Combos are stored at a node only if the actor plays its line to the node at least 0.1% of the time (`min_combo_reach`); EVs are bb in postflop-solver's convention (a fold is 0; only differences between actions matter for grading), and each node's exploitability is the solve's exploitability in chips over that node's pot. The writer emits v1 for files without chance nodes, so the preflop chart is unchanged, and the directory layout (`library/v1/…`) is versioned separately from the file format. Postflop files live under `v1/<config key>/<spot id>/<canonical flop>.tafl`.
 - `taful-solver` is the only reader and writer. Format changes bump `format_version`; the reader supports the current and previous version.
 
 ### 7.6 Delivery and cache (D11)
@@ -267,6 +270,7 @@ chance   turn cards: per turn card, offset of the turn subtree (truncated at riv
 - Prefetch packs = manifest subsets (e.g. "BTN vs BB SRP"), downloadable from settings.
 - Offline: cached spots work; an uncached spot ends the hand early with a message (D11).
 - **(proposed)** For the first slice the base URL points at a local folder produced by the build tool (single user, single machine). The static host is picked when the web client starts (D9/D10); any static file host works with this layout.
+- **As built (M4):** `taful-app::postflop::LibrarySource` with `LocalDir`; the desktop reads `TAFUL_LIBRARY_DIR`, else `<data dir>/library`. Every file is checked against `manifest.json` (size + BLAKE3) before decoding; a small in-memory cache holds decoded files. `Http`, the disk cache with LRU eviction and prefetch packs come with the web client (Q5).
 
 ### 7.7 River solver (`taful-solver`, D11)
 
@@ -276,10 +280,12 @@ chance   turn cards: per turn card, offset of the turn subtree (truncated at riv
 - Output: same node layout as §7.5, in memory.
 - `SubgameSolver` trait so a turn solver (rejected for now) can be added later without touching callers.
 - River ranges come from propagating root ranges through the stored flop and turn strategies along the actual line.
+- **As built (M4):** `taful-solver::river`. The tree follows postflop-solver's sizing rules (pot-relative bets, raise multiples, add/force all-in thresholds, merging) from the river sizes stored in the file header (`postflop::TreeSpec`, TOML). Vector DCFR (α 1.5, β 0.5, γ 3) over each player's live combos; showdowns in O(n) with hands sorted by strength and per-card blocker sums; optional rake. Output: average strategy and per-action EVs per hand at every node. Hooked into full-hand mode in M5.
 
 ### 7.8 Best response (D8)
 
 - `taful-solver::best_response(tree, locked_strategy) -> per-combo EVs` for river subtrees (on demand). Flop/turn best-response EVs per profile are precomputed by the build tool (D8 amendment). Partial locks are not supported.
+- **As built (M4):** `river::best_response(spot, solution, responder, opp_strategy)`; the solver's exploitability uses the same evaluation. Per-profile flop/turn best responses wait for the bot profiles (after the first slice).
 
 ---
 

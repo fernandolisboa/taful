@@ -1,10 +1,12 @@
-//! Table screen (spec §10, §15.1 #4), M3: preflop spot mode and full hands
+//! Table screen (spec §10, §15.1 #4). M3: preflop spot mode and full hands
 //! up to the flop against the reference bots, every hero decision graded.
+//! M4: postflop spot mode over the solved library.
 
 use std::rc::Rc;
 
 use gpui::{Context, Div, FontWeight, SharedString, Stateful, Window, div, prelude::*, px};
 use taful_app::i18n::Locale;
+use taful_app::postflop::{LocalDir, PostflopError, PostflopSpot, PostflopTrainer};
 use taful_app::preflop::{
     Action, BB_CHIPS, Card, Chips, FullHand, GameState, GradedDecision, HandEnd, PreflopTrainer,
     Seat, Spot, SpotKind, Suit,
@@ -24,6 +26,7 @@ const PANEL_W: f32 = 340.;
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Spot,
+    Postflop,
     Hand,
 }
 
@@ -38,6 +41,11 @@ pub struct TableScreen {
     spot: Option<Spot>,
     answer: Option<GradedDecision>,
     hand: Option<FullHand>,
+    /// Opened on first use; `Err` keeps the message for the screen.
+    postflop: Option<Result<Rc<PostflopTrainer>, String>>,
+    /// Postflop configuration filter (`None` = all).
+    postflop_spot: Option<String>,
+    pf_spot: Option<PostflopSpot>,
 }
 
 impl TableScreen {
@@ -67,7 +75,16 @@ impl TableScreen {
             spot: None,
             answer: None,
             hand: None,
+            postflop: None,
+            postflop_spot: None,
+            pf_spot: None,
         };
+        // Dev override (and screenshots): TAFUL_TABLE_MODE=postflop|hand.
+        match std::env::var("TAFUL_TABLE_MODE").as_deref() {
+            Ok("postflop") => s.mode = Mode::Postflop,
+            Ok("hand") => s.mode = Mode::Hand,
+            _ => {}
+        }
         s.deal();
         s
     }
@@ -87,7 +104,52 @@ impl TableScreen {
                 self.answer = None;
             }
             Mode::Hand => self.hand = FullHand::new(&t, None, seed).ok(),
+            Mode::Postflop => {
+                self.answer = None;
+                self.pf_spot = None;
+                let pf = self.postflop_trainer(&t);
+                if let Ok(pf) = pf {
+                    self.pf_spot = pf.spot(self.postflop_spot.as_deref(), seed).ok();
+                }
+            }
         }
+    }
+
+    /// The postflop library, opened once from `TAFUL_LIBRARY_DIR` or the data
+    /// folder.
+    fn postflop_trainer(&mut self, t: &PreflopTrainer) -> Result<Rc<PostflopTrainer>, String> {
+        if self.postflop.is_none() {
+            let dir = taful_app::postflop::default_library_dir(&taful_app::default_data_dir());
+            let opened = PostflopTrainer::open(
+                Box::new(LocalDir(dir.clone())),
+                t.config().clone(),
+                t.thresholds().clone(),
+            )
+            .map(Rc::new)
+            .map_err(|e| match e {
+                PostflopError::Library(_) | PostflopError::Empty
+                    if !dir.join("manifest.json").exists() =>
+                {
+                    self.ui.i18n.tr_args(
+                        "table-postflop-missing",
+                        &[("dir", dir.display().to_string().into())],
+                    )
+                }
+                e => self
+                    .ui
+                    .i18n
+                    .tr_args("table-postflop-error", &[("error", e.to_string().into())]),
+            });
+            self.postflop = Some(opened);
+        }
+        self.postflop.clone().expect("just set")
+    }
+
+    fn set_postflop_spot(&mut self, id: Option<String>, cx: &mut Context<Self>) {
+        self.postflop_spot = id;
+        self.mode = Mode::Postflop;
+        self.deal();
+        cx.notify();
     }
 
     fn set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
@@ -120,6 +182,13 @@ impl TableScreen {
                     let _ = h.act(&t, action);
                 }
             }
+            Mode::Postflop => {
+                if self.answer.is_none()
+                    && let (Some(s), Some(Ok(pf))) = (&self.pf_spot, &self.postflop)
+                {
+                    self.answer = s.answer(pf, action).ok();
+                }
+            }
         }
         cx.notify();
     }
@@ -149,9 +218,8 @@ impl TableScreen {
                 let to_call = state.bounds().map_or(0, |b| b.to_call);
                 i18n.tr_args("table-action-call", &[("amount", amount(to_call))])
             }
-            Action::Bet(to) | Action::Raise(to) => {
-                i18n.tr_args("table-action-raise", &[("amount", amount(to))])
-            }
+            Action::Bet(to) => i18n.tr_args("table-action-bet", &[("amount", amount(to))]),
+            Action::Raise(to) => i18n.tr_args("table-action-raise", &[("amount", amount(to))]),
             Action::AllIn => {
                 let to = state.bounds().and_then(|b| b.max_to).unwrap_or(0);
                 i18n.tr_args("table-action-allin", &[("amount", amount(to))])
@@ -166,7 +234,8 @@ impl TableScreen {
             Action::Fold => i18n.tr("table-action-fold"),
             Action::Check => i18n.tr("table-action-check"),
             Action::Call => i18n.tr("table-log-call"),
-            Action::Bet(to) | Action::Raise(to) => {
+            Action::Bet(to) => i18n.tr_args("table-action-bet", &[("amount", self.bb(to).into())]),
+            Action::Raise(to) => {
                 i18n.tr_args("table-action-raise", &[("amount", self.bb(to).into())])
             }
             Action::AllIn => i18n.tr("table-log-allin"),
@@ -290,8 +359,11 @@ impl TableScreen {
             } else {
                 vec![None, None]
             };
-            let last = state.actions()[0]
-                .iter()
+            let last = state
+                .actions()
+                .last()
+                .into_iter()
+                .flatten()
                 .rev()
                 .find(|(s, _)| *s == seat)
                 .map(|(_, a)| self.action_short(*a));
@@ -566,6 +638,68 @@ impl TableScreen {
             .child(panel)
     }
 
+    fn postflop_view(&self, cx: &mut Context<Self>) -> Div {
+        let (p, th, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
+        match &self.postflop {
+            Some(Err(msg)) => {
+                return div()
+                    .w(px(FELT_W))
+                    .text_size(px(th.text_size.md))
+                    .text_color(p.text_muted)
+                    .child(msg.clone());
+            }
+            None => return div().child(i18n.tr("table-no-spot")),
+            Some(Ok(_)) => {}
+        }
+        let Some(spot) = &self.pf_spot else {
+            return div().child(i18n.tr("table-no-spot"));
+        };
+        let panel = match &self.answer {
+            Some(d) => self.panel().child(self.explanation(d)).child(self.button(
+                "next_pf",
+                i18n.tr("table-next-spot"),
+                true,
+                cx,
+                |this, cx| {
+                    this.deal();
+                    cx.notify();
+                },
+            )),
+            None => self.panel().child(
+                div()
+                    .text_size(px(th.text_size.md))
+                    .text_color(p.text_muted)
+                    .child(i18n.tr("table-spot-prompt")),
+            ),
+        };
+        let actions = if self.answer.is_none() {
+            spot.actions()
+        } else {
+            vec![]
+        };
+        div()
+            .flex()
+            .gap(px(th.spacing.xl))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(th.spacing.lg))
+                    .child(self.table(&spot.state, spot.hero, false))
+                    .child(self.actions_bar(&spot.state, &actions, cx)),
+            )
+            .child(panel)
+    }
+
+    fn postflop_label(&self, id: &str) -> String {
+        let key = format!("table-postflop-{id}");
+        if self.ui.i18n.has(&key) {
+            self.ui.i18n.tr(&key)
+        } else {
+            id.to_string()
+        }
+    }
+
     fn hand_view(&self, t: &PreflopTrainer, cx: &mut Context<Self>) -> Div {
         let (p, th, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
         let Some(h) = &self.hand else {
@@ -671,6 +805,13 @@ impl Render for TableScreen {
                 |this, cx| this.set_mode(Mode::Spot, cx),
             ))
             .child(self.chip(
+                "mode_postflop",
+                i18n.tr("table-mode-postflop"),
+                self.mode == Mode::Postflop,
+                cx,
+                |this, cx| this.set_mode(Mode::Postflop, cx),
+            ))
+            .child(self.chip(
                 "mode_hand",
                 i18n.tr("table-mode-hand"),
                 self.mode == Mode::Hand,
@@ -689,11 +830,39 @@ impl Render for TableScreen {
                 })
             })
             .collect();
+        let mut pf_chips = Vec::new();
+        if let Some(Ok(pf)) = &self.postflop {
+            pf_chips.push(self.chip(
+                "pf_any",
+                i18n.tr("table-postflop-any"),
+                self.postflop_spot.is_none(),
+                cx,
+                |this, cx| this.set_postflop_spot(None, cx),
+            ));
+            for (i, s) in pf.spots().iter().enumerate() {
+                let id = s.id.clone();
+                let selected = self.postflop_spot.as_deref() == Some(id.as_str());
+                pf_chips.push(self.chip(
+                    ("pf", i),
+                    self.postflop_label(&id),
+                    selected,
+                    cx,
+                    move |this, cx| this.set_postflop_spot(Some(id.clone()), cx),
+                ));
+            }
+        }
         let body = match self.mode {
             Mode::Spot => self.spot_view(&trainer, cx).into_any_element(),
+            Mode::Postflop => self.postflop_view(cx).into_any_element(),
             Mode::Hand => self.hand_view(&trainer, cx).into_any_element(),
         };
-        let title: SharedString = i18n.tr("table-subtitle").into();
+        let title: SharedString = i18n
+            .tr(if self.mode == Mode::Postflop {
+                "table-subtitle-postflop"
+            } else {
+                "table-subtitle"
+            })
+            .into();
         div()
             .flex()
             .flex_col()
@@ -712,6 +881,15 @@ impl Render for TableScreen {
                         .flex_wrap()
                         .gap(px(th.spacing.sm))
                         .children(kinds),
+                )
+            })
+            .when(self.mode == Mode::Postflop, |d| {
+                d.child(
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .gap(px(th.spacing.sm))
+                        .children(pf_chips),
                 )
             })
             .child(body)

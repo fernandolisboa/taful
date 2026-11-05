@@ -14,8 +14,8 @@ See [spec §4](spec.md#4-workspace). In short:
 | `apps/desktop` | GPUI app, binary `taful`. Windows only for now. |
 | `tools/arch-check` | Dependency-direction and license checks over `cargo metadata`. |
 | `tools/content-check` | Runs the content checks over `content/`. |
-| `tools/library-build` | Offline library build: preflop solver (M3), postflop batch (M4). The only crate allowed to link `postflop-solver`. |
-| `library/` | Built library files in the static layout of spec §7.6 (`v1/<config key>/…`). For now only the preflop chart, embedded by `taful-app`. |
+| `tools/library-build` | Offline library build: preflop solver (M3), postflop batch (M4). The only crate allowed to link `postflop-solver` (pinned git rev, no default features). |
+| `library/` | Built library files in the static layout of spec §7.6 (`v1/<config key>/…`). In git: the preflop chart (embedded by `taful-app`) and `flops.txt`. The postflop files are too big for git and live in the app's library folder. |
 | `content/` | Themes, `skill-tree.toml`, lessons (`lessons/<locale>/*.md`), quizzes (`quizzes/*.toml`) and their render snapshots (`.snapshots/`). Embedded into `taful-app` by its `build.rs`. |
 | `config/` | Tunable numbers loaded at runtime: `grading.toml` (D3 thresholds), `calc.toml` (trainer tolerances and target times). Tests pin them to the code defaults. |
 | `i18n/<locale>/*.ftl` | Fluent strings. en-US is the source, pt-BR ships. |
@@ -65,6 +65,28 @@ cargo run --release -p taful-library-build -- summary library/v1/*/preflop.tafl 
 About 5 minutes on 4 vCPU (the 169×169 equity table is cached in `library/cache/`, which is git-ignored). A test fails if the committed chart was built from a different manifest. Model and format details: spec §6 and §7.5.
 
 The desktop table screen opens directly with `TAFUL_SCREEN=table` (any `nav-<id>` works).
+
+## Postflop library (M4)
+
+Built on the author's PC (spec §7.3, Q4), never in CI. Files land in `<out>/v1/<config key>/<spot>/<flop>.tafl` plus `<out>/manifest.json` (size + BLAKE3 per file). The app reads the folder in `TAFUL_LIBRARY_DIR`, else `<data dir>/library`.
+
+```sh
+# Memory estimate of every pending solve (cheap, no solving):
+cargo run --release -p taful-library-build -- postflop tools/library-build/manifests/postflop-6max-100bb.toml <out> --estimate
+# Daytime, light: 3-bet pots only, 4 threads, nothing above 6 GB, at most 10 solves:
+cargo run --release -p taful-library-build -- postflop tools/library-build/manifests/postflop-6max-100bb.toml <out> \
+  --only btn-sb-3bp,co-btn-3bp --threads 4 --max-mem-gb 6 --limit 10
+# Night: everything (one solve at a time, all threads):
+cargo run --release -p taful-library-build -- postflop tools/library-build/manifests/postflop-6max-100bb.toml <out>
+```
+
+- **Resumable:** finished files are skipped; a file appears only when complete. Stopping the process loses at most the current solve.
+- **Pause:** create `<out>/PAUSE` and the run waits before its next solve; delete it to continue.
+- **Priority:** the run lowers itself to below-normal priority (PowerShell on Windows, `renice` elsewhere).
+- **Log:** one JSON line per solve in `<out>/build-log.jsonl` (iterations, exploitability, time, estimated memory, nodes, file size).
+- **Flop order:** `library/flops.txt` (all 1,755 canonical flops; the first 49 are the stratified first slice). Regenerate with `taful-library-build flops library/flops.txt` only if no solved flop moves; a test pins it.
+- **River solver validation** (`tools/library-build/src/postflop/validate.rs`): Taful's river solver against postflop-solver on fixed spots. Fast, so it runs with the normal tests.
+- **App test fixture:** `crates/taful-app/tests/fixtures/postflop` is a tiny library (coarse tree, few iterations) from `manifests/fixture.toml`; rebuild with the command at the top of that manifest.
 
 ## Data and content (M2)
 

@@ -1,0 +1,59 @@
+# First postflop slice: cash 6-max, 100bb, rake 0 (spec §7.1, D2, D13).
+# Run (on the build machine, at night; see docs/development.md):
+#   cargo run --release -p taful-library-build -- postflop tools/library-build/manifests/postflop-6max-100bb.toml library
+# Light daytime run (3-bet pots only, few threads, low memory):
+#   ... postflop <manifest> library --only btn-sb-3bp,co-btn-3bp --threads 4 --max-mem-gb 6
+
+preflop_chart = "../../../library/v1/c1c6782d353382947a3bbcf1493b6a17155b2e63a7218bf8f54cc38be59cf37f/preflop.tafl"
+flops = "../../../library/flops.txt"
+flop_count = 49
+
+[solve]
+target_exploitability_pct = 0.5
+max_iterations = 1000
+check_every = 10
+compression = true
+prune_reach_pct = 0.1
+min_combo_reach = 0.001
+
+# Trees as measured in spike §9.2.
+[trees.medium]
+flop = ["33%, 75%", "3x"]
+turn = ["50%, 100%, a", "3x"]
+river = ["50%, 100%, a", "3x"]
+add_allin_threshold = 1.5
+force_allin_threshold = 0.15
+merging_threshold = 0.1
+
+[trees.large]
+flop = ["25%, 50%, 100%", "2.5x, 4x"]
+turn = ["33%, 75%, 125%, a", "2.5x, 4x"]
+river = ["33%, 75%, 125%, a", "2.5x, 4x"]
+add_allin_threshold = 1.5
+force_allin_threshold = 0.15
+merging_threshold = 0.1
+
+[[spots]]
+id = "btn-bb-srp"
+line = "UTG:f,HJ:f,CO:f,BTN:r250,SB:f,BB:c"
+tree = "medium"
+
+[[spots]]
+id = "co-bb-srp"
+line = "UTG:f,HJ:f,CO:r250,BTN:f,SB:f,BB:c"
+tree = "medium"
+
+[[spots]]
+id = "sb-bb-srp"
+line = "UTG:f,HJ:f,CO:f,BTN:f,SB:r300,BB:c"
+tree = "medium"
+
+[[spots]]
+id = "btn-sb-3bp"
+line = "UTG:f,HJ:f,CO:f,BTN:r250,SB:r950,BB:f,BTN:c"
+tree = "large"
+
+[[spots]]
+id = "co-btn-3bp"
+line = "UTG:f,HJ:f,CO:r250,BTN:r750,SB:f,BB:f,CO:c"
+tree = "large"

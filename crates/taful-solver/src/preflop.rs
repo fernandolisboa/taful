@@ -104,7 +104,7 @@ impl PreflopChart {
         match node.action_index(action).map(|i| node.actions[i].child) {
             Some(Child::Node(c)) => Lookup::Node(c as usize),
             Some(Child::End) => Lookup::End,
-            Some(Child::Pruned) | None => Lookup::Left,
+            Some(Child::Pruned | Child::Chance(_)) | None => Lookup::Left,
         }
     }
 

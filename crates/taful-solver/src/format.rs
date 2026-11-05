@@ -1,4 +1,4 @@
-//! Taful library format, version 1 (spec §7.5).
+//! Taful library format, versions 1 and 2 (spec §7.5).
 //!
 //! One file per (configuration, board). Layout:
 //!
@@ -18,6 +18,12 @@
 //!             live rows: count u16 + row indices u16
 //!             strategy [u8; live × actions]   frequencies × 255, renormalized on read
 //!             ev       [i16; live × actions]  × ev_scale = bb, acting player only
+//!   chance  (v2 only) count u32, then per chance node: count u8 of branches,
+//!           per branch card u8 + tag u8 and
+//!             tag 0: node u32      the subtree for this card
+//!             tag 1: (nothing)     the subtree was pruned for reach
+//!             tag 2: of u8 + perm [u8; 4]   isomorphic to card `of`: read
+//!                    that subtree with combos and cards mapped by `perm`
 //! ```
 //!
 //! A *row* is a combo (`Domain::Combos`, 1,326 rows, postflop) or a preflop
@@ -26,8 +32,12 @@
 //! the chart ~8x smaller. Rows are stored row-major: `[row][action]`.
 //!
 //! All integers are little-endian. Strings are a u32 byte length + UTF-8.
-//! The postflop chance layer (turn cards) is added with the postflop library
-//! in M4 as a format extension; v1 readers reject files that use it.
+//!
+//! **v2** (M4) adds the chance layer for postflop files: an action that
+//! closes the flop leads to [`Child::Chance`], one branch per turn card, and
+//! the turn subtree ends at the river ([`Child::End`]; rivers are solved on
+//! demand, D11). The writer emits v1 when a file has no chance nodes, so a
+//! preflop chart is byte-identical across the bump.
 //!
 //! [`HandClass::index`]: taful_core::range::HandClass::index
 
@@ -38,12 +48,13 @@ use std::str::FromStr;
 use taful_core::action::Action;
 use taful_core::cards::{Card, NUM_COMBOS};
 use taful_core::config::Chips;
+use taful_core::iso::SuitPerm;
 use taful_core::position::Position;
 use taful_core::range::HandClass;
 
 pub const MAGIC: [u8; 4] = *b"TAFL";
 /// Version written by this crate.
-pub const FORMAT_VERSION: u16 = 1;
+pub const FORMAT_VERSION: u16 = 2;
 /// Oldest version this crate still reads (spec §7.5: current and previous).
 pub const MIN_READ_VERSION: u16 = 1;
 /// Largest inflated body a reader accepts (a turn-truncated postflop file is
@@ -92,25 +103,66 @@ pub enum Child {
     /// A decision node exists in the solved tree but was dropped for low
     /// reach (spec §7.5); reaching it means leaving the library (D4).
     Pruned,
+    /// The street closed and the next card is dealt: index into
+    /// [`LibraryFile::chance`] (v2).
+    Chance(u32),
 }
 
 const CHILD_END: u32 = u32::MAX;
 const CHILD_PRUNED: u32 = u32::MAX - 1;
+const CHILD_CHANCE: u32 = 1 << 31;
 
 impl Child {
     fn encode(self) -> u32 {
         match self {
-            Child::Node(i) => i,
+            Child::Node(i) => {
+                assert!(i < CHILD_CHANCE, "node index fits 31 bits");
+                i
+            }
             Child::End => CHILD_END,
             Child::Pruned => CHILD_PRUNED,
+            Child::Chance(i) => {
+                assert!(i < CHILD_PRUNED - CHILD_CHANCE, "chance index range");
+                CHILD_CHANCE | i
+            }
         }
     }
     fn decode(v: u32) -> Child {
         match v {
             CHILD_END => Child::End,
             CHILD_PRUNED => Child::Pruned,
+            i if i & CHILD_CHANCE != 0 => Child::Chance(i & !CHILD_CHANCE),
             i => Child::Node(i),
         }
+    }
+}
+
+/// Where one dealt card leads (v2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Branch {
+    /// The first decision node after the card.
+    Node(u32),
+    /// The subtree after this card was dropped for reach.
+    Pruned,
+    /// Isomorphic to the branch of card `of` in the same chance node: read
+    /// that subtree with every card and combo mapped through `perm` (which
+    /// maps this branch's world onto `of`'s: `perm.card(card) == of`).
+    Mirror { of: Card, perm: SuitPerm },
+}
+
+/// A chance node: one branch per card that can be dealt.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChanceNode {
+    /// Ascending by card; dead cards are absent.
+    pub branches: Vec<(Card, Branch)>,
+}
+
+impl ChanceNode {
+    pub fn branch(&self, card: Card) -> Option<Branch> {
+        self.branches
+            .binary_search_by_key(&card, |(c, _)| *c)
+            .ok()
+            .map(|i| self.branches[i].1)
     }
 }
 
@@ -205,6 +257,8 @@ pub struct Header {
 pub struct LibraryFile {
     pub header: Header,
     pub nodes: Vec<Node>,
+    /// Chance nodes (v2); empty for preflop charts.
+    pub chance: Vec<ChanceNode>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -381,10 +435,50 @@ impl LibraryFile {
                 return Err(corrupt(format!("node {i}: table sizes")));
             }
             for a in &n.actions {
-                if let Child::Node(c) = a.child
-                    && (c as usize <= i || c as usize >= n_nodes)
-                {
-                    return Err(corrupt(format!("node {i}: child {c} not after it (DFS)")));
+                match a.child {
+                    Child::Node(c) if c as usize <= i || c as usize >= n_nodes => {
+                        return Err(corrupt(format!("node {i}: child {c} not after it (DFS)")));
+                    }
+                    Child::Chance(k) => {
+                        let ch = self
+                            .chance
+                            .get(k as usize)
+                            .ok_or_else(|| corrupt(format!("node {i}: chance {k} missing")))?;
+                        for (_, b) in &ch.branches {
+                            if let Branch::Node(c) = b
+                                && (*c as usize <= i || *c as usize >= n_nodes)
+                            {
+                                return Err(corrupt(format!(
+                                    "node {i}: chance child {c} not after it (DFS)"
+                                )));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        for (k, ch) in self.chance.iter().enumerate() {
+            if ch.branches.is_empty()
+                || ch.branches.len() > usize::from(u8::MAX)
+                || ch.branches.windows(2).any(|w| w[0].0 >= w[1].0)
+            {
+                return Err(corrupt(format!("chance {k}: branches not ascending")));
+            }
+            for (card, b) in &ch.branches {
+                if self.header.board.contains(card) {
+                    return Err(corrupt(format!("chance {k}: {card} is on the board")));
+                }
+                if let Branch::Mirror { of, perm } = b {
+                    let ok = perm.card(*card) == *of
+                        && matches!(ch.branch(*of), Some(Branch::Node(_) | Branch::Pruned))
+                        && perm
+                            .cards(&self.header.board)
+                            .iter()
+                            .all(|c| self.header.board.contains(c));
+                    if !ok {
+                        return Err(corrupt(format!("chance {k}: bad mirror {card}→{of}")));
+                    }
                 }
             }
         }
@@ -437,9 +531,33 @@ impl LibraryFile {
             }
         }
 
+        // v1 has no chance section; keep files without chance nodes at v1.
+        let version: u16 = if self.chance.is_empty() { 1 } else { 2 };
+        if version >= 2 {
+            w.u32(u32::try_from(self.chance.len()).expect("< 4G chance nodes"));
+            for ch in &self.chance {
+                w.u8(ch.branches.len() as u8);
+                for (card, b) in &ch.branches {
+                    w.u8(card.index());
+                    match b {
+                        Branch::Node(i) => {
+                            w.u8(0);
+                            w.u32(*i);
+                        }
+                        Branch::Pruned => w.u8(1),
+                        Branch::Mirror { of, perm } => {
+                            w.u8(2);
+                            w.u8(of.index());
+                            w.bytes(&perm.map());
+                        }
+                    }
+                }
+            }
+        }
+
         let mut out = Vec::with_capacity(w.0.len() / 4);
         out.extend_from_slice(&MAGIC);
-        out.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+        out.extend_from_slice(&version.to_le_bytes());
         out.extend(ruzstd::encoding::compress_to_vec(
             w.0.as_slice(),
             ruzstd::encoding::CompressionLevel::Fastest,
@@ -532,6 +650,34 @@ impl LibraryFile {
                 ev,
             });
         }
+        let mut chance = Vec::new();
+        if version >= 2 {
+            let n = r.u32()? as usize;
+            if n > body.len() / 3 + 1 {
+                return Err(corrupt("chance count exceeds file size"));
+            }
+            for _ in 0..n {
+                let k = usize::from(r.u8()?);
+                let mut branches = Vec::with_capacity(k);
+                for _ in 0..k {
+                    let card = r.card()?;
+                    let b = match r.u8()? {
+                        0 => Branch::Node(r.u32()?),
+                        1 => Branch::Pruned,
+                        2 => {
+                            let of = r.card()?;
+                            let map: [u8; 4] = r.take(4)?.try_into().expect("4");
+                            let perm =
+                                SuitPerm::new(map).ok_or_else(|| corrupt("bad suit perm"))?;
+                            Branch::Mirror { of, perm }
+                        }
+                        t => return Err(corrupt(format!("bad branch tag {t}"))),
+                    };
+                    branches.push((card, b));
+                }
+                chance.push(ChanceNode { branches });
+            }
+        }
         if r.at != body.len() {
             return Err(corrupt("trailing bytes (unsupported extension?)"));
         }
@@ -550,6 +696,7 @@ impl LibraryFile {
                 manifest_hash,
             },
             nodes,
+            chance,
         };
         file.validate()?;
         Ok(file)
@@ -583,6 +730,10 @@ impl<'a> R<'a> {
     }
     fn f32(&mut self) -> Result<f32, FormatError> {
         Ok(f32::from_le_bytes(self.take(4)?.try_into().expect("4")))
+    }
+    fn card(&mut self) -> Result<Card, FormatError> {
+        let i = self.u8()?;
+        Card::from_index(i).ok_or_else(|| corrupt(format!("bad card {i}")))
     }
     fn arr32(&mut self) -> Result<[u8; 32], FormatError> {
         Ok(self.take(32)?.try_into().expect("32"))
@@ -676,7 +827,48 @@ mod tests {
                     vec![0, 5, 168],
                 ),
             ],
+            chance: vec![],
         }
+    }
+
+    /// A postflop-shaped file: flop root, check-check deals a turn.
+    fn sample_v2() -> LibraryFile {
+        let mut f = sample();
+        f.header.domain = Domain::Combos;
+        f.header.board = taful_core::cards::parse_cards("Td9d6h").unwrap();
+        let rows = Domain::Combos.rows();
+        f.header.root_ranges = vec![
+            (Position::Bb, vec![1; rows]),
+            (Position::Btn, vec![2; rows]),
+        ];
+        f.nodes[0].player = Position::Bb;
+        f.nodes[0].actions[0] = NodeAction {
+            action: Action::Check,
+            child: Child::Chance(0),
+        };
+        f.nodes[0].live = vec![3, 900];
+        f.nodes[0].strategy = vec![100, 155, 0, 255];
+        f.nodes[0].ev = vec![1, 2, 3, 4];
+        f.nodes[1].player = Position::Bb;
+        let c = |s: &str| s.parse::<Card>().unwrap();
+        let swap = SuitPerm::swap(
+            taful_core::cards::Suit::CLUBS,
+            taful_core::cards::Suit::SPADES,
+        );
+        f.chance = vec![ChanceNode {
+            branches: vec![
+                (c("2c"), Branch::Node(1)),
+                (
+                    c("2s"),
+                    Branch::Mirror {
+                        of: c("2c"),
+                        perm: swap,
+                    },
+                ),
+                (c("3c"), Branch::Pruned),
+            ],
+        }];
+        f
     }
 
     #[test]
@@ -685,6 +877,31 @@ mod tests {
         let bytes = f.encode();
         assert_eq!(&bytes[..4], b"TAFL");
         assert_eq!(LibraryFile::decode(&bytes).unwrap(), f);
+    }
+
+    #[test]
+    fn roundtrip_v2_and_v1_compat() {
+        let f = sample_v2();
+        let bytes = f.encode();
+        assert_eq!(u16::from_le_bytes([bytes[4], bytes[5]]), 2);
+        assert_eq!(LibraryFile::decode(&bytes).unwrap(), f);
+        // A file without chance nodes stays v1.
+        let v1 = sample().encode();
+        assert_eq!(u16::from_le_bytes([v1[4], v1[5]]), 1);
+    }
+
+    #[test]
+    fn rejects_bad_mirror() {
+        let mut f = sample_v2();
+        let c = |s: &str| s.parse::<Card>().unwrap();
+        f.chance[0].branches[2].1 = Branch::Mirror {
+            of: c("2c"),
+            perm: SuitPerm::IDENTITY,
+        };
+        assert!(f.validate().is_err());
+        let mut g = sample_v2();
+        g.chance[0].branches.swap(1, 2);
+        assert!(g.validate().is_err());
     }
 
     #[test]

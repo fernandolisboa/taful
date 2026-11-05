@@ -163,13 +163,14 @@ pub fn export(m: &Manifest, solved: &Solved) -> LibraryFile {
             manifest_hash: m.hash(),
         },
         nodes: ex.nodes,
+        chance: Vec::new(),
     }
 }
 
 /// Path of a preflop chart under the library root, following the static
-/// layout of spec §7.6: `v{format}/{config key}/preflop.tafl`.
+/// layout of spec §7.6: `v{layout}/{config key}/preflop.tafl`.
 pub fn chart_path(m: &Manifest) -> PathBuf {
-    PathBuf::from(format!("v{}", taful_solver::LIBRARY_FORMAT_VERSION))
+    PathBuf::from(format!("v{}", taful_solver::LIBRARY_LAYOUT_VERSION))
         .join(m.game_config().key().to_string())
         .join("preflop.tafl")
 }
