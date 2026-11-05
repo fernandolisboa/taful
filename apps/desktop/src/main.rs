@@ -6,6 +6,7 @@
 // No console window on Windows release builds; debug builds keep it for logs.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod felt;
 mod screen;
 mod screens;
 mod shell;

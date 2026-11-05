@@ -98,9 +98,54 @@ impl Shell {
                 ),
             );
 
+        let leaks = self.app.leaks().unwrap_or_default();
+        let rows = leaks.into_iter().enumerate().map(|(i, l)| {
+            let label = crate::screens::table::TableScreen::bucket_label(&ui, &l.bucket);
+            let stats = ui.i18n.tr_args(
+                "home-leak-stats",
+                &[
+                    ("mistakes", l.mistakes.into()),
+                    ("decisions", l.decisions.into()),
+                    ("loss", crate::felt::num(&ui, l.total_ev_loss_bb, 1).into()),
+                ],
+            );
+            let bucket = l.bucket.clone();
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap(px(t.spacing.md))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.))
+                        .flex()
+                        .flex_col()
+                        .child(div().text_size(px(t.text_size.md)).child(label))
+                        .child(muted(stats, &ui, &p)),
+                )
+                .child(
+                    button(
+                        ("home_drill", i),
+                        ui.i18n.tr("home-leak-drill"),
+                        false,
+                        &ui,
+                        &p,
+                    )
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        let b = bucket.clone();
+                        this.table.update(cx, |t, cx| t.start_drill(b, cx));
+                        this.select(Screen::Table, window, cx);
+                    })),
+                )
+        });
+        let rows: Vec<_> = rows.collect();
         let leaks = card(&ui, &p)
             .child(title(ui.i18n.tr("home-leaks-title"), &ui))
-            .child(muted(ui.i18n.tr("home-leaks-body"), &ui, &p));
+            .when(rows.is_empty(), |c| {
+                c.child(muted(ui.i18n.tr("home-leaks-body"), &ui, &p))
+            })
+            .children(rows);
 
         div()
             .flex()

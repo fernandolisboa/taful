@@ -48,8 +48,8 @@ table-next-spot = Next spot
 table-decisions = Your decisions
 table-new-hand = New hand
 table-hand-over-settled = Hand over. Your result: { $amount } bb.
-table-hand-over-flop = Preflop is done. Postflop play arrives with the postflop library.
-table-hand-over-left = This line is outside the charts, so the hand ends here: { $line }
+table-hand-over-flop = Preflop is done. Postflop play needs the postflop library, which is not installed.
+table-hand-over-left = This line is outside the solved strategy, so the hand ends here: { $line }
 table-hand-ev-loss = EV lost this hand: { $amount } bb
 
 ## Postflop spot mode (M4, spec §7)

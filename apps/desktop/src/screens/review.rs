@@ -3,7 +3,9 @@
 use gpui::{AnyElement, Context, div, prelude::*, px};
 use taful_app::fmt;
 use taful_app::model::{Answer, CalcOutcome, ReviewPrompt};
+use taful_app::preflop::{Action, GradedDecision};
 
+use crate::felt::{self, Explain};
 use crate::screens::calc::{outcome_view, round_view};
 use crate::screens::lesson::QuestionState;
 use crate::shell::{KeyResult, Shell};
@@ -21,6 +23,7 @@ pub struct ReviewView {
 pub enum Feedback {
     Calc(CalcOutcome),
     Quiz { answer: Answer, correct: bool },
+    Spot(Box<GradedDecision>),
 }
 
 impl ReviewView {
@@ -34,7 +37,7 @@ impl Shell {
         self.review = ReviewView::default();
     }
 
-    fn review_load_next(&mut self) {
+    pub(crate) fn review_load_next(&mut self) {
         self.review.feedback = None;
         self.input.clear();
         self.review.prompt = match self.app.next_review(self.ui.i18n.locale()) {
@@ -79,6 +82,95 @@ impl Shell {
             Err(e) => eprintln!("taful: review answer failed: {e}"),
         }
         self.input.clear();
+    }
+
+    fn review_spot_answer(&mut self, a: Action) {
+        let Some(ReviewPrompt::Spot { item_id, spot, .. }) = &self.review.prompt else {
+            return;
+        };
+        if self.review.feedback.is_some() {
+            return;
+        }
+        let (item_id, spot) = (item_id.clone(), spot.clone());
+        match self.app.answer_spot_review(&item_id, &spot, a) {
+            Ok(d) => {
+                self.review.feedback = Some(Feedback::Spot(Box::new(d)));
+                self.review.done += 1;
+            }
+            Err(e) => eprintln!("taful: review answer failed: {e}"),
+        }
+    }
+
+    /// A spot review: the table, hero's options, then the explanation.
+    fn review_spot_view(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let (ui, p) = (self.ui.clone(), self.palette);
+        let t = &ui.theme;
+        let Some(ReviewPrompt::Spot { spot, .. }) = &self.review.prompt else {
+            return div().into_any_element();
+        };
+        let trainers = match self.app.trainers() {
+            Ok(tr) => tr,
+            Err(e) => return muted(e.to_string(), &ui, &p).into_any_element(),
+        };
+        let feedback = match &self.review.feedback {
+            Some(Feedback::Spot(d)) => Some(d.clone()),
+            _ => None,
+        };
+        let state = spot.state().clone();
+        let actions = if feedback.is_none() {
+            spot.actions(&trainers)
+        } else {
+            vec![]
+        };
+        let buttons: Vec<_> = actions
+            .iter()
+            .enumerate()
+            .map(|(i, &a)| {
+                button(
+                    ("review_act", i),
+                    felt::action_label(&ui, &state, a),
+                    matches!(a, Action::Raise(_) | Action::AllIn),
+                    &ui,
+                    &p,
+                )
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.review_spot_answer(a);
+                    window.focus(&this.focus);
+                    cx.notify();
+                }))
+            })
+            .collect();
+        let bucket = spot.context(&trainers).bucket();
+        let mut panel = felt::panel(&ui, &p).child(muted(
+            ui.i18n.tr_args(
+                "review-from-spot",
+                &[(
+                    "spot",
+                    crate::screens::table::TableScreen::bucket_label(&ui, &bucket).into(),
+                )],
+            ),
+            &ui,
+            &p,
+        ));
+        panel = match &feedback {
+            Some(d) => panel
+                .child(felt::explanation(&ui, &p, &Explain::of(d)))
+                .child(self.review_next_button("review-continue", cx)),
+            None => panel.child(muted(ui.i18n.tr("table-spot-prompt"), &ui, &p)),
+        };
+        div()
+            .flex()
+            .gap(px(t.spacing.xl))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(t.spacing.lg))
+                    .child(felt::table(&ui, &p, &state, spot.hero(), false))
+                    .child(div().flex().gap(px(t.spacing.sm)).children(buttons)),
+            )
+            .child(panel)
+            .into_any_element()
     }
 
     pub(crate) fn review_key(&mut self, key: KeyResult, _cx: &mut Context<Self>) {
@@ -139,7 +231,9 @@ impl Shell {
             ));
         }
 
+        let spot = matches!(self.review.prompt, Some(ReviewPrompt::Spot { .. }));
         let body: AnyElement = match (&self.review.prompt, &self.review.feedback) {
+            _ if spot && self.review.loaded => self.review_spot_view(cx),
             _ if !self.review.loaded => card(&ui, &p)
                 .child(ui.i18n.tr_args("review-due", &[("count", due.into())]))
                 .when(due > 0, |d| {
@@ -251,10 +345,11 @@ impl Shell {
                 }
                 c.into_any_element()
             }
-            (Some(ReviewPrompt::Calc { .. }), Some(Feedback::Quiz { .. })) => {
-                card(&ui, &p).into_any_element()
-            }
+            _ => card(&ui, &p).into_any_element(),
         };
-        col.child(body).into_any_element()
+        // Calc and quiz cards keep the reading width; a spot needs the table's.
+        col.when(!spot, |c| c.w(px(crate::shell::CONTENT_MAX_WIDTH)))
+            .child(body)
+            .into_any_element()
     }
 }

@@ -1,6 +1,6 @@
 # Review session (spec §13) and home screen.
 
-review-intro = Your spaced-repetition queue: missed quiz questions and slow or wrong calc answers, in one session.
+review-intro = Your spaced-repetition queue: spots you misplayed, missed quiz questions and slow or wrong calc answers, in one session.
 review-due = { $count ->
     [0] Nothing due right now.
     [one] 1 item due.
@@ -26,4 +26,4 @@ home-calc-none = No answers yet.
 home-calc-start = Train
 home-progress = { $done } of { $total } lessons done
 home-leaks-title = Top leaks
-home-leaks-body = Leak detection arrives with full hands (M5).
+home-leaks-body = No leaks yet. They show up once graded decisions pile up mistakes in a spot.

@@ -48,8 +48,8 @@ table-next-spot = Próximo spot
 table-decisions = Suas decisões
 table-new-hand = Nova mão
 table-hand-over-settled = Fim da mão. Seu resultado: { $amount } bb.
-table-hand-over-flop = O preflop acabou. O jogo pós-flop chega com a biblioteca pós-flop.
-table-hand-over-left = Esta linha está fora dos charts, então a mão termina aqui: { $line }
+table-hand-over-flop = O preflop acabou. O jogo pós-flop precisa da biblioteca pós-flop, que não está instalada.
+table-hand-over-left = Esta linha está fora da estratégia resolvida, então a mão termina aqui: { $line }
 table-hand-ev-loss = EV perdido nesta mão: { $amount } bb
 
 ## Postflop spot mode (M4, spec §7)

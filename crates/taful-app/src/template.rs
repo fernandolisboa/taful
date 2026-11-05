@@ -88,6 +88,33 @@ pub fn parse_street(s: &str) -> Option<Street> {
     Street::ALL.into_iter().find(|&x| street_id(x) == s)
 }
 
+/// Fluent ids that describe a texture class id (`A-2t-u-1` → high card,
+/// suits, pairing, connectedness), or `None` for an unknown id.
+pub fn texture_label_keys(id: &str) -> Option<[String; 4]> {
+    let parts: Vec<&str> = id.split('-').collect();
+    // The high-card part may itself end in '-' (`9-`).
+    let (high, rest) = match parts.as_slice() {
+        ["9", "", rest @ ..] => ("9-", rest),
+        [h, rest @ ..] => (*h, rest),
+        [] => return None,
+    };
+    let [suits, paired, connected] = rest else {
+        return None;
+    };
+    let ok = ["A", "K", "Q", "JT", "9-"].contains(&high)
+        && ["r", "2t", "m"].contains(suits)
+        && ["u", "p"].contains(paired)
+        && ["0", "1", "2"].contains(connected);
+    ok.then(|| {
+        [
+            format!("texture-high-{high}"),
+            format!("texture-suits-{suits}"),
+            format!("texture-paired-{paired}"),
+            format!("texture-connected-{connected}"),
+        ]
+    })
+}
+
 /// A spot template (see the module docs).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SpotTemplate {
@@ -261,6 +288,35 @@ mod tests {
         ] {
             assert_eq!(SpotTemplate::parse(bad), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn dynamic_fluent_ids_exist() {
+        // The UI builds these ids at run time, so the desktop source lint
+        // cannot see them.
+        let textures: Vec<String> = taful_core::iso::Flop::canonical_all()
+            .into_iter()
+            .map(|(f, _)| f.texture().class().id())
+            .collect();
+        for locale in crate::i18n::Locale::ALL {
+            let i18n = crate::i18n::Localizer::new(locale).unwrap();
+            for s in Street::ALL {
+                assert!(i18n.has(&format!("street-{}", street_id(s))));
+            }
+            for t in NodeType::ALL_POSTFLOP
+                .into_iter()
+                .chain(SpotKind::ALL.map(NodeType::Preflop))
+            {
+                assert!(i18n.has(&format!("node-type-{}", t.id())), "{t:?}");
+            }
+            for id in &textures {
+                for k in texture_label_keys(id).unwrap_or_else(|| panic!("{id}")) {
+                    assert!(i18n.has(&k), "{k}");
+                }
+            }
+            assert!(i18n.has(&format!("table-postflop-{PREFLOP}")));
+        }
+        assert_eq!(texture_label_keys("A-2t-x-1"), None);
     }
 
     #[test]
