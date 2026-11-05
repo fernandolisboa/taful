@@ -125,8 +125,10 @@ impl ClassTables {
             && bytes.len() == N * N * 4
         {
             let equity = bytes
-                .chunks_exact(4)
-                .map(|c| f32::from_le_bytes(c.try_into().expect("4")))
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|c| f32::from_le_bytes(*c))
                 .collect();
             let mut t = ClassTables::compute(0, seed);
             t.equity = equity;

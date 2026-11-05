@@ -37,7 +37,7 @@ enum Mode {
 
 fn matvec(a: &[f32], x: &V) -> V {
     let mut y = ZERO;
-    for (row, out) in a.chunks_exact(N).zip(y.iter_mut()) {
+    for (row, out) in a.as_chunks::<N>().0.iter().zip(y.iter_mut()) {
         *out = row.iter().zip(x.iter()).map(|(p, q)| p * q).sum();
     }
     y
