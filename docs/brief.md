@@ -130,7 +130,7 @@ Every spot, drill, grade and simulation takes a `GameConfig` as input: table siz
 - **No backend until a second client exists** (web or Android) (D9). Then add a thin sync API; its hosting is decided at that point. Only user data syncs (progress, review logs, layouts/themes, hand history, settings), never content or pre-solved spots. Syncing the SQLite file through a cloud-drive folder is rejected.
 
 ### Public host (D10)
-- Any public surface (web app, sync API) uses **`taful.filx.app`**. `taful.com` is taken, `taful.com.br` is dropped, and `taful.app` may be bought later (not decided).
+- Any public surface (web app, sync API) uses **`taful.filx.app`**. `taful.com` is taken, `taful.com.br` is dropped, and `taful.app` (free as of 2026-11-05) is not bought before web or mobile work starts, which waits for the desktop app.
 - To keep a later move cheap: the desktop app depends on no domain, the base URL is always configuration, the old host keeps serving 301/308 redirects, Android App Links list every host during a transition, and the web client treats browser storage as a cache of synced data (or ships export/import) because IndexedDB/localStorage are per-origin.
 
 ## 6. Look & feel
@@ -171,7 +171,7 @@ The original open questions were decided on 2026-11-04. Details, reasoning and i
 | D7 | Layout customization | Presets and token themes first; drag-and-drop editor right after. |
 | D8 | Bots | GTO bot first; profiled bots as parametric deviations right after, graded by best-response EV against the profile, computed at build time. |
 | D9 | Sync | No backend until a second client exists; rotating local backups meanwhile. |
-| D10 | App name and host | Keep "Taful"; host on `taful.filx.app`; `.com.br` dropped, `.app` open. |
+| D10 | App name and host | Keep "Taful" (no conflicting live mark, checked 2026-11-05); INPI filing (classes 9, 41) before the first desktop release; host on `taful.filx.app`; no domain bought before web/mobile work. |
 | D11 | Solver licensing | `postflop-solver` (AGPL) only in the offline build tool; own river solver in the app; library downloaded on demand in a compact format. |
 | D12 | Preflop charts | Own offline preflop solver, realization calibrated from the postflop library. |
 | D13 | Boards outside the subset | Deal only solved flops; grow coverage to all 1,755. |
