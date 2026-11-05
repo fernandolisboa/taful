@@ -46,6 +46,9 @@ pub const MAGIC: [u8; 4] = *b"TAFL";
 pub const FORMAT_VERSION: u16 = 1;
 /// Oldest version this crate still reads (spec §7.5: current and previous).
 pub const MIN_READ_VERSION: u16 = 1;
+/// Largest inflated body a reader accepts (a turn-truncated postflop file is
+/// tens of MB; this leaves ample room).
+pub const MAX_BODY_BYTES: u64 = 1 << 30;
 
 /// What a node row stands for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -344,6 +347,15 @@ impl LibraryFile {
     /// Check the internal consistency the reader relies on.
     pub fn validate(&self) -> Result<(), FormatError> {
         let rows = self.header.domain.rows();
+        if !matches!(self.header.board.len(), 0 | 3 | 4 | 5) {
+            return Err(corrupt(format!(
+                "board of {} cards",
+                self.header.board.len()
+            )));
+        }
+        if self.header.root_ranges.len() > usize::from(u8::MAX) {
+            return Err(corrupt("more than 255 root ranges"));
+        }
         for (p, r) in &self.header.root_ranges {
             if r.len() != rows {
                 return Err(corrupt(format!("root range of {p} has {} rows", r.len())));
@@ -445,10 +457,15 @@ impl LibraryFile {
             return Err(FormatError::UnsupportedVersion(version));
         }
         let mut body = Vec::new();
+        // Cap the inflated size so a crafted file cannot exhaust memory.
         ruzstd::decoding::StreamingDecoder::new(&bytes[6..])
             .map_err(|e| corrupt(format!("zstd: {e}")))?
+            .take(MAX_BODY_BYTES + 1)
             .read_to_end(&mut body)
             .map_err(|e| corrupt(format!("zstd: {e}")))?;
+        if body.len() as u64 > MAX_BODY_BYTES {
+            return Err(corrupt("inflated body exceeds the size limit"));
+        }
         let mut r = R { b: &body, at: 0 };
 
         let game_config = r.str()?;

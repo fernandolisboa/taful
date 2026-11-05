@@ -399,6 +399,8 @@ pub enum HandEnd {
     ReachedFlop,
     /// The line left the chart (D4); it is a candidate for a future build.
     LeftLibrary(Line),
+    /// Hero folded; the rest of the hand does not matter for hero.
+    HeroFolded,
 }
 
 /// A full hand vs reference bots, preflop only (spec §10.2).
@@ -470,6 +472,9 @@ impl FullHand {
         let graded = trainer.grade(node, self.hero_hand(), chosen)?;
         self.decisions.push(graded);
         self.advance(trainer, node, action)?;
+        if action == Action::Fold && self.end.is_none() {
+            self.end = Some(HandEnd::HeroFolded);
+        }
         self.run_bots(trainer)?;
         Ok(self.decisions.last().expect("just pushed"))
     }
@@ -545,10 +550,14 @@ impl FullHand {
         self.decisions.iter().map(|d| d.ev_loss_bb).sum()
     }
 
-    /// Hero's net result in bb once settled.
+    /// Hero's net result in bb once it is known (settled, or hero folded).
     pub fn hero_net_bb(&self) -> Option<f64> {
         match &self.end {
             Some(HandEnd::Settled(s)) => Some(s.net[self.hero] as f64 / BB_CHIPS as f64),
+            Some(HandEnd::HeroFolded) => {
+                let lost = self.state.players()[self.hero].total_commit;
+                Some(-(lost as f64) / BB_CHIPS as f64)
+            }
             _ => None,
         }
     }
@@ -683,6 +692,10 @@ mod tests {
                 }
                 HandEnd::ReachedFlop => ends[1] += 1,
                 HandEnd::LeftLibrary(_) => ends[2] += 1,
+                HandEnd::HeroFolded => {
+                    assert!(h.hero_net_bb().unwrap() <= 0.0);
+                    ends[0] += 1;
+                }
             }
             assert!(h.hero_actions(&t).is_empty());
             assert!(matches!(

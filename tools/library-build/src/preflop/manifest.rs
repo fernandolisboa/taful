@@ -63,8 +63,9 @@ pub struct TreeLimits {
 /// `R` is the position factor; `k ≥ 1` is the equity exponent, which lets
 /// strong hands realize more than their equity and weak hands less (they get
 /// pushed off their equity postflop). Constant-sum; `k = 1, Rᵢ = Rⱼ` gives
-/// back raw equity. Multiway: product of pairwise shares, renormalized so
-/// shares add up to 1. All-in pots use raw equity.
+/// back raw equity. Multiway: product of pairwise shares, divided by one
+/// scalar per terminal so the range-weighted expected shares add up to 1
+/// (an approximation: the scalar moves with the ranges during training). All-in pots use raw equity.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Realization {

@@ -9,6 +9,7 @@
 //! and treated as independent across three or more (spec §6 abstraction).
 
 use rayon::prelude::*;
+use taful_core::config::BB_CHIPS;
 
 use super::equity::{N, class_sizes};
 use super::tree::{Decision, Outcome, TNode, Terminal, Tree};
@@ -183,15 +184,16 @@ impl Ctx<'_> {
         };
         let br_self = matches!(mode, Mode::BestResponse(q) if q == p);
 
+        // The best responder's own reach follows its average strategy too:
+        // its values do not depend on it, but the multiway renormalization
+        // does, and it must match the evaluation pass (same payoffs).
         let child_inputs = |a: usize| -> (Vec<V>, Vec<V>) {
             let mut r = reach.to_vec();
             let mut mm = m.to_vec();
-            if !br_self {
-                for h in 0..N {
-                    r[p][h] *= sigma[a * N + h];
-                }
-                mm[p] = matvec(self.compat, &r[p]);
+            for h in 0..N {
+                r[p][h] *= sigma[a * N + h];
             }
+            mm[p] = matvec(self.compat, &r[p]);
             (r, mm)
         };
         let actions = d.actions.clone();
@@ -305,7 +307,7 @@ pub struct Report {
     /// Per seat: best-response gain against the others' average strategies,
     /// in bb per hand.
     pub br_gain_bb: Vec<f32>,
-    /// Mean of `br_gain_bb` as a percent of the blinds (the starting pot).
+    /// Mean of `br_gain_bb` as a percent of the starting pot (blinds + antes).
     pub exploitability_pct: f32,
 }
 
@@ -365,12 +367,17 @@ impl Solver<'_> {
                 num += f64::from(sizes[h] * (br[p][h] - values[p][h]));
                 den += f64::from(sizes[h] * mm[h]);
             }
-            br_gain_bb.push((num / den / 100.0) as f32);
+            br_gain_bb.push((num / den / BB_CHIPS as f64) as f32);
         }
         let mean = br_gain_bb.iter().sum::<f32>() / seats as f32;
+        // Starting pot (blinds and antes) in bb.
+        let start_pot_bb = match &self.tree.root {
+            TNode::Decision(d) => d.pot as f32 / BB_CHIPS as f32,
+            TNode::Terminal(t) => t.pot as f32 / BB_CHIPS as f32,
+        };
         Report {
             br_gain_bb,
-            exploitability_pct: 100.0 * mean / 1.5,
+            exploitability_pct: 100.0 * mean / start_pot_bb.max(f32::EPSILON),
         }
     }
 }

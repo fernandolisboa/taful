@@ -567,7 +567,7 @@ impl TableScreen {
         };
         let over = h.end.is_some();
         let end_text = h.end.as_ref().map(|e| match e {
-            HandEnd::Settled(_) => i18n.tr_args(
+            HandEnd::Settled(_) | HandEnd::HeroFolded => i18n.tr_args(
                 "table-hand-over-settled",
                 &[("amount", self.num(h.hero_net_bb().unwrap_or(0.), 1).into())],
             ),

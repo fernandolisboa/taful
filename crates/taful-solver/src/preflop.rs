@@ -51,6 +51,10 @@ impl PreflopChart {
         if config.key().0 != file.header.config_key {
             return Err(bad("config key does not match the config"));
         }
+        let positions = Position::by_button_offset(usize::from(config.table_size));
+        if file.nodes.iter().any(|n| !positions.contains(&n.player)) {
+            return Err(bad("node player not seated at this table size"));
+        }
         let mut parents = vec![None; file.nodes.len()];
         for (i, n) in file.nodes.iter().enumerate() {
             for (a, na) in n.actions.iter().enumerate() {
