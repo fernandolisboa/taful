@@ -1,0 +1,30 @@
+# Tiny postflop library for app tests (crates/taful-app/tests/fixtures/postflop):
+# the 3-bet pot with one bet size per street and no raises, on a few flops.
+#   cargo run --release -p taful-library-build -- postflop tools/library-build/manifests/fixture.toml \
+#     crates/taful-app/tests/fixtures/postflop --flop-list Td9d6h,Kh7h2h
+# Not a reference strategy: few iterations, coarse tree.
+
+preflop_chart = "../../../library/v1/c1c6782d353382947a3bbcf1493b6a17155b2e63a7218bf8f54cc38be59cf37f/preflop.tafl"
+flops = "../../../library/flops.txt"
+flop_count = 2
+
+[solve]
+target_exploitability_pct = 3.0
+max_iterations = 60
+check_every = 10
+compression = true
+prune_reach_pct = 1.0
+min_combo_reach = 0.01
+
+[trees.small]
+flop = ["50%", ""]
+turn = ["75%", ""]
+river = ["75%", ""]
+add_allin_threshold = 0.0
+force_allin_threshold = 0.15
+merging_threshold = 0.1
+
+[[spots]]
+id = "btn-sb-3bp"
+line = "UTG:f,HJ:f,CO:f,BTN:r250,SB:r950,BB:f,BTN:c"
+tree = "small"

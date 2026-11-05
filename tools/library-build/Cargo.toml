@@ -9,9 +9,13 @@ publish.workspace = true
 [lints]
 workspace = true
 
-# The postflop-solver fork (AGPL, D11) is added here in M4. This is the only
-# crate allowed to depend on it; tools/arch-check enforces that.
+# postflop-solver (AGPL, D11): only this crate may depend on it, and
+# tools/arch-check enforces that. Pinned to the last upstream commit;
+# `default-features = false` drops its bincode serialization (which broke on
+# bincode 2.0, spike §9.2): we export to Taful's own format instead.
 [dependencies]
+postflop-solver = { git = "https://github.com/b-inary/postflop-solver", rev = "9d1509f", default-features = false, features = ["rayon"] }
+serde_json.workspace = true
 taful-core.workspace = true
 taful-solver.workspace = true
 serde.workspace = true

@@ -3,6 +3,7 @@
 table-subtitle = Preflop, cash 6-max 100bb. Every decision is graded by EV loss against the reference charts.
 table-mode-spot = Spot mode
 table-mode-hand = Full hand
+table-mode-postflop = Postflop
 table-spot-kind-rfi = Raise first in
 table-spot-kind-vs-open = Vs open
 table-spot-kind-squeeze = Squeeze
@@ -22,6 +23,7 @@ table-action-fold = Fold
 table-action-check = Check
 table-action-call = Call { $amount }
 table-action-raise = Raise to { $amount }
+table-action-bet = Bet { $amount }
 table-action-allin = All-in { $amount }
 table-log-call = Call
 table-log-allin = All-in
@@ -49,3 +51,15 @@ table-hand-over-settled = Hand over. Your result: { $amount } bb.
 table-hand-over-flop = Preflop is done. Postflop play arrives with the postflop library.
 table-hand-over-left = This line is outside the charts, so the hand ends here: { $line }
 table-hand-ev-loss = EV lost this hand: { $amount } bb
+
+## Postflop spot mode (M4, spec §7)
+
+table-subtitle-postflop = Postflop, cash 6-max 100bb. Flop and turn decisions graded against the solved library.
+table-postflop-any = All spots
+table-postflop-btn-bb-srp = BTN vs BB
+table-postflop-co-bb-srp = CO vs BB
+table-postflop-sb-bb-srp = SB vs BB
+table-postflop-btn-sb-3bp = BTN vs SB 3-bet
+table-postflop-co-btn-3bp = CO vs BTN 3-bet
+table-postflop-missing = The postflop library is not on this computer yet. It is built by tools/library-build and read from { $dir }.
+table-postflop-error = Could not load the postflop library: { $error }

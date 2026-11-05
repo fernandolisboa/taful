@@ -14,6 +14,7 @@ pub mod equity;
 pub mod equity_model;
 pub mod eval;
 pub mod grading;
+pub mod iso;
 pub mod position;
 pub mod range;
 pub mod srs;

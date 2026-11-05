@@ -17,6 +17,7 @@ pub mod fmt;
 pub mod i18n;
 pub mod lessons;
 pub mod model;
+pub mod postflop;
 pub mod preflop;
 pub mod review;
 pub mod review_session;
