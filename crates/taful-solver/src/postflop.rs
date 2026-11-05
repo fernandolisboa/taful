@@ -196,6 +196,7 @@ impl PostflopFile {
         if config.key().0 != file.header.config_key {
             return Err(bad("config key does not match the config"));
         }
+        file.validate()?;
         Ok(PostflopFile { file, flop, config })
     }
 

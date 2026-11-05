@@ -427,6 +427,9 @@ impl Game {
         if spot.pot == 0 {
             return Err("empty pot".into());
         }
+        if spot.stack == 0 {
+            return Err("no chips behind: the river is a showdown, nothing to solve".into());
+        }
         let acc = Accum::new(&spot.board);
         let mut lists: Vec<Hands> = (0..2)
             .map(|p| {
@@ -530,7 +533,8 @@ impl Game {
         };
         match self.nodes[node] {
             Kind::Fold { folder, commit } => {
-                let pot_total = self.start_pot + commit[0] as Chips + commit[1] as Chips;
+                // The uncalled part of a bet goes back and is not raked.
+                let pot_total = self.start_pot + 2 * commit[folder] as Chips;
                 let rake = self.rake.amount(pot_total, true) as f64;
                 let v = if folder == p {
                     -(commit[p] as f64)
@@ -759,14 +763,18 @@ impl Game {
     fn exploitability(&self) -> f64 {
         let strat = |n: usize| self.avg(n);
         let mut scratch = vec![None; self.nodes.len()];
-        let br: f64 = (0..2)
+        // Best-response gain over the current strategies' value, per player.
+        // (Values sum to the pot less expected rake, so the pot itself is
+        // not a valid baseline once rake is on.)
+        let gain: f64 = (0..2)
             .map(|p| {
-                let cfv = self.eval(0, p, &self.hands[p ^ 1].root, &strat, true, &mut scratch);
-                self.average(p, &cfv)
+                let w = &self.hands[p ^ 1].root;
+                let br = self.eval(0, p, w, &strat, true, &mut scratch);
+                let cur = self.eval(0, p, w, &strat, false, &mut scratch);
+                self.average(p, &br) - self.average(p, &cur)
             })
             .sum();
-        let rake_free_total = self.pot;
-        ((br - rake_free_total) / 2.0).max(0.0)
+        (gain / 2.0).max(0.0)
     }
 
     fn into_solution(self, iterations: u32, exploitability: f64) -> RiverSolution {
@@ -898,6 +906,16 @@ pub fn best_response(
     }
     if dec.len() != solution.nodes.len() || opp_strategy.len() != dec.len() {
         return Err("strategy does not match the tree".into());
+    }
+    for (k, &i) in dec.iter().enumerate() {
+        if let Kind::Decision {
+            player, actions, ..
+        } = &g.nodes[i]
+            && *player != responder
+            && opp_strategy[k].len() != actions.len() * g.hands[*player].hands.len()
+        {
+            return Err(format!("strategy at node {k} has the wrong size"));
+        }
     }
     let mut by_node = vec![Vec::new(); g.nodes.len()];
     for (k, &i) in dec.iter().enumerate() {
@@ -1052,5 +1070,30 @@ mod tests {
         let opp: Vec<Vec<f32>> = sol.nodes.iter().map(|n| n.strategy.clone()).collect();
         let br = best_response(&s, &sol, 1, &opp).unwrap();
         assert_eq!(br.len(), sol.hands[1].len());
+    }
+
+    #[test]
+    fn rake_and_edge_cases() {
+        let mut s = spot(
+            "AsKd7c4h2s",
+            "AA,KK,77,AQ,KQ,QJs,T9s",
+            "AA,KK,AK,AQ,QQ,JJ,65s,T9s,J9s",
+            ("50%, 100%", "3x"),
+        );
+        s.rake = Rake {
+            rate_bps: 500,
+            cap: None,
+            no_flop_no_drop: false,
+        };
+        let sol = DcfrRiverSolver.solve(&s, &SolveOptions::default()).unwrap();
+        // Converges for real (the old baseline reported 0% at iteration 20).
+        assert!(sol.iterations > 20, "{}", sol.iterations);
+        assert!(sol.exploitability_pct() <= 0.3);
+        assert!(
+            sol.root_ev[0] + sol.root_ev[1] < 1000.0,
+            "rake comes out of the pot"
+        );
+        s.stack = 0;
+        assert!(Game::new(&s).is_err());
     }
 }

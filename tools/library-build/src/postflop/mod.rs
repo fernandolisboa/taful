@@ -192,6 +192,11 @@ pub fn run(manifest_path: &Path, out: &Path, opt: &Options) -> Result<(), String
         .map_err(|e| format!("preflop chart: {e}"))?;
     let chart = PreflopChart::decode(&chart_bytes).map_err(|e| e.to_string())?;
     let config = chart.config().clone();
+    // The postflop solve below is rake-free; refuse to label rake-free
+    // results with a raked config.
+    if config.rake != taful_core::config::Rake::ZERO {
+        return Err("postflop build does not model rake yet; the chart's config has rake".into());
+    }
     let flops_text = std::fs::read_to_string(resolve(manifest_path, &m.flops))
         .map_err(|e| format!("flops: {e}"))?;
     let mut order = crate::flops::parse(&flops_text)?;

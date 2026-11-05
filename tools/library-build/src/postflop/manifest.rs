@@ -99,6 +99,10 @@ impl Manifest {
                 postflop_solver::BetSizeOptions::try_from((b.as_str(), r.as_str()))
                     .map_err(|e| format!("tree {name} {street}: {e}"))?;
             }
+            // The app re-solves rivers with these sizes (spec §7.7), so they
+            // must be in the subset Taful's river solver reads.
+            taful_solver::river::RiverTree::from_spec(t)
+                .map_err(|e| format!("tree {name} river (in-app solver): {e}"))?;
         }
         Ok(())
     }
