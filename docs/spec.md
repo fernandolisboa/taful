@@ -115,8 +115,9 @@ taful/
 | Hand evaluator | `rs_poker` 5.x, `default-features = false` | Behind `HandEvaluator` trait (spike §9.3). |
 | Spaced repetition | `fsrs` 6.x (`fsrs-rs`) | **BSD-3-Clause** (crates.io, v6.6.2 released 2026-08-29; checked 2026-11-04). Closes brief §8 open item. |
 | RNG | `rand_chacha` (`ChaCha8Rng`) | Seedable, portable across platforms and WASM. |
-| SQLite | `rusqlite` (bundled) + `rusqlite_migration` **(proposed)** | Backup API used for snapshots. |
-| i18n | Fluent (`fluent-bundle`) **(proposed)** | pt-BR first, en-US source. |
+| SQLite | `rusqlite` 0.41 (bundled, `backup`) | Backup API used for snapshots. Migrations use a ~40-line runner on `PRAGMA user_version` (M2): `rusqlite_migration` pins an incompatible `libsqlite3-sys`. |
+| Markdown | `pulldown-cmark` 0.13, no default features | Lesson bodies (M2). |
+| i18n | Fluent (`fluent-bundle`) | pt-BR first, en-US source. |
 | Serialization | `serde` + `toml` / `serde_json` | Content, layouts, themes, configs. |
 | Compression | `zstd` | Library files. |
 | Postflop solves (offline) | fork of `postflop-solver` with `bincode =2.0.0-rc.3` pin | Fork lives under the author's GitHub account. |
@@ -387,12 +388,13 @@ Facing a half-pot bet you need {{ calc: pot_odds(pot=100, bet=50) | pct(1) }} eq
 
 - Source in en-US; pt-BR translations are AI-drafted like the source. Both locales share id, version and the exact set of placeholders.
 - `content/skill-tree.toml` orders lessons and groups them into tracks. The first track has ~40 lessons up to intermediate cash 6-max 100bb.
-- Quizzes are TOML: multiple choice, numeric (with tolerance), range-painting (wave 2) and spot questions (a `SpotTemplate` id). Numeric answers are placeholders too.
+- Quizzes are TOML: multiple choice, numeric (with tolerance), range-painting (wave 2) and spot questions (a `SpotTemplate` id). Numeric answers are placeholders too. A quiz has a `pass` share (default 0.8); passing it marks the lesson done and unlocks lessons whose prerequisites are all done.
+- Glossary terms are linked inline as `[text](term:<id>)` and must be listed in the lesson's `glossary`; strings are `glossary-<id>` and `glossary-<id>-def`. Track names are `track-<id>` (M2).
 
 ### 12.2 Expression language
 
 - Syntax: `{{ calc: fn(arg=value, …) | formatter(args) }}`, plus `{{ spot: <id>.freq("BTN", "bet33") }}` for reference-strategy citations.
-- Only whitelisted pure functions from `taful-core` (calc, equity, combinatorics, chart lookups). No variables, loops or user code. Parsed with a small hand-written parser; unknown function or bad argument = render error.
+- Only whitelisted pure functions from `taful-core` (calc, equity, combinatorics, chart lookups). M2 list: `pot_odds`, `mdf`, `alpha`, `spr`, `call_ev`, `hit_probability`, `rule_of_2_and_4`, `outs`, `equity_vs_hand`, `equity_vs_range`, `combos`, `choose`, `cards`, and the arithmetic helpers `mul`, `div`, `min`. `{{ spot: … }}` is a render error until the postflop library exists (M4). No variables, loops or user code. Parsed with a small hand-written parser; unknown function or bad argument = render error.
 - Formatters: `pct(d)`, `bb(d)`, `ratio`, `int`, `cards`. Localized number formatting (pt-BR uses comma decimals).
 
 ### 12.3 Checks (CI and app)
@@ -400,7 +402,7 @@ Facing a half-pot bet you need {{ calc: pot_odds(pot=100, bet=50) | pct(1) }} eq
 `tools/content-check` fails the build when:
 
 1. Any placeholder errors in any locale.
-2. A rendered value differs from the pinned snapshot in `content/lessons/.snapshots/<id>.toml` (drift). Snapshots are updated explicitly with `content-check --bless`.
+2. A rendered value differs from the pinned snapshot in `content/lessons/.snapshots/<id>.toml` or `content/quizzes/.snapshots/<id>.toml` (drift; a missing or stale snapshot fails too). Snapshots are updated explicitly with `content-check --bless`.
 3. Locales disagree on id, version or placeholder set.
 4. The skill tree has a cycle, a missing prerequisite, or a lesson with no unlock.
 5. A glossary term is undefined in `i18n/*/glossary.ftl`.
@@ -415,6 +417,8 @@ Facing a half-pot bet you need {{ calc: pot_odds(pot=100, bet=50) | pct(1) }} eq
 
 - `fsrs` crate, default parameters at start, desired retention 0.9 (setting).
 - Grade → rating: best → Easy, correct → Good, inaccuracy → Hard, mistake/blunder → Again. Calc ratings per §11. Quiz: right → Good, wrong → Again.
+- **Intervals (M2):** Again is due again in 10 minutes (same session); Hard/Good/Easy use the FSRS interval rounded to whole days, at least 1. A first-ever Again is not counted as a lapse.
+- **Calc items** are created on a rating of Hard or worse and reviewed on every later attempt of the same exercise kind and band. **Quiz items** are created on a wrong answer; a right answer only reviews an existing item. A quiz item whose question disappeared from the current quiz version is retired.
 - **Item kinds:** `spot_template`, `calc_exercise` (exercise type + parameter band), `lesson_quiz`. One queue, one daily session that mixes kinds.
 - **Creation:** a graded decision below `Correct` creates or updates the item for its spot template (dedup by template key: config + line + history + texture class + hero position). Full-hand mode feeds items per decision (D6).
 - **Leak detection:** aggregate EV loss per (configuration, street, node type, texture class) over a rolling window; the top leaks are shown on the home screen with a "drill this" action that creates a focused session from that bucket.
@@ -437,7 +441,7 @@ Facing a half-pot bet you need {{ calc: pot_odds(pot=100, bet=50) | pct(1) }} eq
 | `settings` | key/value JSON (locale, desired retention, backup folder, active layout/theme, library base URL). |
 | `lesson_progress` | lesson id, version, state (locked/available/done), best quiz score. |
 | `quiz_attempts` | quiz id, version, answers, score, duration. |
-| `calc_attempts` | exercise type, params (JSON), answer, correct value, duration, rating. |
+| `calc_attempts` | exercise type, parameter band, params (JSON), answer, correct value, duration, rating. |
 | `hands` | mode, `GameConfig` key + TOML, seed, hero seat, bot ids, library format version, ended reason, total EV loss. |
 | `decisions` | hand id (nullable for spot mode), node key, hero combo, chosen action, EV per action, frequencies, pot, EV loss, grade, thresholds version. |
 | `review_items` | kind, template key / exercise key, FSRS memory state, due, last review. |
@@ -448,7 +452,7 @@ Facing a half-pot bet you need {{ calc: pot_odds(pot=100, bet=50) | pct(1) }} eq
 
 ### 14.3 Backups
 
-- Every 24 h of app use and on exit (at most once per hour), a snapshot via SQLite's backup API to the user-chosen folder, named `taful-YYYYMMDD-HHMMSS.sqlite`. Keep the last 7 daily + 4 weekly. Manual export/import from settings; import validates the schema version and runs migrations.
+- Every 24 h of app use and on exit (at most once per hour), a snapshot via SQLite's backup API to the user-chosen folder, named `taful-YYYYMMDD-HHMMSS.sqlite`. Keep the last 7 daily + 4 weekly. Manual export/import from settings; import validates the schema version and runs migrations. A same-second snapshot replaces the earlier one; an import first takes a safety snapshot of the current data (M2).
 - Secrets (Claude API key, wave 3) live in Windows Credential Manager, never in the DB or backups.
 
 ---
