@@ -126,3 +126,21 @@ These agree with commonly published figures (for example, AKs vs a random hand �
 - Promote the spike's checks into `taful-core`'s test suite: the exhaustive category-count test (1s in release; run it in release mode in CI, or mark it `#[ignore]` for debug runs), cross-checks against a second evaluator, and pinned exhaustive equities.
 - **Equity is not a bottleneck.** Exact heads-up preflop equity takes ~25ms single-threaded, and Monte Carlo runs ~20M samples/s per thread. Exact preflop range vs range (every board × every combo in both ranges, ~1–2 billion evaluations) would take tens of seconds, so use Monte Carlo there (≈0.1% error in well under a second) or exact enumeration once the board is known (postflop, it is fast). That is enough for the calc trainer, lessons (D5 computed numbers) and CI.
 - The solver has its own internal evaluator, so this choice does not affect the solver.
+
+## §9.4 Solver benchmark on the build machine
+
+Run 2026-11-04 on the author's PC: AMD Ryzen 9 9950X3D (16 cores / 32 threads, SMT on), 32GB single-channel DDR5, Windows 11. Same `spikes/solver` binary and trees as §9.2, target exploitability 0.5% pot, normal priority, nothing heavy running alongside.
+
+| Run | Wall | Solve | Peak RAM | Exploitability | Spike machine | Speedup |
+|---|---|---|---|---|---|---|
+| SRP Ks7d2c small, 16-bit | 39.7s | 35.0s, 120 iters | 4.3GB | 0.43% pot | 286s | 7.2x |
+| 3BP Ks7d2c large, f32 | 82.9s | 74.0s, 230 iters | 5.9GB | 0.47% pot | 302s | 3.6x |
+| SRP Td9d6h medium, 16-bit | 244.6s | 242.9s, 300 iters | 8.0GB | 0.49% pot | 2112s | 8.6x |
+| Same, `RAYON_NUM_THREADS=16` | 293.5s | 292.1s, 300 iters | 8.0GB | 0.49% pot | 2112s | 7.2x |
+| SRP Ks7d2c medium, estimate only | – | – | est. 14.0GB (16-bit), 27.5GB (f32) | – | – | – |
+
+- Peak RAM is the polled working set and includes the spike's save/reload check, so it sits above the solver's own estimate. `peak_rss` is not reported on Windows.
+- SMT helps: 32 threads are ~17% faster than 16 on the medium tree, with identical results.
+- The smaller speedup on the short 3BP run is mostly fixed overhead (tree build and save). The long SRP solve, which dominates the build, scales ~8.6x.
+- Dry-board SRP medium (~14GB in 16-bit) fits in 32GB only with other heavy apps closed, so SRP solves run at night. 3-bet pots (~6GB) also fit during the day.
+- Budget derived in [spec.md](spec.md) §7.3.

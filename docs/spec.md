@@ -214,7 +214,9 @@ Trees as measured in spike §9.2 (medium: flop 33/75%; turn and river 50/100%/al
 - Resumable batch job, one output file per (configuration, flop); a finished file is skipped on rerun. Logs time, memory, iterations, exploitability per solve.
 - Per solve, while the full tree is in memory: export the **turn-truncated** strategy and EVs (D11), and, after the first slice, per-profile best-response EVs (D8).
 - Validation: the own river solver is checked against `postflop-solver` on a fixed set of river spots (EVs and exploitability within tolerance, D11). Runs in the tool's tests, not in app CI.
-- Hardware: ≥ 32GB RAM for SRP dry boards (spike §9.2). Budget ~85–150 h on 4 cores for SRPs + ~8 h for 3-bet pots; much less on a 16-core box. **(open, Q4)** which machine runs it.
+- Hardware: ≥ 32GB RAM for SRP dry boards (spike §9.2). Runs on the author's PC (Q4), one solve at a time, at low priority and pausable.
+- Measured on that PC (Ryzen 9 9950X3D, 32 threads, 2026-11-04; [spikes.md](spikes.md) §9.4): SRP medium ~4–7 min per flop (Td9d6h: 245s, 8GB peak), 3-bet pot large ~1.5 min per flop (83s, 6GB peak). About 7–9x the 4-vCPU spike machine; SMT adds ~17%.
+- Budget: the first slice (245 solves) takes ~16 h, one night plus a few hours. Full coverage (5 × 1,755 = 8,775 solves) takes ~430–700 h of solving, about 3–4 weeks running 24/7 or 6–10 weeks of nights and weekends.
 
 ### 7.4 Boards outside the subset
 
@@ -538,5 +540,5 @@ The calc trainer and lessons (M2) give daily value before the library exists, so
 | Q1 | Source of preflop charts with EVs | **Decided (D12):** own offline preflop solver, realization calibrated from the postflop library (§6) | — |
 | Q2 | Boards outside the flop subset | **Decided (D13):** deal only solved flops; grow coverage to all 1,755 (§7.4) | — |
 | Q3 | Trademark checks for "Taful" (INPI 9/41, USPTO/EUIPO) | Before any public release | release |
-| Q4 | Machine for the library build (≥ 32GB RAM, many cores) | Author's PC (Ryzen 9 9950X3D, 16 cores, 32GB), low priority at night; benchmark pending | M4 |
+| Q4 | Machine for the library build (≥ 32GB RAM, many cores) | **Decided:** author's PC (Ryzen 9 9950X3D, 16 cores / 32 threads, 32GB), low priority at night; benchmarked in §7.3 | — |
 | Q5 | Static host for the library | Deferred to the web client; local folder for the first slice (§7.6) | web |

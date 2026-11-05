@@ -326,5 +326,5 @@ Mapping a random flop to the "nearest" solved flop changes hero's real hand stre
 
 ### Implications
 - The flop subset is a build-manifest parameter; adding flops is a build job, never a code change.
-- Build budget for full coverage (5 configurations × 1,755 flops) is several hundred CPU-hours. Proposed machine: the author's PC (Ryzen 9 9950X3D, 16 cores, 32GB), running at low priority at night/weekends; the build must be resumable and pausable. Benchmark pending to replace the estimates.
+- Build machine: the author's PC (Ryzen 9 9950X3D, 16 cores / 32 threads, 32GB), at low priority at night and on weekends; the build must be resumable and pausable. Benchmarked 2026-11-04 (spec §7.3): SRP medium ~4–7 min per flop, 3-bet pot large ~1.5 min. The first slice takes ~16 h; full coverage takes ~430–700 h, about 3–4 weeks 24/7 or 6–10 weeks of nights and weekends.
 - 32GB RAM fits one SRP solve at a time (up to ~14GB in 16-bit). Shipped size grows proportionally (to be measured with the compact format, §7.5).
