@@ -214,6 +214,33 @@ impl Store {
         Ok(())
     }
 
+    /// Runs `f` atomically: its writes are kept only when it returns `Ok`.
+    /// A savepoint, so it nests: store methods that are atomic themselves
+    /// can run inside.
+    pub fn atomic<T, E: From<StoreError>>(
+        &self,
+        f: impl FnOnce(&Store) -> std::result::Result<T, E>,
+    ) -> std::result::Result<T, E> {
+        self.conn
+            .execute_batch("SAVEPOINT taful_atomic")
+            .map_err(StoreError::from)?;
+        match f(self) {
+            Ok(v) => {
+                self.conn
+                    .execute_batch("RELEASE taful_atomic")
+                    .map_err(StoreError::from)?;
+                Ok(v)
+            }
+            Err(e) => {
+                // Best effort: the original error matters more.
+                let _ = self
+                    .conn
+                    .execute_batch("ROLLBACK TO taful_atomic; RELEASE taful_atomic");
+                Err(e)
+            }
+        }
+    }
+
     pub(crate) fn conn(&self) -> &Connection {
         &self.conn
     }

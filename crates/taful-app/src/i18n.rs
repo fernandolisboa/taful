@@ -84,6 +84,7 @@ pub const SOURCES: &[Source] = sources![
     "app.ftl",
     "calc.ftl",
     "glossary.ftl",
+    "hand.ftl",
     "lessons.ftl",
     "review.ftl",
     "settings.ftl",

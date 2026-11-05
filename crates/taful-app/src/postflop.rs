@@ -14,17 +14,19 @@ use std::sync::{Arc, Mutex};
 use rand::seq::IndexedRandom;
 use rand::{RngExt, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use taful_core::action::Line;
+use taful_core::action::{Line, Street};
 use taful_core::cards::{CardSet, NUM_COMBOS};
 use taful_core::config::GameConfig;
 use taful_core::engine::Phase;
 use taful_core::grading::{Thresholds, grade};
 use taful_core::iso::{Flop, SuitPerm, deal_weights};
 use taful_solver::format::FormatError;
-use taful_solver::postflop::{Cursor, PostflopFile, SpotGeometry, Step, geometry};
+use taful_solver::postflop::{PostflopFile, SpotGeometry, geometry};
 
 pub use crate::preflop::GradedDecision;
 use crate::preflop::{Action, BB_CHIPS, Card, GameState, Hand, Position, Seat};
+pub use crate::template::NodeType;
+use crate::walk::{Progress, Walk};
 
 /// Where library files come from (spec §7.6). `Http` arrives with the web
 /// client (Q5).
@@ -240,144 +242,266 @@ impl PostflopTrainer {
         Ok(f)
     }
 
+    /// The configuration whose preflop line is `line`, if solved.
+    pub fn spot_for_line(&self, line: &Line) -> Option<&SpotConfig> {
+        self.spots.iter().find(|s| &s.line == line)
+    }
+
+    /// A random solved flop of `cfg` dealt as a real flop that avoids `dead`
+    /// (spec §7.4, D13): flops weighted by real frequency, a random suit
+    /// relabeling. `None` if no relabeling avoids the dead cards.
+    pub(crate) fn deal_flop(
+        &self,
+        cfg: &SpotConfig,
+        texture: Option<&str>,
+        dead: CardSet,
+        rng: &mut ChaCha8Rng,
+    ) -> Result<Option<(Arc<PostflopFile>, Flop)>, PostflopError> {
+        let idx: Vec<usize> = (0..cfg.flops.len())
+            .filter(|&i| texture.is_none_or(|t| cfg.flops[i].0.texture().class().id() == t))
+            .collect();
+        let perms: Vec<SuitPerm> = SuitPerm::all().collect();
+        for _ in 0..200 {
+            let Ok(&fi) = idx.choose_weighted(rng, |&i| cfg.weights[i]) else {
+                return Ok(None);
+            };
+            let relabel = *perms.choose(rng).expect("24");
+            let real = cfg.flops[fi].0.permuted(&relabel);
+            if real.cards().iter().any(|c| dead.contains(*c)) {
+                continue;
+            }
+            let file = self.load(&cfg.flops[fi].1)?;
+            if file.file().header.line != cfg.line.to_string() {
+                return Err(PostflopError::Library(format!(
+                    "{}: line differs from the spot",
+                    cfg.flops[fi].1.path
+                )));
+            }
+            return Ok(Some((file, real)));
+        }
+        Ok(None)
+    }
+
+    /// A walk from the root of `cfg` on `real`.
+    pub(crate) fn walk(
+        &self,
+        cfg: &SpotConfig,
+        file: Arc<PostflopFile>,
+        real: Flop,
+    ) -> Result<Walk, PostflopError> {
+        Walk::start(&cfg.id, file, cfg.geometry.clone(), real)
+    }
+
     /// A random postflop question (spec §10.1). `spot` picks a configuration
     /// by id (`None` = any). The flop is weighted by real frequency and
     /// relabeled by a random suit permutation; the line is sampled from both
-    /// ranges' aggregate frequencies, stopping at a random decision; hands
-    /// are drawn from each player's reach there.
+    /// ranges' aggregate frequencies, stopping at a random flop or turn
+    /// decision; hands are drawn from each player's reach there.
     pub fn spot(&self, spot: Option<&str>, seed: u64) -> Result<PostflopSpot, PostflopError> {
+        self.generate(
+            &SpotRequest {
+                spot,
+                ..SpotRequest::default()
+            },
+            seed,
+        )
+    }
+
+    /// A question matching `req` (drills from mistakes and leaks, spec §13).
+    /// Tries a bounded number of random deals; [`PostflopError::Empty`] if
+    /// none matches.
+    pub fn generate(
+        &self,
+        req: &SpotRequest<'_>,
+        seed: u64,
+    ) -> Result<PostflopSpot, PostflopError> {
         let mut rng = ChaCha8Rng::seed_from_u64(seed);
-        let cfg = match spot {
+        let mut rivers = RIVER_SOLVES;
+        for _ in 0..ATTEMPTS {
+            if let Some(s) = self.try_generate(req, &mut rng, &mut rivers)? {
+                return Ok(s);
+            }
+        }
+        Err(PostflopError::Empty)
+    }
+
+    fn try_generate(
+        &self,
+        req: &SpotRequest<'_>,
+        rng: &mut ChaCha8Rng,
+        rivers: &mut usize,
+    ) -> Result<Option<PostflopSpot>, PostflopError> {
+        let cfg = match req.spot {
             Some(id) => self
                 .spots
                 .iter()
                 .find(|s| s.id == id)
                 .ok_or(PostflopError::Empty)?,
-            None => self.spots.choose(&mut rng).ok_or(PostflopError::Empty)?,
+            None => self.spots.choose(rng).ok_or(PostflopError::Empty)?,
         };
-        let idx: Vec<usize> = (0..cfg.flops.len()).collect();
-        let &fi = idx
-            .choose_weighted(&mut rng, |&i| cfg.weights[i])
-            .map_err(|_| PostflopError::Empty)?;
-        let file = self.load(&cfg.flops[fi].1)?;
-        if file.file().header.line != cfg.line.to_string() {
-            return Err(PostflopError::Library(format!(
-                "{}: line differs from the spot",
-                cfg.flops[fi].1.path
-            )));
-        }
-        let perms: Vec<SuitPerm> = SuitPerm::all().collect();
-        let relabel = *perms.choose(&mut rng).expect("24");
-        let real_flop = file.flop().permuted(&relabel);
-        let mut cursor = file.root(real_flop).ok_or(PostflopError::NoData)?;
-        let g = &cfg.geometry;
-        let pos = [g.oop, g.ip];
-        let mut reach = [
-            file.root_range(g.oop, &cursor.perm)
-                .ok_or(PostflopError::NoData)?,
-            file.root_range(g.ip, &cursor.perm)
-                .ok_or(PostflopError::NoData)?,
-        ];
-        let mut board: Vec<Card> = real_flop.cards().to_vec();
-        let mut actions: Vec<(Position, Action)> = Vec::new();
+        let Some((file, real)) = self.deal_flop(cfg, req.texture, CardSet::EMPTY, rng)? else {
+            return Ok(None);
+        };
+        let mut walk = self.walk(cfg, file, real)?;
+        let script: Vec<(Position, Action)> = req
+            .script
+            .iter()
+            .flat_map(|s| s.iter().flatten().copied())
+            .collect();
+        let max_street = req.street.unwrap_or(Street::Turn);
+        let mut done = 0;
         // Stop at each decision with this probability (so flop and turn
         // spots both come up), and always before leaving the library.
         const STOP: f64 = 0.45;
         loop {
-            let node = file.node(&cursor);
-            let p = usize::from(node.player == g.ip);
-            if rng.random::<f64>() < STOP {
-                break;
-            }
-            // Aggregate frequencies over the actor's range (folds excluded:
-            // they end the hand).
-            let dead = CardSet::from_cards(&board);
-            let freqs: Vec<f64> = (0..node.actions.len())
-                .map(|a| {
-                    if node.actions[a].action == Action::Fold {
-                        return 0.0;
+            let node = walk.node().expect("at a decision");
+            let acceptable = req.hero.is_none_or(|h| h == node.position)
+                && req.street.is_none_or(|s| s == node.street)
+                && req
+                    .node_type
+                    .is_none_or(|t| t == NodeType::postflop(node.facing));
+            let action = if let Some(s) = req.script {
+                if done == script.len() {
+                    if walk.history().len() != s.len().max(1) || !acceptable {
+                        return Ok(None);
                     }
-                    let mut r = reach[p].clone();
-                    file.apply_action_reach(&cursor, a, &mut r);
-                    r.iter()
-                        .enumerate()
-                        .filter(|(h, _)| {
-                            !Hand::from_combo(*h).expect("<1326").mask().intersects(dead)
-                        })
-                        .map(|(_, &w)| f64::from(w))
-                        .sum()
-                })
-                .collect();
-            let choices: Vec<usize> = (0..freqs.len()).collect();
-            let Ok(&a) = choices.choose_weighted(&mut rng, |&i| freqs[i]) else {
-                break;
-            };
-            let action = node.actions[a].action;
-            let next = file.step(&cursor, action);
-            let next = match next {
-                Step::Chance(k, perm) => {
-                    let live: Vec<Card> = Card::all().filter(|c| !board.contains(c)).collect();
-                    let turn = *live.choose(&mut rng).expect("cards left");
-                    match file.deal(k, perm, turn) {
-                        Step::Node(c) => {
-                            board.push(turn);
-                            Some(c)
+                    break;
+                }
+                let (p, a) = script[done];
+                if p != node.position {
+                    return Ok(None);
+                }
+                done += 1;
+                a
+            } else {
+                if acceptable && rng.random::<f64>() < STOP {
+                    break;
+                }
+                // Aggregate frequencies over the actor's range (folds
+                // excluded: they end the hand).
+                let freqs: Vec<f64> = (0..node.actions.len())
+                    .map(|a| {
+                        if node.actions[a] == Action::Fold {
+                            0.0
+                        } else {
+                            walk.action_weight(a)
                         }
-                        _ => None,
+                    })
+                    .collect();
+                let choices: Vec<usize> = (0..freqs.len()).collect();
+                let Ok(&a) = choices.choose_weighted(rng, |&i| freqs[i]) else {
+                    if acceptable {
+                        break;
+                    }
+                    return Ok(None);
+                };
+                let action = node.actions[a];
+                let next = walk.peek(action);
+                let continues = match next {
+                    Progress::Decision => true,
+                    Progress::NeedsCard(st) => st <= max_street,
+                    _ => false,
+                };
+                if !continues {
+                    if acceptable {
+                        break;
+                    }
+                    return Ok(None);
+                }
+                action
+            };
+            match walk.act(action)? {
+                Progress::Decision => {}
+                Progress::NeedsCard(street) => {
+                    // Each river deal solves the river: bound the wait.
+                    if street == Street::River {
+                        if *rivers == 0 {
+                            return Ok(None);
+                        }
+                        *rivers -= 1;
+                    }
+                    let live: Vec<Card> =
+                        Card::all().filter(|c| !walk.board().contains(c)).collect();
+                    let card = *live.choose(rng).expect("cards left");
+                    if walk.deal(card, &[])? != Progress::Decision {
+                        return Ok(None);
                     }
                 }
-                Step::Node(c) => Some(c),
-                Step::End | Step::Left => None,
-            };
-            let Some(next) = next else {
-                break;
-            };
-            file.apply_action_reach(&cursor, a, &mut reach[p]);
-            actions.push((pos[p], action));
-            cursor = next;
+                _ => return Ok(None),
+            }
         }
 
-        // Hero acts at `cursor`; draw both hands from reach.
-        let node = file.node(&cursor);
-        let hero_p = usize::from(node.player == g.ip);
-        let dead = CardSet::from_cards(&board);
-        let draw = |rng: &mut ChaCha8Rng, r: &[f32], dead: CardSet, need_live: Option<&Cursor>| {
+        // Hero acts at the walk's node; draw both hands from reach.
+        let node = walk.node().expect("at a decision");
+        let hero_p = node.side;
+        let dead = CardSet::from_cards(walk.board());
+        let draw = |rng: &mut ChaCha8Rng, r: &[f32], dead: CardSet, need_live: bool| {
             let hs: Vec<usize> = (0..NUM_COMBOS)
                 .filter(|&h| {
                     let hand = Hand::from_combo(h).expect("<1326");
                     r[h] > 0.0
                         && !hand.mask().intersects(dead)
-                        && need_live.is_none_or(|c| file.strategy(c, hand).is_some())
+                        && (!need_live || walk.strategy(hand).is_some())
                 })
                 .collect();
             hs.choose_weighted(rng, |&h| r[h])
                 .ok()
                 .map(|&h| Hand::from_combo(h).expect("<1326"))
         };
-        let hero_hand =
-            draw(&mut rng, &reach[hero_p], dead, Some(&cursor)).ok_or(PostflopError::NoData)?;
-        let villain_hand = draw(
-            &mut rng,
-            &reach[hero_p ^ 1],
-            dead.union(hero_hand.mask()),
-            None,
-        )
-        .ok_or(PostflopError::NoData)?;
-
-        // Table state: preflop line, flop, postflop actions, turn.
-        let n = usize::from(self.config.table_size);
-        let seat_of = |p: Position| {
-            Position::by_button_offset(n)
-                .iter()
-                .position(|&q| q == p)
-                .expect("seated")
+        let Some(hero_hand) = draw(rng, walk.reach(hero_p), dead, true) else {
+            return Ok(None);
         };
-        let hero_pos = pos[hero_p];
+        let Some(villain_hand) = draw(
+            rng,
+            walk.reach(hero_p ^ 1),
+            dead.union(hero_hand.mask()),
+            false,
+        ) else {
+            return Ok(None);
+        };
+        let pos = walk.positions();
+        let mut hands = [hero_hand, villain_hand];
+        if hero_p == 1 {
+            hands.swap(0, 1);
+        }
+        let state = self.table_state(&cfg.line, &walk, hands, rng)?;
+        let n = usize::from(self.config.table_size);
+        let hero = seat_of(n, pos[hero_p]);
+        if state.to_act() != Some(hero) {
+            return Err(PostflopError::Library(
+                "engine and library disagree on who acts".into(),
+            ));
+        }
+        Ok(Some(PostflopSpot {
+            spot_id: cfg.id.clone(),
+            hero,
+            hand: hero_hand,
+            state,
+            postflop_line: Line(walk.actions().collect()),
+            board: walk.board().to_vec(),
+            walk,
+        }))
+    }
+
+    /// The table at the walk's point: the preflop line, the board and the
+    /// postflop actions on the engine; `hands` are OOP's and IP's.
+    fn table_state(
+        &self,
+        line: &Line,
+        walk: &Walk,
+        hands: [Hand; 2],
+        rng: &mut ChaCha8Rng,
+    ) -> Result<GameState, PostflopError> {
+        let n = usize::from(self.config.table_size);
+        let pos = walk.positions();
         let mut holes = vec![None; n];
-        holes[seat_of(hero_pos)] = Some(hero_hand);
-        holes[seat_of(pos[hero_p ^ 1])] = Some(villain_hand);
+        holes[seat_of(n, pos[0])] = Some(hands[0]);
+        holes[seat_of(n, pos[1])] = Some(hands[1]);
         // Folded seats get cards off the board too (the engine checks).
-        let used = dead.union(hero_hand.mask()).union(villain_hand.mask());
+        let board = walk.board();
+        let used = CardSet::from_cards(board)
+            .union(hands[0].mask())
+            .union(hands[1].mask());
         let mut deck: Vec<Card> = Card::all().filter(|c| !used.contains(*c)).collect();
         for i in (1..deck.len()).rev() {
             let j = rng.random_range(0..=i);
@@ -390,111 +514,122 @@ impl PostflopTrainer {
         let engine = |e| PostflopError::Library(format!("engine: {e:?}"));
         let mut state = GameState::new_with_holes(self.config.clone(), 0, rng.random(), &holes)
             .map_err(engine)?;
-        for &(_, a) in &cfg.line.0 {
+        for &(_, a) in &line.0 {
             state = state.apply(a).map_err(engine)?;
         }
         state = state.deal_board(&board[..3]).map_err(engine)?;
-        for &(_, a) in &actions {
+        for (_, a) in walk.actions() {
             state = state.apply(a).map_err(engine)?;
             if let Phase::NeedsBoard(_) = state.phase() {
-                state = state.deal_board(&board[3..4]).map_err(engine)?;
+                let k = state.board().len();
+                if k < board.len() {
+                    state = state.deal_board(&board[k..k + 1]).map_err(engine)?;
+                }
             }
         }
-        if state.to_act() != Some(seat_of(hero_pos)) {
-            return Err(PostflopError::Library(
-                "engine and library disagree on who acts".into(),
-            ));
-        }
-        Ok(PostflopSpot {
-            spot_id: cfg.id.clone(),
-            file,
-            cursor,
-            hero: seat_of(hero_pos),
-            hand: hero_hand,
-            state,
-            postflop_line: Line(actions),
-            hero_reach: reach[hero_p].clone(),
-            board,
-        })
+        Ok(state)
     }
 
     /// Grade hero taking `chosen` at the spot's node.
     pub fn grade(&self, s: &PostflopSpot, chosen: usize) -> Result<GradedDecision, PostflopError> {
-        let f = &s.file;
-        let node = f.node(&s.cursor);
-        let freqs = f.strategy(&s.cursor, s.hand).ok_or(PostflopError::NoData)?;
-        let evs = f.ev(&s.cursor, s.hand).ok_or(PostflopError::NoData)?;
-        let best_ev = evs.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-        let ev_loss = f64::from(best_ev - evs[chosen]).max(0.0);
-        let pot_bb = node.pot as f64 / BB_CHIPS as f64;
-        let tolerance_bb = f64::from(node.exploitability_pct) / 100.0 * pot_bb;
-        let dead = CardSet::from_cards(&s.board);
-        let total: f64 = (0..NUM_COMBOS)
-            .filter(|&h| !Hand::from_combo(h).expect("<1326").mask().intersects(dead))
-            .map(|h| f64::from(s.hero_reach[h]))
-            .sum();
-        let range_freqs = (0..node.actions.len())
-            .map(|a| {
-                let mut r = s.hero_reach.clone();
-                f.apply_action_reach(&s.cursor, a, &mut r);
-                let x: f64 = (0..NUM_COMBOS)
-                    .filter(|&h| !Hand::from_combo(h).expect("<1326").mask().intersects(dead))
-                    .map(|h| f64::from(r[h]))
-                    .sum();
-                if total > 0.0 { (x / total) as f32 } else { 0.0 }
-            })
-            .collect();
-        Ok(GradedDecision {
-            node: s.cursor.node as usize,
-            line: s.postflop_line.clone(),
-            position: node.player,
-            hand: s.hand,
-            actions: node.actions.iter().map(|a| a.action).collect(),
-            chosen,
-            grade: grade(
-                ev_loss,
-                pot_bb,
-                freqs[chosen],
-                tolerance_bb,
-                &self.thresholds,
-            ),
-            hand_freqs: freqs,
-            hand_evs: evs,
-            range_freqs,
-            pot_bb,
-            ev_loss_bb: ev_loss,
-            tolerance_bb,
-            thresholds_version: self.thresholds.version,
-        })
+        grade_walk(&s.walk, s.hand, chosen, &self.thresholds)
     }
+}
+
+/// Deals tried by [`PostflopTrainer::generate`] before giving up.
+const ATTEMPTS: usize = 60;
+/// River solves one [`PostflopTrainer::generate`] call may run (each is
+/// about 0.4 s in release; solving off the UI thread is an M6 follow-up).
+const RIVER_SOLVES: usize = 8;
+
+/// Seat of `pos` with the button on seat 0.
+pub(crate) fn seat_of(n: usize, pos: Position) -> Seat {
+    Position::by_button_offset(n)
+        .iter()
+        .position(|&q| q == pos)
+        .expect("seated")
+}
+
+/// What a generated question must match (all optional).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SpotRequest<'a> {
+    /// Configuration id.
+    pub spot: Option<&'a str>,
+    /// Board family: a [`TextureClass`](taful_core::iso::TextureClass) id.
+    pub texture: Option<&'a str>,
+    /// Exact postflop history (one list per street from the flop); hero
+    /// decides right after it.
+    pub script: Option<&'a [Vec<(Position, Action)>]>,
+    /// Street of the decision (default: flop or turn; `River` solves the
+    /// river in the app).
+    pub street: Option<Street>,
+    pub node_type: Option<NodeType>,
+    pub hero: Option<Position>,
+}
+
+/// Grade `hand` taking action `chosen` at the walk's node (spec §8).
+pub(crate) fn grade_walk(
+    walk: &Walk,
+    hand: Hand,
+    chosen: usize,
+    thresholds: &Thresholds,
+) -> Result<GradedDecision, PostflopError> {
+    let node = walk.node().ok_or(PostflopError::NoData)?;
+    let freqs = walk.strategy(hand).ok_or(PostflopError::NoData)?;
+    let evs = walk.ev_bb(hand).ok_or(PostflopError::NoData)?;
+    if chosen >= node.actions.len() {
+        return Err(PostflopError::NoData);
+    }
+    let best_ev = evs.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    let ev_loss = f64::from(best_ev - evs[chosen]).max(0.0);
+    let pot_bb = node.pot as f64 / BB_CHIPS as f64;
+    Ok(GradedDecision {
+        node: walk.history().iter().map(Vec::len).sum(),
+        line: Line(walk.actions().collect()),
+        position: node.position,
+        hand,
+        actions: node.actions.clone(),
+        chosen,
+        grade: grade(
+            ev_loss,
+            pot_bb,
+            freqs[chosen],
+            node.tolerance_bb,
+            thresholds,
+        ),
+        hand_freqs: freqs,
+        hand_evs: evs,
+        range_freqs: walk.range_freqs(),
+        pot_bb,
+        ev_loss_bb: ev_loss,
+        tolerance_bb: node.tolerance_bb,
+        thresholds_version: thresholds.version,
+    })
 }
 
 /// One postflop question.
 #[derive(Debug, Clone)]
 pub struct PostflopSpot {
     pub spot_id: String,
-    file: Arc<PostflopFile>,
-    cursor: Cursor,
+    walk: Walk,
     pub hero: Seat,
     pub hand: Hand,
     /// Table state at hero's decision.
     pub state: GameState,
     /// Postflop actions before hero's decision.
     pub postflop_line: Line,
-    /// Real board (3 or 4 cards).
+    /// Real board (3 to 5 cards).
     pub board: Vec<Card>,
-    hero_reach: Vec<f32>,
 }
 
 impl PostflopSpot {
     /// Hero's options, in tree order.
     pub fn actions(&self) -> Vec<Action> {
-        self.file
-            .node(&self.cursor)
-            .actions
-            .iter()
-            .map(|a| a.action)
-            .collect()
+        self.walk.node().map(|n| n.actions).unwrap_or_default()
+    }
+
+    pub fn walk(&self) -> &Walk {
+        &self.walk
     }
 
     pub fn answer(
@@ -503,9 +638,9 @@ impl PostflopSpot {
         action: Action,
     ) -> Result<GradedDecision, PostflopError> {
         let chosen = self
-            .file
-            .node(&self.cursor)
-            .action_index(action)
+            .actions()
+            .iter()
+            .position(|&a| a == action)
             .ok_or(PostflopError::NotInTree(action))?;
         trainer.grade(self, chosen)
     }

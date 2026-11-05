@@ -3,6 +3,7 @@
 //! struct owned by the shell.
 
 pub mod calc;
+pub mod hand_review;
 pub mod home;
 pub mod lesson;
 pub mod review;

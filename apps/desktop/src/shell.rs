@@ -13,7 +13,8 @@ use taful_app::App;
 
 use crate::Ui;
 use crate::screen::Screen;
-use crate::screens::table::TableScreen;
+use crate::screens::hand_review::HandReviewView;
+use crate::screens::table::{TableEvent, TableScreen};
 use crate::screens::{
     calc::CalcView, lesson::LessonView, review::ReviewView, settings::SettingsView,
 };
@@ -49,16 +50,20 @@ pub struct Shell {
     pub(crate) calc: CalcView,
     pub(crate) review: ReviewView,
     pub(crate) settings: SettingsView,
-    table: Entity<TableScreen>,
+    pub(crate) hand_review: HandReviewView,
+    pub(crate) table: Entity<TableScreen>,
+    /// The home screen's leaks, read again each time home is opened.
+    pub(crate) leaks: Option<Vec<taful_app::model::Leak>>,
     _ticker: Task<()>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl Shell {
-    pub fn new(ui: Rc<Ui>, app: App, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(ui: Rc<Ui>, mut app: App, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let palette = Palette::new(&ui.theme.colors);
         let focus = cx.focus_handle();
-        let table = cx.new(|_| TableScreen::new(ui.clone()));
+        let trainers = app.trainers().map_err(|e| e.to_string());
+        let table = cx.new(|_| TableScreen::new(ui.clone(), trainers));
         window.focus(&focus);
         let ticker = cx.spawn(async move |this, cx| {
             let mut since_use = Duration::ZERO;
@@ -83,13 +88,14 @@ impl Shell {
             }
         });
         let subscriptions = vec![
+            cx.subscribe_in(&table, window, Self::on_table_event),
             cx.on_release(|shell, _| shell.exit_backup()),
             cx.on_app_quit(|shell, _| {
                 shell.exit_backup();
                 async {}
             }),
         ];
-        Self {
+        let mut shell = Self {
             ui,
             palette,
             app,
@@ -105,10 +111,49 @@ impl Shell {
             calc: CalcView::default(),
             review: ReviewView::default(),
             settings: SettingsView::default(),
+            hand_review: HandReviewView::default(),
+            leaks: None,
             table,
             _ticker: ticker,
             _subscriptions: subscriptions,
+        };
+        // Dev override (screenshots): TAFUL_REVIEW_START=1 deals the first review.
+        if shell.screen == Screen::Review && std::env::var_os("TAFUL_REVIEW_START").is_some() {
+            shell.review_load_next();
         }
+        shell
+    }
+
+    /// Stores what the table graded (spec §14) and opens the hand review.
+    fn on_table_event(
+        &mut self,
+        _: &Entity<TableScreen>,
+        ev: &TableEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match ev {
+            TableEvent::Answered(d, ctx) => {
+                if let Err(e) = self.app.record_spot_decision(d, ctx, None) {
+                    eprintln!("taful: storing a decision failed: {e}");
+                }
+            }
+            TableEvent::HandOver(h) => match self.app.record_hand(h) {
+                Ok(id) => {
+                    self.hand_review.last_stored = Some(id);
+                    self.hand_review.loaded = false;
+                }
+                Err(e) => eprintln!("taful: storing a hand failed: {e}"),
+            },
+            TableEvent::ReviewHand => {
+                let id = self.hand_review.last_stored.clone();
+                self.select(Screen::HandReview, window, cx);
+                if let Some(id) = id {
+                    self.open_hand(&id);
+                }
+            }
+        }
+        cx.notify();
     }
 
     fn exit_backup(&mut self) {
@@ -136,6 +181,12 @@ impl Shell {
             }
             if screen == Screen::Calc {
                 self.calc_enter();
+            }
+            if screen == Screen::HandReview {
+                self.hand_review_enter();
+            }
+            if screen == Screen::Home {
+                self.leaks = None;
             }
         }
         window.focus(&self.focus);
@@ -203,7 +254,7 @@ impl Shell {
         self.settings.message = None;
     }
 
-    fn nav(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn nav(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let (p, t, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
         let due = self.app.due_count().unwrap_or(0);
         let items = Screen::ALL.into_iter().enumerate().map(|(i, screen)| {
@@ -327,22 +378,40 @@ impl Shell {
         let (xl, xxl) = (t.spacing.xl, t.spacing.xxl);
         let title = self.ui.i18n.tr(self.screen.nav_key());
         let title_size = t.text_size.xl;
-        if self.screen == Screen::Table {
-            // The table takes the whole pane (no reading column).
+        if matches!(
+            self.screen,
+            Screen::Table | Screen::HandReview | Screen::Review
+        ) {
+            let gap = t.spacing.lg;
+            // Screens with a table take the whole pane (no reading column).
+            let body = match self.screen {
+                Screen::Table => self.table.clone().into_any_element(),
+                Screen::HandReview => self.hand_review_view(cx),
+                _ => self.review_view(cx),
+            };
             return div()
+                .id("content_wide")
                 .flex_1()
                 .h_full()
                 .flex()
                 .flex_col()
-                .gap(px(t.spacing.lg))
-                .p(px(xxl))
+                .overflow_y_scroll()
+                .track_scroll(&self.scroll)
                 .child(
                     div()
-                        .text_size(px(title_size))
-                        .font_weight(FontWeight::BOLD)
-                        .child(title),
+                        .flex()
+                        .flex_col()
+                        .flex_none()
+                        .gap(px(gap))
+                        .p(px(xxl))
+                        .child(
+                            div()
+                                .text_size(px(title_size))
+                                .font_weight(FontWeight::BOLD)
+                                .child(title),
+                        )
+                        .child(body),
                 )
-                .child(self.table.clone())
                 .into_any_element();
         }
         let viewport = f32::from(window.viewport_size().width);
@@ -352,9 +421,8 @@ impl Shell {
             Screen::SkillTree => self.tree_view(cx),
             Screen::Lesson => self.lesson_view(cx),
             Screen::Calc => self.calc_view(cx),
-            Screen::Review => self.review_view(cx),
             Screen::Settings => self.settings_view(window, cx),
-            Screen::Table | Screen::HandReview => self.placeholder(self.screen),
+            Screen::Table | Screen::HandReview | Screen::Review => self.placeholder(self.screen),
         };
         div()
             .id("content")

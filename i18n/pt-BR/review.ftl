@@ -1,6 +1,6 @@
 # Sessão de revisão (spec §13) e tela inicial.
 
-review-intro = Sua fila de repetição espaçada: perguntas de quiz erradas e cálculos lentos ou errados, numa sessão só.
+review-intro = Sua fila de repetição espaçada: spots que você errou, perguntas de quiz erradas e cálculos lentos ou errados, numa sessão só.
 review-due = { $count ->
     [0] Nada para revisar agora.
     [one] 1 item para revisar.
@@ -26,4 +26,4 @@ home-calc-none = Nenhuma resposta ainda.
 home-calc-start = Treinar
 home-progress = { $done } de { $total } lições concluídas
 home-leaks-title = Maiores vazamentos
-home-leaks-body = A detecção de vazamentos chega com as mãos completas (M5).
+home-leaks-body = Nenhum vazamento ainda. Eles aparecem quando as decisões avaliadas acumulam erros num tipo de spot.

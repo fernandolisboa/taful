@@ -10,7 +10,10 @@ use rusqlite::Connection;
 use crate::Result;
 
 /// Migration `i` takes the schema from version `i` to `i + 1`.
-pub const MIGRATIONS: &[&str] = &[include_str!("migrations/0001_initial.sql")];
+pub const MIGRATIONS: &[&str] = &[
+    include_str!("migrations/0001_initial.sql"),
+    include_str!("migrations/0002_hand_review.sql"),
+];
 
 /// The schema version this binary writes.
 pub const SCHEMA_VERSION: u32 = MIGRATIONS.len() as u32;

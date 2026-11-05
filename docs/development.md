@@ -88,6 +88,13 @@ cargo run --release -p taful-library-build -- postflop tools/library-build/manif
 - **River solver validation** (`tools/library-build/src/postflop/validate.rs`): Taful's river solver against postflop-solver on fixed spots. Fast, so it runs with the normal tests.
 - **App test fixture:** `crates/taful-app/tests/fixtures/postflop` is a tiny library (coarse tree, few iterations) from `manifests/fixture.toml`; rebuild with the command at the top of that manifest.
 
+## Full hands, reviews and leaks (M5)
+
+- `taful-app::hand` (full-hand driver), `walk` (library tree + in-app river), `template` (spot templates, leak buckets), `training` (`Trainers`, drills, storage of hands/decisions, leaks, hand review). The desktop table screen emits `TableEvent`s and the shell stores them.
+- Schema v2 (`0002_hand_review.sql`): `hands.replay` (JSON), `hands.hero_net`, and the decision context columns used by the review queue and leak buckets.
+- Debug builds solve rivers coarsely (60 iterations) so tests stay fast; use a release build to judge river strategies.
+- `TAFUL_TABLE_SEED` fixes the table screen's first seed (screenshots).
+
 ## Data and content (M2)
 
 - **Data dir:** `TAFUL_DATA_DIR`, else `%APPDATA%\Taful`, else `$XDG_DATA_HOME/taful`, else `~/.local/share/taful`. One `taful.sqlite` plus `backups/` (the folder can be changed in settings).
