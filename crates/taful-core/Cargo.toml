@@ -1,0 +1,13 @@
+[package]
+name = "taful-core"
+description = "Taful domain model: rules engine, evaluator, equity, grading, calc, range math. No IO, no UI, WASM-safe."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+

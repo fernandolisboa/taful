@@ -1,14 +1,18 @@
 [package]
 name = "taful-desktop"
-version = "0.0.1"
+description = "Taful desktop app (Windows): GPUI views, layout model, themes."
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Spike §9.1: GPUI poker table render on Windows"
+
+[lints]
+workspace = true
 
 [[bin]]
 name = "taful"
 path = "src/main.rs"
 
 [dependencies]
-gpui = "=0.2.2"
+gpui.workspace = true
+taful-app.workspace = true

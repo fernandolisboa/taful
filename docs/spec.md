@@ -81,14 +81,15 @@ taful/
 │  │                    # WASM-safe; no AGPL code.
 │  ├─ taful-content/    # lesson/quiz/drill loader, expression language, renderer, content checks.
 │  ├─ taful-store/      # SQLite schema, migrations, repositories, backups. Not WASM (web gets its own store).
-│  └─ taful-app/        # application services (sessions, review queue, library fetch/cache, settings);
-│                       # the only crate the UI talks to. UI-free, async-runtime-agnostic.
+│  └─ taful-app/        # application services (sessions, review queue, library fetch/cache, settings,
+│                       # i18n, theme tokens); the only crate the UI talks to. UI-free, async-runtime-agnostic.
 ├─ apps/
-│  └─ desktop/          # GPUI 0.2.2 (pinned), binary `taful`. Views, layout model, themes, i18n.
+│  └─ desktop/          # GPUI 0.2.2 (pinned), binary `taful`. Views, layout model, token → GPUI color mapping.
 ├─ tools/
 │  ├─ library-build/    # offline: preflop solve, postflop batch solves, export to Taful format,
 │  │                    # river-solver validation. Depends on our postflop-solver fork (AGPL).
-│  └─ content-check/    # CLI wrapper over taful-content checks, used by CI.
+│  ├─ content-check/    # CLI wrapper over taful-content checks, used by CI.
+│  └─ arch-check/       # CI: crate dependency direction + no AGPL/GPL in shipped graphs (cargo metadata).
 ├─ content/
 │  ├─ lessons/{en-US,pt-BR}/*.md
 │  ├─ quizzes/*.toml
@@ -103,7 +104,8 @@ taful/
 - **Dependency rule:** `core ← solver ← app ← desktop`, `core ← content ← app`, `store ← app`. `core` depends on nothing in the workspace. Enforced by a CI check on `cargo metadata`.
 - `tools/library-build` is a workspace member but is never a dependency of anything shipped. A CI check fails if any shipped crate's dependency graph contains `postflop-solver` (D11).
 - The `spikes/` folder stays outside the workspace and is deleted once the slice reaches M4.
-- **Product name** lives in one constant plus i18n strings; crate names use `taful-` only because renaming crates is cheap (D10).
+- **i18n and theme tokens live in `taful-app`** (amended in M0): both are pure data that every client (desktop, web, Android) needs, so keeping them UI-free avoids redoing them per client. The desktop app only maps tokens to GPUI colors (`apps/desktop/src/theme.rs`).
+- **Product name** lives in one constant (`taful_app::PRODUCT_NAME`) plus the `-product` Fluent term (a test keeps them equal); crate names use `taful-` only because renaming crates is cheap (D10).
 
 ### 4.1 Key dependencies
 

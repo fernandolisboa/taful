@@ -1,0 +1,21 @@
+[package]
+name = "taful-app"
+description = "Taful application services; the only crate the UI talks to. UI-free."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+taful-core.workspace = true
+taful-solver.workspace = true
+taful-content.workspace = true
+taful-store.workspace = true
+fluent-bundle.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+unic-langid.workspace = true
+fluent-syntax.workspace = true
