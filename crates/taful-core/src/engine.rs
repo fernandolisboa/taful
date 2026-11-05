@@ -168,10 +168,14 @@ impl GameState {
         seed: u64,
         holes: &[Option<Hand>],
     ) -> Result<GameState, EngineError> {
-        config.validate().map_err(|e| EngineError::InvalidConfig(e.0))?;
+        config
+            .validate()
+            .map_err(|e| EngineError::InvalidConfig(e.0))?;
         let n = usize::from(config.table_size);
         if button >= n || holes.len() != n {
-            return Err(EngineError::InvalidConfig("button or holes out of range".into()));
+            return Err(EngineError::InvalidConfig(
+                "button or holes out of range".into(),
+            ));
         }
         let mut fixed = CardSet::EMPTY;
         for h in holes.iter().flatten() {
@@ -233,7 +237,11 @@ impl GameState {
     }
 
     fn sb_seat(&self) -> Seat {
-        if self.n() == 2 { self.button } else { (self.button + 1) % self.n() }
+        if self.n() == 2 {
+            self.button
+        } else {
+            (self.button + 1) % self.n()
+        }
     }
 
     fn bb_seat(&self) -> Seat {
@@ -403,7 +411,11 @@ impl GameState {
             Action::Bet(to) | Action::Raise(to) => {
                 let is_bet = matches!(action, Action::Bet(_));
                 if is_bet != b.is_bet {
-                    return illegal(if b.is_bet { "no bet to raise; bet instead" } else { "facing a bet; raise instead" });
+                    return illegal(if b.is_bet {
+                        "no bet to raise; bet instead"
+                    } else {
+                        "facing a bet; raise instead"
+                    });
                 }
                 let (Some(min), Some(max)) = (b.min_to, b.max_to) else {
                     return illegal("raising is closed");
@@ -496,8 +508,12 @@ impl GameState {
     }
 
     fn return_uncalled(&mut self) {
-        let mut commits: Vec<(Chips, Seat)> =
-            self.players.iter().enumerate().map(|(i, p)| (p.total_commit, i)).collect();
+        let mut commits: Vec<(Chips, Seat)> = self
+            .players
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (p.total_commit, i))
+            .collect();
         commits.sort_unstable_by(|a, b| b.cmp(a));
         let (top, seat) = commits[0];
         let second = commits.get(1).map_or(0, |c| c.0);
@@ -530,11 +546,18 @@ impl GameState {
             return Err(EngineError::WrongPhase);
         };
         if self.board.len() + cards.len() != st.board_len() {
-            return Err(EngineError::IllegalAction(format!("{st:?} needs {} cards", st.board_len() - self.board.len())));
+            return Err(EngineError::IllegalAction(format!(
+                "{st:?} needs {} cards",
+                st.board_len() - self.board.len()
+            )));
         }
         let mut s = self.clone();
         for &c in cards {
-            let i = s.deck.iter().position(|&d| d == c).ok_or(EngineError::CardConflict)?;
+            let i = s
+                .deck
+                .iter()
+                .position(|&d| d == c)
+                .ok_or(EngineError::CardConflict)?;
             s.deck.remove(i);
             s.board.push(c);
         }
@@ -570,7 +593,10 @@ impl GameState {
         }
 
         // Pot layers at each distinct contender commitment.
-        let mut levels: Vec<Chips> = contenders.iter().map(|&s| self.players[s].total_commit).collect();
+        let mut levels: Vec<Chips> = contenders
+            .iter()
+            .map(|&s| self.players[s].total_commit)
+            .collect();
         levels.sort_unstable();
         levels.dedup();
         let mut pots: Vec<PotResult> = Vec::new();
@@ -588,9 +614,17 @@ impl GameState {
                     hi.saturating_sub(prev.min(c))
                 })
                 .sum();
-            let eligible: Vec<Seat> =
-                contenders.iter().copied().filter(|&s| self.players[s].total_commit >= lvl).collect();
-            pots.push(PotResult { amount, rake: 0, eligible, winners: vec![] });
+            let eligible: Vec<Seat> = contenders
+                .iter()
+                .copied()
+                .filter(|&s| self.players[s].total_commit >= lvl)
+                .collect();
+            pots.push(PotResult {
+                amount,
+                rake: 0,
+                eligible,
+                winners: vec![],
+            });
             prev = lvl;
         }
         // Every hand has at least one contender, so there is a main pot.
@@ -645,7 +679,13 @@ impl GameState {
             .zip(&self.initial_stacks)
             .map(|(&f, &i)| f as i64 - i as i64)
             .collect();
-        Ok(Settlement { pots, rake, final_stacks, net, showdown })
+        Ok(Settlement {
+            pots,
+            rake,
+            final_stacks,
+            net,
+            showdown,
+        })
     }
 }
 
@@ -695,7 +735,9 @@ pub fn legal_actions(state: &GameState, tree: &BetTree) -> Vec<Action> {
                     state.current_bet() + round_div(u128::from(after_call) * u128::from(pct), 100)
                 }
             }
-            BetSize::Mult(m) => round_div(u128::from(state.current_bet().max(bb)) * u128::from(m), 100),
+            BetSize::Mult(m) => {
+                round_div(u128::from(state.current_bet().max(bb)) * u128::from(m), 100)
+            }
             BetSize::Bb(h) => round_div(u128::from(bb) * u128::from(h), 100),
         };
         let to = to.max(min);
@@ -710,7 +752,11 @@ pub fn legal_actions(state: &GameState, tree: &BetTree) -> Vec<Action> {
     }
     sizes.sort_unstable();
     for to in sizes {
-        out.push(if b.is_bet { Action::Bet(to) } else { Action::Raise(to) });
+        out.push(if b.is_bet {
+            Action::Bet(to)
+        } else {
+            Action::Raise(to)
+        });
     }
     if allin {
         out.push(Action::AllIn);

@@ -70,7 +70,10 @@ impl fmt::Display for Action {
 impl FromStr for Action {
     type Err = String;
     fn from_str(s: &str) -> Result<Action, String> {
-        let num = |t: &str| t.parse::<Chips>().map_err(|_| format!("bad amount in {s:?}"));
+        let num = |t: &str| {
+            t.parse::<Chips>()
+                .map_err(|_| format!("bad amount in {s:?}"))
+        };
         match s {
             "f" => Ok(Action::Fold),
             "x" => Ok(Action::Check),
@@ -95,7 +98,10 @@ pub struct ActionHistory {
 pub struct Line(pub Vec<(Position, Action)>);
 
 fn fmt_street(acts: &[(Position, Action)]) -> String {
-    acts.iter().map(|(p, a)| format!("{p}:{a}")).collect::<Vec<_>>().join(",")
+    acts.iter()
+        .map(|(p, a)| format!("{p}:{a}"))
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 fn parse_street(s: &str) -> Result<Vec<(Position, Action)>, String> {
@@ -104,7 +110,9 @@ fn parse_street(s: &str) -> Result<Vec<(Position, Action)>, String> {
     }
     s.split(',')
         .map(|t| {
-            let (p, a) = t.split_once(':').ok_or_else(|| format!("bad action {t:?}"))?;
+            let (p, a) = t
+                .split_once(':')
+                .ok_or_else(|| format!("bad action {t:?}"))?;
             Ok((p.parse()?, a.parse()?))
         })
         .collect()
@@ -202,7 +210,11 @@ impl BetTree {
         if s != Street::Preflop && aggressions == 0 {
             return &st.bets;
         }
-        let depth = if s == Street::Preflop { aggressions } else { aggressions - 1 };
+        let depth = if s == Street::Preflop {
+            aggressions
+        } else {
+            aggressions - 1
+        };
         match st.raises.get(depth).or(st.raises.last()) {
             Some(v) => v,
             None => &[],
@@ -250,6 +262,9 @@ mod tests {
         assert_eq!(t.sizes(Street::Preflop, 0), &[BetSize::Bb(250)]);
         assert_eq!(t.sizes(Street::Preflop, 7), &[BetSize::AllIn]);
         assert_eq!(t.sizes(Street::Flop, 0).len(), 2);
-        assert_eq!(t.sizes(Street::Flop, 3), &[BetSize::Mult(300), BetSize::AllIn]);
+        assert_eq!(
+            t.sizes(Street::Flop, 3),
+            &[BetSize::Mult(300), BetSize::AllIn]
+        );
     }
 }

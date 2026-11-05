@@ -42,7 +42,10 @@ impl Rank {
     }
     pub fn from_char(c: char) -> Option<Rank> {
         let c = c.to_ascii_uppercase() as u8;
-        Self::CHARS.iter().position(|&x| x == c).map(|i| Rank(i as u8))
+        Self::CHARS
+            .iter()
+            .position(|&x| x == c)
+            .map(|i| Rank(i as u8))
     }
 }
 
@@ -71,7 +74,10 @@ impl Suit {
     }
     pub fn from_char(c: char) -> Option<Suit> {
         let c = c.to_ascii_lowercase() as u8;
-        Self::CHARS.iter().position(|&x| x == c).map(|i| Suit(i as u8))
+        Self::CHARS
+            .iter()
+            .position(|&x| x == c)
+            .map(|i| Suit(i as u8))
     }
 }
 
@@ -163,8 +169,11 @@ impl From<Card> for String {
 
 /// Parse a run of concatenated cards, e.g. `"AsKd7h"`. Spaces and commas are ignored.
 pub fn parse_cards(s: &str) -> Result<Vec<Card>, ParseError> {
-    let chars: Vec<char> = s.chars().filter(|c| !c.is_whitespace() && *c != ',').collect();
-    if chars.len() % 2 != 0 {
+    let chars: Vec<char> = s
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != ',')
+        .collect();
+    if !chars.len().is_multiple_of(2) {
         return Err(perr(format!("odd number of characters in {s:?}")));
     }
     let cards: Vec<Card> = chars
@@ -331,12 +340,17 @@ pub struct Board {
 impl Board {
     pub fn new(cards: &[Card]) -> Result<Board, ParseError> {
         if !matches!(cards.len(), 0 | 3 | 4 | 5) {
-            return Err(perr(format!("a board has 0, 3, 4 or 5 cards, got {}", cards.len())));
+            return Err(perr(format!(
+                "a board has 0, 3, 4 or 5 cards, got {}",
+                cards.len()
+            )));
         }
         if CardSet::from_cards(cards).len() != cards.len() {
             return Err(perr("duplicate card on board"));
         }
-        Ok(Board { cards: cards.to_vec() })
+        Ok(Board {
+            cards: cards.to_vec(),
+        })
     }
     pub fn cards(&self) -> &[Card] {
         &self.cards

@@ -161,7 +161,12 @@ pub(crate) mod naive {
                 i += 1;
             }
         }
-        let cat = match (straight_high, flush, groups[0].0, groups.get(1).map(|g| g.0)) {
+        let cat = match (
+            straight_high,
+            flush,
+            groups[0].0,
+            groups.get(1).map(|g| g.0),
+        ) {
             (Some(h), true, _, _) => return (Category::StraightFlush, [h, 0, 0, 0, 0]),
             (_, _, 4, _) => Category::FourOfAKind,
             (_, _, 3, Some(2)) => Category::FullHouse,
@@ -212,9 +217,18 @@ mod tests {
     #[test]
     fn known_hands() {
         let e = RsPokerEvaluator;
-        assert_eq!(e.rank7(&seven("AsKsQsJsTs2c3d")).category, Category::StraightFlush);
-        assert_eq!(e.rank7(&seven("As2s3s4s5d9cKh")).category, Category::Straight);
-        assert_eq!(e.rank7(&seven("AsAhAdKcKd2c3d")).category, Category::FullHouse);
+        assert_eq!(
+            e.rank7(&seven("AsKsQsJsTs2c3d")).category,
+            Category::StraightFlush
+        );
+        assert_eq!(
+            e.rank7(&seven("As2s3s4s5d9cKh")).category,
+            Category::Straight
+        );
+        assert_eq!(
+            e.rank7(&seven("AsAhAdKcKd2c3d")).category,
+            Category::FullHouse
+        );
         assert_eq!(e.rank7(&seven("2c3c7c9cJcAdAh")).category, Category::Flush);
         let wheel = e.rank7(&seven("As2d3h4c5s9dJh"));
         let six_high = e.rank7(&seven("6s2d3h4c5s9dJh"));
@@ -234,8 +248,13 @@ mod tests {
         let e = RsPokerEvaluator;
         let mut rng = ChaCha8Rng::seed_from_u64(7);
         let mut deck: Vec<Card> = Card::all().collect();
-        let n = if cfg!(debug_assertions) { 20_000 } else { 500_000 };
-        let mut prev: Option<([Card; 7], HandRank, (Category, [u8; 5]))> = None;
+        let n = if cfg!(debug_assertions) {
+            20_000
+        } else {
+            500_000
+        };
+        type Seen = ([Card; 7], HandRank, (Category, [u8; 5]));
+        let mut prev: Option<Seen> = None;
         for _ in 0..n {
             deck.shuffle(&mut rng);
             let h: [Card; 7] = deck[..7].try_into().unwrap();
@@ -255,6 +274,7 @@ mod tests {
     /// Exhaustive 7-card category counts (133,784,560 hands). Slow in debug.
     #[test]
     #[cfg_attr(debug_assertions, ignore = "exhaustive; run with --release")]
+    #[allow(clippy::needless_range_loop)]
     fn exhaustive_category_counts() {
         const KNOWN: [u64; 9] = [
             23_294_460, 58_627_800, 31_433_400, 6_461_620, 6_180_020, 4_047_644, 3_473_184,

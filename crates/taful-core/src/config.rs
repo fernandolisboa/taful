@@ -195,10 +195,10 @@ impl GameConfig {
         if self.rake.rate_bps > 10_000 {
             return err("rake rate above 100%");
         }
-        if let Format::Mtt(t) | Format::Sng(t) = &self.format {
-            if t.payouts.is_empty() || t.payouts.iter().any(|p| !p.is_finite() || *p < 0.0) {
-                return err("payouts must be non-empty and non-negative");
-            }
+        if let Format::Mtt(t) | Format::Sng(t) = &self.format
+            && (t.payouts.is_empty() || t.payouts.iter().any(|p| !p.is_finite() || *p < 0.0))
+        {
+            return err("payouts must be non-empty and non-negative");
         }
         Ok(())
     }
@@ -268,12 +268,24 @@ mod tests {
                 payouts: vec![0.5, 0.3, 0.2],
                 structure: BlindStructure {
                     speed: Speed::Turbo,
-                    levels: vec![BlindLevel { sb: 100, bb: 200, ante: 200, minutes: 6 }],
+                    levels: vec![BlindLevel {
+                        sb: 100,
+                        bb: 200,
+                        ante: 200,
+                        minutes: 6,
+                    }],
                 },
                 players_left: 27,
             }),
-            blinds: Blinds { sb: 100, bb: 200, ante: 200, ante_kind: AnteKind::BigBlind },
-            stacks: Stacks::PerSeat { chips: vec![5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 13000] },
+            blinds: Blinds {
+                sb: 100,
+                bb: 200,
+                ante: 200,
+                ante_kind: AnteKind::BigBlind,
+            },
+            stacks: Stacks::PerSeat {
+                chips: vec![5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 13000],
+            },
             rake: Rake::ZERO,
         };
         assert_eq!(GameConfig::from_toml(&c.to_toml()).unwrap(), c);
@@ -291,7 +303,11 @@ mod tests {
 
     #[test]
     fn rake_amount() {
-        let r = Rake { rate_bps: 500, cap: Some(300), no_flop_no_drop: true };
+        let r = Rake {
+            rate_bps: 500,
+            cap: Some(300),
+            no_flop_no_drop: true,
+        };
         assert_eq!(r.amount(1000, true), 50);
         assert_eq!(r.amount(100_000, true), 300);
         assert_eq!(r.amount(1000, false), 0);

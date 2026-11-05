@@ -6,13 +6,17 @@
 //! in the workspace, and must keep compiling for `wasm32-unknown-unknown`.
 
 pub mod action;
+pub mod calc;
 pub mod cards;
 pub mod config;
 pub mod engine;
 pub mod equity;
+pub mod equity_model;
 pub mod eval;
+pub mod grading;
 pub mod position;
 pub mod range;
+pub mod srs;
 
 /// Version of the domain model, bumped when a stored or keyed representation
 /// changes (library keys, `GameConfig::key`, grading thresholds).

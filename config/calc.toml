@@ -1,0 +1,33 @@
+# Mental-math trainer settings (spec §11). Per exercise kind:
+#   tolerance   = accepted distance from the exact answer, in the exercise's
+#                 unit (percentage points, outs, or SPR ratio)
+#   target_secs = target time; right within it rates Good, within half Easy,
+#                 over it Hard.
+
+[outs]
+tolerance = 1.0
+target_secs = 15.0
+
+[rule_of_2_and_4]
+tolerance = 2.0
+target_secs = 8.0
+
+[pot_odds]
+tolerance = 1.0
+target_secs = 10.0
+
+[mdf]
+tolerance = 1.0
+target_secs = 6.0
+
+[alpha]
+tolerance = 1.0
+target_secs = 6.0
+
+[spr]
+tolerance = 0.2
+target_secs = 8.0
+
+[equity_vs_range]
+tolerance = 2.0
+target_secs = 25.0

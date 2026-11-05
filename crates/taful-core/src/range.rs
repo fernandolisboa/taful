@@ -220,7 +220,12 @@ fn r(i: u8) -> Rank {
 
 fn parse_token(tok: &str) -> Result<Vec<HandClassOrCombo>, ParseError> {
     // Single combo, e.g. "AsKs".
-    if tok.len() == 4 && tok.chars().nth(1).is_some_and(|c| Suit::from_char(c).is_some()) {
+    if tok.len() == 4
+        && tok
+            .chars()
+            .nth(1)
+            .is_some_and(|c| Suit::from_char(c).is_some())
+    {
         let h: Hand = tok.parse()?;
         return Ok(vec![HandClassOrCombo::Combo(h)]);
     }

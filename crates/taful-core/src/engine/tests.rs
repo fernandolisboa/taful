@@ -16,7 +16,12 @@ fn cfg(stacks: Vec<Chips>) -> GameConfig {
     GameConfig {
         table_size: n,
         format: Format::Cash,
-        blinds: Blinds { sb: 50, bb: 100, ante: 0, ante_kind: AnteKind::None },
+        blinds: Blinds {
+            sb: 50,
+            bb: 100,
+            ante: 0,
+            ante_kind: AnteKind::None,
+        },
         stacks: Stacks::PerSeat { chips: stacks },
         rake: Rake::ZERO,
     }
@@ -28,7 +33,9 @@ fn holes(hs: &[&str]) -> Vec<Option<Hand>> {
 
 fn play(mut s: GameState, acts: &[Action]) -> GameState {
     for &a in acts {
-        s = s.apply(a).unwrap_or_else(|e| panic!("{a} at {:?}: {e}", s.phase()));
+        s = s
+            .apply(a)
+            .unwrap_or_else(|e| panic!("{a} at {:?}: {e}", s.phase()));
     }
     s
 }
@@ -38,7 +45,9 @@ fn run_out(mut s: GameState, board: &str) -> GameState {
     let cards = parse_cards(board).unwrap();
     loop {
         s = match s.phase() {
-            Phase::NeedsBoard(st) => s.deal_board(&cards[s.board().len()..st.board_len()]).unwrap(),
+            Phase::NeedsBoard(st) => s
+                .deal_board(&cards[s.board().len()..st.board_len()])
+                .unwrap(),
             Phase::ToAct(_) => s.apply(Action::Check).unwrap(),
             Phase::Finished => return s,
         };
@@ -89,7 +98,17 @@ fn bb_gets_option_after_limps() {
 #[test]
 fn fold_around_returns_uncalled_bet() {
     let s = GameState::new(GameConfig::cash(6, 100), 0, 1).unwrap();
-    let s = play(s, &[Action::Fold, Action::Fold, Action::Fold, Action::Raise(250), Action::Fold, Action::Fold]);
+    let s = play(
+        s,
+        &[
+            Action::Fold,
+            Action::Fold,
+            Action::Fold,
+            Action::Raise(250),
+            Action::Fold,
+            Action::Fold,
+        ],
+    );
     assert_eq!(s.phase(), Phase::Finished);
     let st = s.settle(&EVAL).unwrap();
     assert!(!st.showdown);
@@ -97,7 +116,10 @@ fn fold_around_returns_uncalled_bet() {
     assert_eq!(st.net[1], -50);
     assert_eq!(st.net[2], -100);
     conserved(&s, &st);
-    assert_eq!(s.history().to_string(), "UTG:f,HJ:f,CO:f,BTN:r250,SB:f,BB:f");
+    assert_eq!(
+        s.history().to_string(),
+        "UTG:f,HJ:f,CO:f,BTN:r250,SB:f,BB:f"
+    );
 }
 
 #[test]
@@ -122,7 +144,17 @@ fn short_all_in_does_not_reopen() {
     stacks[4] = 380;
     let s = GameState::new(cfg(stacks), 0, 1).unwrap();
     // UTG opens 300 (+200), HJ all-in 380 (+80, incomplete), CO folds, BTN, SB, BB fold.
-    let s = play(s, &[Action::Raise(300), Action::AllIn, Action::Fold, Action::Fold, Action::Fold, Action::Fold]);
+    let s = play(
+        s,
+        &[
+            Action::Raise(300),
+            Action::AllIn,
+            Action::Fold,
+            Action::Fold,
+            Action::Fold,
+            Action::Fold,
+        ],
+    );
     // Back to UTG: may only call or fold.
     assert_eq!(s.to_act(), Some(3));
     let b = s.bounds().unwrap();
@@ -140,7 +172,17 @@ fn short_all_ins_that_add_up_to_a_full_raise_reopen() {
     stacks[4] = 450; // +150 over a 300 open: incomplete (needs +200)
     stacks[5] = 520; // +70 more: cumulative +220 over 300 ≥ 200 → reopens
     let s = GameState::new(cfg(stacks), 0, 1).unwrap();
-    let s = play(s, &[Action::Raise(300), Action::AllIn, Action::AllIn, Action::Fold, Action::Fold, Action::Fold]);
+    let s = play(
+        s,
+        &[
+            Action::Raise(300),
+            Action::AllIn,
+            Action::AllIn,
+            Action::Fold,
+            Action::Fold,
+            Action::Fold,
+        ],
+    );
     assert_eq!(s.to_act(), Some(3));
     let b = s.bounds().unwrap();
     assert_eq!(b.min_to, Some(520 + 200));
@@ -149,15 +191,27 @@ fn short_all_ins_that_add_up_to_a_full_raise_reopen() {
 #[test]
 fn three_way_side_pots() {
     // Seats: 0 BTN (1000), 1 SB (3000), 2 BB (5000). All in preflop.
-    let s = GameState::new_with_holes(cfg(vec![1000, 3000, 5000]), 0, 1, &holes(&["AsAh", "KsKh", "QsQh"])).unwrap();
+    let s = GameState::new_with_holes(
+        cfg(vec![1000, 3000, 5000]),
+        0,
+        1,
+        &holes(&["AsAh", "KsKh", "QsQh"]),
+    )
+    .unwrap();
     let s = play(s, &[Action::AllIn, Action::AllIn, Action::Call]);
     let s = run_out(s, "2c7d9cJd3h");
     assert_eq!(s.phase(), Phase::Finished);
     let st = s.settle(&EVAL).unwrap();
     assert!(st.showdown);
     assert_eq!(st.pots.len(), 2); // BB's extra 2000 is uncalled and returned
-    assert_eq!((st.pots[0].amount, st.pots[0].winners.clone()), (3000, vec![0]));
-    assert_eq!((st.pots[1].amount, st.pots[1].winners.clone()), (4000, vec![1]));
+    assert_eq!(
+        (st.pots[0].amount, st.pots[0].winners.clone()),
+        (3000, vec![0])
+    );
+    assert_eq!(
+        (st.pots[1].amount, st.pots[1].winners.clone()),
+        (4000, vec![1])
+    );
     assert_eq!(st.final_stacks, vec![3000, 4000, 2000]);
     conserved(&s, &st);
 }
@@ -173,7 +227,15 @@ fn side_pot_with_folded_money() {
     )
     .unwrap();
     // CO (3) all-in 600, BTN (0) raises to 2000, SB folds, BB calls, BTN... round closes.
-    let s = play(s, &[Action::AllIn, Action::Raise(2000), Action::Fold, Action::Call]);
+    let s = play(
+        s,
+        &[
+            Action::AllIn,
+            Action::Raise(2000),
+            Action::Fold,
+            Action::Call,
+        ],
+    );
     let s = run_out(s, "3c7d9cJd8h");
     let st = s.settle(&EVAL).unwrap();
     // Main: 600 × 3 + SB 50 = 1850 → AA. Side: 1400 × 2 = 2800 → QQ.
@@ -188,7 +250,12 @@ fn side_pot_with_folded_money() {
 fn split_pot_odd_chip_goes_left_of_button() {
     // Blinds 5/10 with a per-player ante of 1 make an odd pot.
     let mut c = cfg(vec![1000; 3]);
-    c.blinds = Blinds { sb: 5, bb: 10, ante: 1, ante_kind: AnteKind::PerPlayer };
+    c.blinds = Blinds {
+        sb: 5,
+        bb: 10,
+        ante: 1,
+        ante_kind: AnteKind::PerPlayer,
+    };
     let s = GameState::new_with_holes(c, 0, 1, &holes(&["2c3d", "2d3c", "4h5h"])).unwrap();
     // BTN calls, SB calls, BB checks → pot 33; the board plays, so all three split.
     let s = play(s, &[Action::Call, Action::Call, Action::Check]);
@@ -199,7 +266,12 @@ fn split_pot_odd_chip_goes_left_of_button() {
     assert_eq!(st.final_stacks, vec![1000, 1000, 1000]);
     // Now a two-way split of an odd pot: fold the BB.
     let mut c = cfg(vec![1000; 3]);
-    c.blinds = Blinds { sb: 5, bb: 10, ante: 1, ante_kind: AnteKind::PerPlayer };
+    c.blinds = Blinds {
+        sb: 5,
+        bb: 10,
+        ante: 1,
+        ante_kind: AnteKind::PerPlayer,
+    };
     let s = GameState::new_with_holes(c, 0, 1, &holes(&["2c3d", "2d3c", "4h5h"])).unwrap();
     let s = play(s, &[Action::Raise(20), Action::Call, Action::Fold]);
     let s = run_out(s, "AsKsQsJsTs");
@@ -215,7 +287,11 @@ fn split_pot_odd_chip_goes_left_of_button() {
 #[test]
 fn rake_and_no_flop_no_drop() {
     let mut c = GameConfig::cash(2, 100);
-    c.rake = Rake { rate_bps: 500, cap: Some(300), no_flop_no_drop: true };
+    c.rake = Rake {
+        rate_bps: 500,
+        cap: Some(300),
+        no_flop_no_drop: true,
+    };
     // Preflop fold: no rake.
     let s = GameState::new(c.clone(), 0, 3).unwrap();
     let s = play(s, &[Action::Raise(300), Action::Fold]);
@@ -235,7 +311,12 @@ fn rake_and_no_flop_no_drop() {
 #[test]
 fn big_blind_ante_is_dead_money() {
     let mut c = cfg(vec![10_000; 3]);
-    c.blinds = Blinds { sb: 50, bb: 100, ante: 100, ante_kind: AnteKind::BigBlind };
+    c.blinds = Blinds {
+        sb: 50,
+        bb: 100,
+        ante: 100,
+        ante_kind: AnteKind::BigBlind,
+    };
     let s = GameState::new(c, 0, 1).unwrap();
     assert_eq!(s.pot(), 250);
     let s = play(s, &[Action::Fold, Action::Fold]);
@@ -260,7 +341,11 @@ fn replay_is_deterministic() {
                 }
             };
         }
-        (s.history().to_string(), s.board().to_vec(), s.settle(&EVAL).unwrap())
+        (
+            s.history().to_string(),
+            s.board().to_vec(),
+            s.settle(&EVAL).unwrap(),
+        )
     };
     assert_eq!(run(42), run(42));
     assert_ne!(run(42).1, run(43).1);
@@ -270,19 +355,42 @@ fn replay_is_deterministic() {
 fn legal_actions_from_tree() {
     let tree = BetTree::default_srp();
     let s = GameState::new(GameConfig::cash(6, 100), 0, 1).unwrap();
-    assert_eq!(legal_actions(&s, &tree), vec![Action::Fold, Action::Call, Action::Raise(250)]);
-    let s = play(s, &[Action::Fold, Action::Fold, Action::Fold, Action::Raise(250), Action::Fold]);
+    assert_eq!(
+        legal_actions(&s, &tree),
+        vec![Action::Fold, Action::Call, Action::Raise(250)]
+    );
+    let s = play(
+        s,
+        &[
+            Action::Fold,
+            Action::Fold,
+            Action::Fold,
+            Action::Raise(250),
+            Action::Fold,
+        ],
+    );
     // BB vs open: 3x = 750.
-    assert_eq!(legal_actions(&s, &tree), vec![Action::Fold, Action::Call, Action::Raise(750)]);
+    assert_eq!(
+        legal_actions(&s, &tree),
+        vec![Action::Fold, Action::Call, Action::Raise(750)]
+    );
     let s = play(s, &[Action::Call]).deal_next().unwrap();
     // Flop pot 550: 33% = 182 (rounded), 75% = 413.
     assert_eq!(s.pot(), 550);
-    assert_eq!(legal_actions(&s, &tree), vec![Action::Check, Action::Bet(182), Action::Bet(413)]);
+    assert_eq!(
+        legal_actions(&s, &tree),
+        vec![Action::Check, Action::Bet(182), Action::Bet(413)]
+    );
     let s = s.apply(Action::Bet(182)).unwrap();
     // Raise 3x = 546; allin offered.
     assert_eq!(
         legal_actions(&s, &tree),
-        vec![Action::Fold, Action::Call, Action::Raise(546), Action::AllIn]
+        vec![
+            Action::Fold,
+            Action::Call,
+            Action::Raise(546),
+            Action::AllIn
+        ]
     );
 }
 
@@ -328,7 +436,11 @@ fn arb_config() -> impl Strategy<Value = (GameConfig, usize)> {
                     ante_kind,
                 },
                 stacks: Stacks::PerSeat { chips: stacks },
-                rake: Rake { rate_bps: rake_bps, cap: Some(500), no_flop_no_drop: nfnd },
+                rake: Rake {
+                    rate_bps: rake_bps,
+                    cap: Some(500),
+                    no_flop_no_drop: nfnd,
+                },
             };
             (c, button)
         })

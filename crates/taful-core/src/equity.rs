@@ -51,7 +51,13 @@ impl std::error::Error for EquityError {}
 
 /// Call `f` with every `k`-card subset of `avail` (in index order).
 pub(crate) fn for_each_subset(avail: &[Card], k: usize, mut f: impl FnMut(&[Card])) {
-    fn rec(avail: &[Card], k: usize, start: usize, cur: &mut Vec<Card>, f: &mut impl FnMut(&[Card])) {
+    fn rec(
+        avail: &[Card],
+        k: usize,
+        start: usize,
+        cur: &mut Vec<Card>,
+        f: &mut impl FnMut(&[Card]),
+    ) {
         if cur.len() == k {
             f(cur);
             return;
@@ -127,7 +133,10 @@ pub fn range_vs_range(hero: &Range, villain: &Range, board: &Board) -> Result<Eq
     }
     let bmask = board.mask();
     let hero_live: Vec<(Hand, f64)> = hero.live(bmask).map(|(h, w)| (h, f64::from(w))).collect();
-    let vil_live: Vec<(Hand, f64)> = villain.live(bmask).map(|(h, w)| (h, f64::from(w))).collect();
+    let vil_live: Vec<(Hand, f64)> = villain
+        .live(bmask)
+        .map(|(h, w)| (h, f64::from(w)))
+        .collect();
     if hero_live.is_empty() || vil_live.is_empty() {
         return Err(EquityError::EmptyRange);
     }
@@ -304,7 +313,11 @@ mod tests {
     #[test]
     #[cfg_attr(debug_assertions, ignore = "1.7M boards each; run with --release")]
     fn pinned_preflop_equities() {
-        for (a, v, want) in [("AsAh", "KsKh", 0.8264), ("AhKh", "QsQd", 0.4621), ("7s2d", "AsKd", 0.3187)] {
+        for (a, v, want) in [
+            ("AsAh", "KsKh", 0.8264),
+            ("AhKh", "QsQd", 0.4621),
+            ("7s2d", "AsKd", 0.3187),
+        ] {
             let e = hand_vs_hand(h(a), h(v), &Board::default()).unwrap();
             assert!((e.equity - want).abs() < 5e-5, "{a} vs {v}: {}", e.equity);
         }
@@ -343,7 +356,12 @@ mod tests {
                 den += w;
             }
         }
-        assert!((fast.equity - num / den).abs() < 1e-9, "{} vs {}", fast.equity, num / den);
+        assert!(
+            (fast.equity - num / den).abs() < 1e-9,
+            "{} vs {}",
+            fast.equity,
+            num / den
+        );
         let one = hand_vs_range(h("AsAh"), &vil, &board).unwrap();
         assert!(one.equity > 0.5 && one.equity < 1.0);
     }
