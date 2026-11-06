@@ -741,4 +741,42 @@ mod tests {
         assert!(matches!(r, Err(PostflopError::Library(_))), "{r:?}");
         assert!(LocalDir(dir.path().into()).read("../x").is_err());
     }
+
+    /// Verifies an installed library (issue #24): every file matches
+    /// `manifest.json` and decodes, and each configuration deals gradable
+    /// spots. Run on the machine that has the library:
+    /// `cargo test -p taful-app --release -- --ignored installed_library`
+    /// (reads `TAFUL_LIBRARY_DIR`, else `<data dir>/library`).
+    #[test]
+    #[ignore = "needs an installed postflop library"]
+    fn installed_library() {
+        let dir = default_library_dir(&crate::services::default_data_dir());
+        let t = PostflopTrainer::open(
+            Box::new(LocalDir(dir.clone())),
+            GameConfig::cash(6, 100),
+            Thresholds::default(),
+        )
+        .unwrap_or_else(|e| panic!("{}: {e:?}", dir.display()));
+        let mut files = 0;
+        for s in t.spots() {
+            for (flop, e) in &s.flops {
+                t.load(e)
+                    .unwrap_or_else(|err| panic!("{} {flop}: {err:?}", s.id));
+                files += 1;
+            }
+            t.cache.lock().expect("not poisoned").clear();
+            for seed in 0..20 {
+                let q = t.spot(Some(&s.id), seed).unwrap();
+                for &a in &q.actions() {
+                    assert!(q.answer(&t, a).unwrap().ev_loss_bb >= 0.0);
+                }
+            }
+            println!("{}: {} flops ok", s.id, s.flop_count());
+        }
+        println!(
+            "{} spots, {files} files verified in {}",
+            t.spots().len(),
+            dir.display()
+        );
+    }
 }
