@@ -61,7 +61,7 @@ Build it locally (Windows): `cargo build --release -p taful-desktop`, then `ISCC
 - **Dependency direction** (`tools/arch-check`): `core ← solver ← app ← desktop`, `core ← content ← app`, `store ← app`. A new workspace crate must be added to `RULES` in `tools/arch-check/src/main.rs`.
 - **No copyleft in shipped crates** (D11): no shipped crate may reach `postflop-solver` or a GPL/AGPL-only package.
 - **No color literals** in `apps/desktop/src` outside `theme.rs`; use a token from `content/themes/*.json`.
-- **Theme rules** (every file in `content/themes/`): WCAG AA contrast for text tokens over their backgrounds (4.5:1, or 3:1 for large card ranks), and no red token. A widget that draws text on a new background adds the pair to `Theme::text_pairs`.
+- **Theme rules** (every file in `content/themes/`): `Theme::warnings` must be empty: WCAG AA contrast for text and grade tokens over their backgrounds (4.5:1, or 3:1 for large card ranks), no red token, and grade colors at least 60 apart in RGB. A widget that draws text on a new background adds the pair to `Theme::text_pairs`. User themes from the in-app editor run the same checks live as warnings only (D7 amendment) and are stored in the `themes` table. The editor's color helpers live in `apps/desktop/src/theme.rs` (`token_color`, `hsl_of`) because the color-literal lint flags HSL/RGBA calls anywhere else.
 - **i18n**: every `.ftl` parses, en-US and pt-BR have the same keys, every file is embedded, and every Fluent id the desktop UI names exists.
 
 ## taful-core notes

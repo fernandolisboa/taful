@@ -4,13 +4,16 @@
 //! a color: the desktop app converts these tokens to GPUI colors in a single
 //! module, and a test there rejects color literals anywhere else.
 //!
-//! Tests here enforce the default theme's rules on every theme file: WCAG AA
-//! contrast for text tokens over their backgrounds, and no red anywhere.
+//! [`Theme::warnings`] runs the theme rules: WCAG AA contrast for text and
+//! grade tokens over their backgrounds, no red anywhere, and grade colors
+//! told apart. Tests fail on any warning in a built-in theme; the in-app
+//! editor shows the same warnings for user themes but lets them be saved
+//! (D7 amendment "Theme editor validation").
 
 use std::fmt;
 use std::str::FromStr;
 
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Version of the token schema this build reads. A bump ships a migration
 /// (missing tokens get defaults), like the layout schema.
@@ -118,6 +121,48 @@ impl Color {
         (h, s, l)
     }
 
+    /// An opaque-or-`a` color from hue in degrees (wrapped to 0–360),
+    /// saturation and lightness (clamped to 0–1), HSL model.
+    pub fn from_hsl(h: f64, s: f64, l: f64, a: u8) -> Color {
+        let h = h.rem_euclid(360.0);
+        let (s, l) = (s.clamp(0.0, 1.0), l.clamp(0.0, 1.0));
+        let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+        let x = c * (1.0 - ((h / 60.0).rem_euclid(2.0) - 1.0).abs());
+        let m = l - c / 2.0;
+        let (r, g, b) = match (h / 60.0) as u32 {
+            0 => (c, x, 0.0),
+            1 => (x, c, 0.0),
+            2 => (0.0, c, x),
+            3 => (0.0, x, c),
+            4 => (x, 0.0, c),
+            _ => (c, 0.0, x),
+        };
+        let byte = |v: f64| ((v + m) * 255.0).round().clamp(0.0, 255.0) as u8;
+        Color {
+            r: byte(r),
+            g: byte(g),
+            b: byte(b),
+            a,
+        }
+    }
+
+    /// This color with its hue turned by `dh` degrees and its saturation
+    /// and lightness moved by `ds` and `dl` (0–1 scale, clamped). Alpha is
+    /// kept. The editor's color steppers.
+    pub fn adjust(self, dh: f64, ds: f64, dl: f64) -> Color {
+        let (h, s, l) = self.hsl();
+        Color::from_hsl(h + dh, s + ds, l + dl, self.a)
+    }
+
+    /// Euclidean distance in RGB, 0–441 (alpha ignored).
+    pub fn distance(self, other: Color) -> f64 {
+        [(self.r, other.r), (self.g, other.g), (self.b, other.b)]
+            .iter()
+            .map(|&(x, y)| (f64::from(x) - f64::from(y)).powi(2))
+            .sum::<f64>()
+            .sqrt()
+    }
+
     /// Whether a person would call this color red: a saturated, mid-lightness
     /// hue within 20° of pure red. Burnt orange (≈ 25°) and violet pass.
     pub fn is_red(self) -> bool {
@@ -171,6 +216,12 @@ impl fmt::Display for Color {
     }
 }
 
+impl Serialize for Color {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_str(self)
+    }
+}
+
 impl<'de> Deserialize<'de> for Color {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let s = String::deserialize(d)?;
@@ -183,16 +234,36 @@ impl<'de> Deserialize<'de> for Color {
 macro_rules! tokens {
     ($(#[$meta:meta])* $name:ident: $ty:ty { $($(#[$fmeta:meta])* $field:ident),* $(,)? }) => {
         $(#[$meta])*
-        #[derive(Debug, Clone, PartialEq, Deserialize)]
+        #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
         #[serde(deny_unknown_fields)]
         pub struct $name {
             $($(#[$fmeta])* pub $field: $ty,)*
         }
 
         impl $name {
+            /// Every token name, in declaration order.
+            pub const NAMES: &'static [&'static str] = &[$(stringify!($field)),*];
+
             /// Every token as `(name, value)`, in declaration order.
             pub fn entries(&self) -> Vec<(&'static str, $ty)> {
                 vec![$((stringify!($field), self.$field)),*]
+            }
+
+            /// A token by name.
+            pub fn get(&self, token: &str) -> Option<$ty> {
+                match token {
+                    $(stringify!($field) => Some(self.$field),)*
+                    _ => None,
+                }
+            }
+
+            /// Sets a token by name; `false` for an unknown name.
+            pub fn set(&mut self, token: &str, value: $ty) -> bool {
+                match token {
+                    $(stringify!($field) => self.$field = value,)*
+                    _ => return false,
+                }
+                true
             }
         }
     };
@@ -284,12 +355,13 @@ tokens! {
 }
 
 /// A complete theme.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Theme {
     /// Token schema version; must equal [`SCHEMA_VERSION`].
     pub schema: u32,
-    /// Theme id (file stem).
+    /// Built-in themes: the id (file stem). User themes: the user's name
+    /// for it.
     pub name: String,
     /// Color tokens.
     pub colors: Colors,
@@ -358,6 +430,53 @@ pub struct TextPair {
     pub role: TextRole,
 }
 
+/// Minimum RGB distance between any two grade colors.
+pub const MIN_GRADE_DISTANCE: f64 = 60.0;
+
+/// A theme rule a theme breaks. Built-in themes must have none (tests);
+/// user themes may be saved with them (the editor shows them live).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Warning {
+    /// A text pair (see [`Theme::text_pairs`]) below its AA threshold.
+    Contrast {
+        /// `"fg_token on bg_token"`.
+        pair: &'static str,
+        /// The pair's contrast ratio.
+        ratio: f64,
+        /// The AA threshold it misses.
+        min: f64,
+    },
+    /// A color token a person would call red (D7: no red anywhere).
+    Red {
+        /// The token.
+        token: &'static str,
+    },
+    /// Two grade colors closer than [`MIN_GRADE_DISTANCE`] in RGB.
+    GradesClose {
+        /// Grade id (`best`, …, `blunder`).
+        a: &'static str,
+        /// Grade id.
+        b: &'static str,
+        /// Their RGB distance.
+        distance: f64,
+    },
+}
+
+impl fmt::Display for Warning {
+    /// English, for test failures and logs; the UI localizes.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Warning::Contrast { pair, ratio, min } => {
+                write!(f, "{pair}: contrast {ratio:.2} < {min}")
+            }
+            Warning::Red { token } => write!(f, "{token} is red"),
+            Warning::GradesClose { a, b, distance } => {
+                write!(f, "grades {a} and {b} are too close ({distance:.0})")
+            }
+        }
+    }
+}
+
 impl Theme {
     /// Parses a theme file, migrating older schema versions.
     pub fn from_json(json: &str) -> Result<Self, ThemeError> {
@@ -375,6 +494,50 @@ impl Theme {
             other => return Err(ThemeError::Schema(other)),
         }
         serde_json::from_value(v).map_err(ThemeError::Parse)
+    }
+
+    /// The theme as a token file (current schema).
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).expect("a theme always serializes")
+    }
+
+    /// Every rule this theme breaks, in a stable order: contrast (in
+    /// [`Theme::text_pairs`] order), red tokens, close grade pairs.
+    pub fn warnings(&self) -> Vec<Warning> {
+        let mut out: Vec<Warning> = self
+            .text_pairs()
+            .into_iter()
+            .filter_map(|p| {
+                let ratio = p.fg.contrast(p.bg);
+                let min = p.role.min_contrast();
+                (ratio < min).then_some(Warning::Contrast {
+                    pair: p.name,
+                    ratio,
+                    min,
+                })
+            })
+            .collect();
+        out.extend(
+            self.colors
+                .entries()
+                .into_iter()
+                .filter(|(_, c)| c.is_red())
+                .map(|(token, _)| Warning::Red { token }),
+        );
+        let g = self.grade_colors();
+        for i in 0..g.len() {
+            for j in i + 1..g.len() {
+                let distance = g[i].1.distance(g[j].1);
+                if distance < MIN_GRADE_DISTANCE {
+                    out.push(Warning::GradesClose {
+                        a: g[i].0,
+                        b: g[j].0,
+                        distance,
+                    });
+                }
+            }
+        }
+        out
     }
 
     /// The built-in default theme.
@@ -601,46 +764,40 @@ mod tests {
         assert_eq!(t.schema, SCHEMA_VERSION);
     }
 
-    /// Spec §15.4: WCAG AA for text tokens over their backgrounds.
+    /// The warnings of every shipped theme that `keep` selects, as text.
+    fn shipped_warnings(keep: fn(&Warning) -> bool) -> Vec<String> {
+        all_themes()
+            .into_iter()
+            .flat_map(|(name, theme)| {
+                theme
+                    .warnings()
+                    .into_iter()
+                    .filter(keep)
+                    .map(move |w| format!("theme {name}: {w}"))
+            })
+            .collect()
+    }
+
+    /// Spec §15.4: WCAG AA for text tokens over their backgrounds. Built-in
+    /// themes fail CI on any violation (D7 amendment).
     #[test]
     fn text_tokens_meet_wcag_aa() {
-        for (name, theme) in all_themes() {
-            let failures: Vec<String> = theme
-                .text_pairs()
-                .into_iter()
-                .filter(|p| p.fg.contrast(p.bg) < p.role.min_contrast())
-                .map(|p| {
-                    format!(
-                        "{}: {:.2} < {} ({} on {})",
-                        p.name,
-                        p.fg.contrast(p.bg),
-                        p.role.min_contrast(),
-                        p.fg,
-                        p.bg
-                    )
-                })
-                .collect();
-            assert!(
-                failures.is_empty(),
-                "theme {name}:\n{}",
-                failures.join("\n")
-            );
-        }
+        let failures = shipped_warnings(|w| matches!(w, Warning::Contrast { .. }));
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
 
     /// D7 / spec §15.4: no red anywhere.
     #[test]
     fn no_red_tokens() {
-        for (name, theme) in all_themes() {
-            let red: Vec<String> = theme
-                .colors
-                .entries()
-                .into_iter()
-                .filter(|(_, c)| c.is_red())
-                .map(|(token, c)| format!("{token} = {c}"))
-                .collect();
-            assert!(red.is_empty(), "theme {name} has red tokens: {red:?}");
-        }
+        let failures = shipped_warnings(|w| matches!(w, Warning::Red { .. }));
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+    }
+
+    /// No built-in theme breaks any rule (covers kinds added later).
+    #[test]
+    fn builtin_themes_have_no_warnings() {
+        let failures = shipped_warnings(|_| true);
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
 
     #[test]
@@ -662,25 +819,91 @@ mod tests {
     /// the surface is in the AA range (checked in `text_pairs`).
     #[test]
     fn grade_colors_are_distinct() {
-        for (name, theme) in all_themes() {
-            let g = theme.grade_colors();
-            for i in 0..g.len() {
-                for j in i + 1..g.len() {
-                    let (a, b) = (g[i].1, g[j].1);
-                    let d = [(a.r, b.r), (a.g, b.g), (a.b, b.b)]
-                        .iter()
-                        .map(|&(x, y)| (f64::from(x) - f64::from(y)).powi(2))
-                        .sum::<f64>()
-                        .sqrt();
-                    assert!(
-                        d >= 60.0,
-                        "theme {name}: grade {} and {} are too close ({d:.0})",
-                        g[i].0,
-                        g[j].0
-                    );
-                }
+        let failures = shipped_warnings(|w| matches!(w, Warning::GradesClose { .. }));
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+    }
+
+    /// The editor's demo: a red blunder color in a copy of `midnight` is
+    /// reported as red, and as too close to `mistake` when it is.
+    #[test]
+    fn warnings_report_each_rule() {
+        let mut t = Theme::builtin("midnight").unwrap();
+        assert!(t.warnings().is_empty());
+        assert!(t.colors.set("grade_blunder", "#e02020".parse().unwrap()));
+        let w = t.warnings();
+        assert!(w.contains(&Warning::Red {
+            token: "grade_blunder"
+        }));
+        assert!(w.iter().all(
+            |w| !matches!(w, Warning::Contrast { pair, .. } if !pair.starts_with("grade_blunder"))
+        ));
+
+        let mut t = Theme::builtin_default();
+        t.colors.grade_blunder = t.colors.grade_mistake;
+        assert!(t.warnings().iter().any(|w| matches!(
+            w,
+            Warning::GradesClose { a: "mistake", b: "blunder", distance } if *distance == 0.0
+        )));
+
+        let mut t = Theme::builtin_default();
+        t.colors.text_muted = t.colors.surface;
+        let w = t.warnings();
+        assert!(w.iter().any(|w| matches!(
+            w,
+            Warning::Contrast { pair: "text_muted on surface", ratio, min } if *ratio < 1.01 && *min == 4.5
+        )));
+        assert_eq!(
+            w.iter()
+                .filter(|w| matches!(w, Warning::Contrast { .. }))
+                .count(),
+            w.len()
+        );
+    }
+
+    #[test]
+    fn json_round_trip() {
+        for (id, _) in BUILTIN_THEMES {
+            let t = Theme::builtin(id).unwrap();
+            assert_eq!(Theme::from_json(&t.to_json()).unwrap(), t, "{id}");
+        }
+        let mut t = Theme::builtin_default();
+        t.colors.felt = "#11223380".parse().unwrap();
+        t.spacing.md = 13.5;
+        assert_eq!(Theme::from_json(&t.to_json()).unwrap(), t);
+    }
+
+    #[test]
+    fn tokens_by_name() {
+        let mut t = Theme::builtin_default();
+        assert_eq!(Colors::NAMES.len(), t.colors.entries().len());
+        assert_eq!(Colors::NAMES[0], "background");
+        let c: Color = "#123456".parse().unwrap();
+        assert!(t.colors.set("rail", c));
+        assert_eq!(t.colors.get("rail"), Some(c));
+        assert!(!t.colors.set("shiny", c));
+        assert_eq!(t.colors.get("shiny"), None);
+        assert!(t.radii.set("pill", 3.0));
+        assert_eq!(t.radii.get("pill"), Some(3.0));
+        assert_eq!(Spacing::NAMES, &["xs", "sm", "md", "lg", "xl", "xxl"]);
+    }
+
+    #[test]
+    fn hsl_round_trip_and_adjust() {
+        for (_, theme) in all_themes() {
+            for (token, c) in theme.colors.entries() {
+                let (h, s, l) = c.hsl();
+                let back = Color::from_hsl(h, s, l, c.a);
+                assert!(back.distance(c) <= 2.0, "{token}: {c} -> {back}");
+                assert_eq!(back.a, c.a);
             }
         }
+        let c = |s: &str| s.parse::<Color>().unwrap();
+        assert_eq!(Color::from_hsl(0.0, 1.0, 0.5, 255), c("#ff0000"));
+        assert_eq!(Color::from_hsl(480.0, 1.0, 0.5, 255), c("#00ff00"));
+        assert_eq!(Color::from_hsl(240.0, 1.0, 0.5, 255), c("#0000ff"));
+        assert_eq!(c("#808080").adjust(90.0, 0.0, 1.0), c("#ffffff"));
+        assert_eq!(c("#ff000080").adjust(120.0, 0.0, 0.0), c("#00ff0080"));
+        assert_eq!(c("#ffffff").adjust(0.0, 0.0, -2.0), c("#000000"));
     }
 
     #[test]

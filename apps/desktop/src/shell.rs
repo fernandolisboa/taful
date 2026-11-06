@@ -232,6 +232,12 @@ impl Shell {
     }
 
     fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if self.screen == Screen::Settings {
+            // The theme editor's hex and name fields.
+            self.theme_editor_key(ev, cx);
+            cx.notify();
+            return;
+        }
         let result = self.edit_input(ev);
         match self.screen {
             Screen::Calc => self.calc_key(result, cx),

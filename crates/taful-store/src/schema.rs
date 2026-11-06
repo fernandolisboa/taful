@@ -77,6 +77,11 @@ mod tests {
             .collect::<Result<_, _>>()
             .unwrap();
         assert!(tables.len() >= 11, "{tables:?}");
+        // User layouts and themes (spec §15.3, §15.4) are user data under the
+        // same rules, so backups and future sync carry them.
+        for t in ["layouts", "themes"] {
+            assert!(tables.iter().any(|n| n == t), "{t} missing: {tables:?}");
+        }
         let mut problems = Vec::new();
         for t in &tables {
             // (name, type, notnull, pk)

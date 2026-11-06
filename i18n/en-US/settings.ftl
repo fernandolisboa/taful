@@ -25,7 +25,7 @@ settings-grading = Grading thresholds
 settings-grading-body = EV loss bounds for correct / inaccuracy / mistake (read-only, version { $version }).
 settings-grading-abs = In big blinds: { $values }
 settings-grading-rel = In % of the pot: { $values }
-settings-later = Editing layouts and themes, and downloading the library, come right after the first slice.
+settings-later = Editing layouts and downloading the library come right after the first slice.
 
 settings-appearance = Appearance
 settings-theme = Theme
