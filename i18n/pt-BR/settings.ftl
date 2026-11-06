@@ -17,6 +17,7 @@ settings-optimizer-running = Otimizando…
 settings-optimizer-reset = Voltar ao padrão
 settings-optimizer-done = Parâmetros otimizados e aplicados às próximas revisões.
 settings-optimizer-reset-done = Parâmetros padrão restaurados.
+settings-optimizer-nothing = Ainda não há histórico suficiente para ajustar: a maioria dos itens foi revisada uma vez só. Os parâmetros padrão continuam em uso.
 settings-backups = Backups
 settings-backups-body = Uma cópia a cada 24 horas de uso e ao sair (no máximo uma por hora). Ficam os últimos 7 dias e 4 semanas.
 settings-backup-folder = Pasta: { $path }

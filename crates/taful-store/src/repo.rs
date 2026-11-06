@@ -346,6 +346,9 @@ pub struct LoggedReview {
     pub reviewed_at: Millis,
     /// `again`, `hard`, `good` or `easy`.
     pub rating: String,
+    /// Days since the item's previous review, as the scheduler saw it: `0`
+    /// for a first review, including the first one after a revival.
+    pub elapsed_days: f64,
 }
 
 const ITEM_COLS: &str = "id, kind, item_key, content_version, stability, difficulty, due, \
@@ -547,7 +550,7 @@ impl Store {
     /// included: they are still the user's memory history.
     pub fn review_history(&self) -> Result<Vec<LoggedReview>> {
         let mut stmt = self.conn().prepare(
-            "SELECT item_id, reviewed_at, rating FROM review_log
+            "SELECT item_id, reviewed_at, rating, elapsed_days FROM review_log
              WHERE deleted_at IS NULL ORDER BY item_id, reviewed_at, id",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -555,6 +558,7 @@ impl Store {
                 item_id: r.get(0)?,
                 reviewed_at: r.get(1)?,
                 rating: r.get(2)?,
+                elapsed_days: r.get(3)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)

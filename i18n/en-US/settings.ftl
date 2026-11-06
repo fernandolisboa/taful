@@ -17,6 +17,7 @@ settings-optimizer-running = Optimizing…
 settings-optimizer-reset = Reset to defaults
 settings-optimizer-done = Parameters optimized and applied to upcoming reviews.
 settings-optimizer-reset-done = Default parameters restored.
+settings-optimizer-nothing = Not enough history to fit yet: most items were reviewed only once. The default parameters stay in use.
 settings-backups = Backups
 settings-backups-body = A snapshot every 24 hours of use and on exit (at most once an hour). The last 7 days and 4 weeks are kept.
 settings-backup-folder = Folder: { $path }

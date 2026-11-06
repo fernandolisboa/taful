@@ -49,6 +49,9 @@ pub enum Error {
         have: u32,
         need: u32,
     },
+    /// The review log had no history the FSRS optimizer could fit (for
+    /// example, items reviewed only once): the defaults stay in use.
+    NothingToFit,
     /// A lesson, quiz or question id that does not exist.
     NotFound(String),
     /// Content failed to render (a bug: content is checked in CI).
@@ -64,6 +67,7 @@ impl std::fmt::Display for Error {
             Error::NotEnoughReviews { have, need } => {
                 write!(f, "optimizer: {have} reviews logged, {need} needed")
             }
+            Error::NothingToFit => write!(f, "optimizer: no review history to fit"),
             Error::NotFound(what) => write!(f, "not found: {what}"),
             Error::Content(errs) => write!(f, "content: {}", errs.join("; ")),
             Error::Io(e) => write!(f, "io: {e}"),

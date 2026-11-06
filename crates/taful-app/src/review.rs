@@ -16,7 +16,7 @@ use crate::Error;
 
 /// Delay before an item rated Again is due again.
 pub const RELEARN_MS: Millis = 10 * 60_000;
-const DAY_MS: Millis = 86_400_000;
+pub(crate) const DAY_MS: Millis = 86_400_000;
 
 /// Desired retention when the user has not set one (§13).
 pub const DEFAULT_RETENTION: f64 = 0.9;
@@ -61,6 +61,13 @@ pub fn rating_id(r: Rating) -> &'static str {
     }
 }
 
+/// The rating a [`rating_id`] names.
+pub fn parse_rating(id: &str) -> Option<Rating> {
+    [Rating::Again, Rating::Hard, Rating::Good, Rating::Easy]
+        .into_iter()
+        .find(|&r| rating_id(r) == id)
+}
+
 /// Where a review came from, for the log.
 #[derive(Debug, Clone, Copy)]
 pub struct Source<'a> {
@@ -88,11 +95,10 @@ impl Scheduler {
 
     /// A scheduler with custom FSRS parameters; fails if FSRS rejects them.
     pub fn with_parameters(retention: f64, parameters: &[f32]) -> Result<Scheduler, Error> {
-        let fsrs = FSRS::new(parameters).map_err(|e| Error::Scheduler(e.to_string()))?;
         Ok(Scheduler {
-            fsrs,
+            fsrs: FSRS::new(parameters).map_err(|e| Error::Scheduler(e.to_string()))?,
+            retention: retention.clamp(RETENTION_RANGE.0, RETENTION_RANGE.1) as f32,
             parameters: Some(parameters.to_vec()),
-            ..Scheduler::new(retention)
         })
     }
 

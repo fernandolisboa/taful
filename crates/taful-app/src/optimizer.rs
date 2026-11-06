@@ -8,17 +8,16 @@
 //! reads the log (quick), [`OptimizeJob::run`] fits the parameters on any
 //! thread, and [`App::apply_parameters`] stores them.
 
-use fsrs::{ComputeParametersInput, FSRSItem, FSRSReview, compute_parameters};
+use fsrs::{ComputeParametersInput, DEFAULT_PARAMETERS, FSRSItem, FSRSReview, compute_parameters};
 use serde_json::json;
+use taful_core::srs::Rating;
 use taful_store::{LoggedReview, Millis};
 
-use crate::review::Scheduler;
+use crate::review::{DAY_MS, Scheduler, parse_rating};
 use crate::{App, Error, Result, keys};
 
 /// Reviews needed before optimizing is offered (§13).
 pub const MIN_REVIEWS: u32 = 1_000;
-
-const DAY_MS: Millis = 86_400_000;
 
 /// What settings shows about the optimizer.
 #[derive(Debug, Clone, PartialEq)]
@@ -46,39 +45,53 @@ pub struct OptimizeJob {
 
 impl OptimizeJob {
     /// Fits the FSRS parameters. CPU-bound; call it off the UI thread.
+    /// Fails with [`Error::NothingToFit`] when FSRS finds no usable history
+    /// (it would hand back its defaults).
     pub fn run(self) -> Result<Vec<f32>> {
-        compute_parameters(ComputeParametersInput {
+        if self.train_set.is_empty() {
+            return Err(Error::NothingToFit);
+        }
+        let params = compute_parameters(ComputeParametersInput {
             train_set: self.train_set,
             ..ComputeParametersInput::default()
         })
-        .map_err(|e| Error::Scheduler(e.to_string()))
+        .map_err(|e| Error::Scheduler(e.to_string()))?;
+        if params.as_slice() == DEFAULT_PARAMETERS.as_slice() {
+            return Err(Error::NothingToFit);
+        }
+        Ok(params)
     }
 }
 
-/// FSRS rating number (1 = Again … 4 = Easy) of a logged rating id.
-fn rating_number(id: &str) -> Option<u32> {
-    match id {
-        "again" => Some(1),
-        "hard" => Some(2),
-        "good" => Some(3),
-        "easy" => Some(4),
-        _ => None,
+/// FSRS rating number (1 = Again … 4 = Easy).
+fn rating_number(r: Rating) -> u32 {
+    match r {
+        Rating::Again => 1,
+        Rating::Hard => 2,
+        Rating::Good => 3,
+        Rating::Easy => 4,
     }
 }
 
 /// Turns the log (grouped by item, in time order) into FSRS training items:
-/// one item per review after an item's first, holding that item's history up
-/// to and including it. Days between reviews are whole days, rounded down,
-/// like the scheduler's elapsed days.
+/// one item per review after a history's first, holding the history up to
+/// and including it. Days between reviews are whole days, rounded down, like
+/// the scheduler's elapsed days. A review the scheduler saw as a first one
+/// (elapsed days `0`: an item revived after a soft delete starts over)
+/// starts a new history.
 pub(crate) fn train_set(log: &[LoggedReview]) -> Vec<FSRSItem> {
     let mut items = Vec::new();
     for card in log.chunk_by(|a, b| a.item_id == b.item_id) {
         let mut reviews = Vec::with_capacity(card.len());
         let mut prev: Option<Millis> = None;
         for r in card {
-            let Some(rating) = rating_number(&r.rating) else {
+            let Some(rating) = parse_rating(&r.rating).map(rating_number) else {
                 continue;
             };
+            if r.elapsed_days == 0.0 {
+                reviews.clear();
+                prev = None;
+            }
             let delta_t = prev.map_or(0, |p| ((r.reviewed_at - p).max(0) / DAY_MS) as u32);
             prev = Some(r.reviewed_at);
             reviews.push(FSRSReview { rating, delta_t });
@@ -98,15 +111,20 @@ impl App {
         Ok(OptimizerStatus {
             reviews,
             min_reviews: MIN_REVIEWS,
-            custom: self.fsrs_parameters().is_some(),
+            custom: self.fsrs_parameters()?.is_some(),
         })
     }
 
-    /// The stored optimized parameters, if any (and valid).
-    pub fn fsrs_parameters(&self) -> Option<Vec<f32>> {
-        let v = self.store.setting(keys::FSRS_PARAMETERS).ok().flatten()?;
-        let params: Vec<f32> = serde_json::from_value(v).ok()?;
-        fsrs::FSRS::new(&params).ok().map(|_| params)
+    /// The stored optimized parameters, if any. A stored value FSRS would not
+    /// accept (or an empty one, which FSRS reads as its defaults) counts as
+    /// none.
+    pub fn fsrs_parameters(&self) -> Result<Option<Vec<f32>>> {
+        let Some(v) = self.store.setting(keys::FSRS_PARAMETERS)? else {
+            return Ok(None);
+        };
+        Ok(serde_json::from_value::<Vec<f32>>(v)
+            .ok()
+            .filter(|p| !p.is_empty() && fsrs::FSRS::new(p).is_ok()))
     }
 
     /// Snapshots the review log for optimizing. Fails with
@@ -155,6 +173,8 @@ impl App {
     pub(crate) fn make_scheduler(&self) -> Scheduler {
         let retention = self.retention();
         self.fsrs_parameters()
+            .ok()
+            .flatten()
             .and_then(|p| Scheduler::with_parameters(retention, &p).ok())
             .unwrap_or_else(|| Scheduler::new(retention))
     }
@@ -164,8 +184,6 @@ impl App {
 mod tests {
     use std::sync::atomic::Ordering;
 
-    use fsrs::DEFAULT_PARAMETERS;
-    use taful_core::srs::Rating;
     use taful_store::ReviewRecord;
 
     use super::*;
@@ -190,6 +208,7 @@ mod tests {
                 .unwrap();
             let mut at: Millis = i64::from(c) * 3_600_000;
             let mut step = 0;
+            let mut elapsed_days = 0.0;
             for _ in 0..reviews {
                 let r = roll();
                 let rating = match r {
@@ -215,7 +234,7 @@ mod tests {
                             due: at + next,
                             reviewed_at: at,
                             rating: rating_id(rating),
-                            elapsed_days: 0.0,
+                            elapsed_days,
                             lapse: false,
                             content_version: None,
                             source_kind: None,
@@ -224,6 +243,7 @@ mod tests {
                     )
                     .unwrap();
                 at += next;
+                elapsed_days = (next / DAY_MS) as f64;
             }
         }
     }
@@ -277,7 +297,7 @@ mod tests {
         let params = app.optimize().unwrap();
         assert_eq!(params.len(), DEFAULT_PARAMETERS.len());
         assert_ne!(params.as_slice(), DEFAULT_PARAMETERS.as_slice());
-        assert_eq!(app.fsrs_parameters(), Some(params.clone()));
+        assert_eq!(app.fsrs_parameters().unwrap(), Some(params.clone()));
         assert!(app.optimizer_status().unwrap().custom);
 
         t.store(base + 1_000 * DAY_MS, Ordering::SeqCst);
@@ -288,7 +308,7 @@ mod tests {
         );
 
         app.reset_parameters().unwrap();
-        assert_eq!(app.fsrs_parameters(), None);
+        assert_eq!(app.fsrs_parameters().unwrap(), None);
         assert!(!app.optimizer_status().unwrap().custom);
         t.store(base + 2_000 * DAY_MS, Ordering::SeqCst);
         assert_eq!(second_good_gap(&mut app, &t, "reset"), default_gap);
@@ -308,9 +328,9 @@ mod tests {
 
         let other = tempfile::tempdir().unwrap();
         let mut restored = App::open(other.path()).unwrap();
-        assert_eq!(restored.fsrs_parameters(), None);
+        assert_eq!(restored.fsrs_parameters().unwrap(), None);
         restored.import_from(&export).unwrap();
-        assert_eq!(restored.fsrs_parameters(), Some(params.clone()));
+        assert_eq!(restored.fsrs_parameters().unwrap(), Some(params.clone()));
         assert!(restored.scheduler.uses_parameters(&params));
         drop(restored);
         let reopened = App::open(other.path()).unwrap();
@@ -328,21 +348,40 @@ mod tests {
             app.apply_parameters(&[]).is_err(),
             "empty means defaults: use reset"
         );
-        assert_eq!(app.fsrs_parameters(), None);
+        assert_eq!(app.fsrs_parameters().unwrap(), None);
+        // A stored empty or broken value is not custom either.
+        for bad in [json!([]), json!("x"), json!([1.0, 2.0])] {
+            app.store.set_setting(keys::FSRS_PARAMETERS, &bad).unwrap();
+            assert_eq!(app.fsrs_parameters().unwrap(), None, "{bad}");
+            assert!(!app.optimizer_status().unwrap().custom);
+        }
+    }
+
+    #[test]
+    fn a_log_of_first_reviews_has_nothing_to_fit() {
+        let (mut app, _) = app_at(0);
+        seed_log(&app, MIN_REVIEWS, 1);
+        assert!(app.optimizer_status().unwrap().available());
+        assert!(matches!(app.optimize(), Err(Error::NothingToFit)));
+        assert_eq!(app.fsrs_parameters().unwrap(), None, "defaults stay");
     }
 
     #[test]
     fn train_set_uses_whole_days_and_skips_first_reviews() {
-        let r = |id: &str, at: Millis, rating: &str| LoggedReview {
+        let r = |id: &str, at: Millis, rating: &str, elapsed_days: f64| LoggedReview {
             item_id: id.into(),
             reviewed_at: at,
             rating: rating.into(),
+            elapsed_days,
         };
         let log = [
-            r("a", 0, "again"),
-            r("a", 600_000, "good"),
-            r("a", 600_000 + 3 * DAY_MS + 5, "easy"),
-            r("b", 50, "hard"),
+            r("a", 0, "again", 0.0),
+            r("a", 600_000, "good", 0.007),
+            r("a", 600_000 + 3 * DAY_MS + 5, "easy", 3.0),
+            // Revived after a soft delete: the scheduler started over.
+            r("a", 200 * DAY_MS, "hard", 0.0),
+            r("a", 202 * DAY_MS, "good", 2.0),
+            r("b", 50, "hard", 0.0),
         ];
         let items = train_set(&log);
         let shape: Vec<Vec<(u32, u32)>> = items
@@ -351,7 +390,11 @@ mod tests {
             .collect();
         assert_eq!(
             shape,
-            vec![vec![(1, 0), (3, 0)], vec![(1, 0), (3, 0), (4, 3)]]
+            vec![
+                vec![(1, 0), (3, 0)],
+                vec![(1, 0), (3, 0), (4, 3)],
+                vec![(2, 0), (3, 2)],
+            ]
         );
     }
 }

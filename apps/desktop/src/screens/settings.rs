@@ -25,6 +25,9 @@ pub struct SettingsView {
     pub optimizing: bool,
     /// Result of the last optimizer action.
     pub optimizer_message: Option<String>,
+    /// Bumped when the database is replaced, so a fit of the old review log
+    /// is dropped instead of applied.
+    pub optimizer_generation: u64,
 }
 
 impl Shell {
@@ -99,14 +102,21 @@ impl Shell {
         };
         self.settings.optimizing = true;
         self.settings.optimizer_message = None;
+        let generation = self.settings.optimizer_generation;
         let task = cx.background_executor().spawn(async move { job.run() });
         cx.spawn(async move |this, cx| {
             let fitted = task.await;
             this.update(cx, |s, cx| {
+                if s.settings.optimizer_generation != generation {
+                    return;
+                }
                 s.settings.optimizing = false;
                 let r = fitted.and_then(|p| s.app.apply_parameters(&p));
                 s.settings.optimizer_message = Some(match r {
                     Ok(()) => s.ui.i18n.tr("settings-optimizer-done"),
+                    Err(taful_app::Error::NothingToFit) => {
+                        s.ui.i18n.tr("settings-optimizer-nothing")
+                    }
                     Err(e) => s.failed(&e),
                 });
                 cx.notify();
@@ -606,6 +616,9 @@ impl Shell {
                                 .on_click(cx.listener(
                                     |this, _, window, cx| {
                                         if let Some(f) = this.settings.pending_import.take() {
+                                            // A running fit read the old log.
+                                            this.settings.optimizer_generation += 1;
+                                            this.settings.optimizing = false;
                                             let r = this.app.import_from(&f);
                                             // Strings may follow the imported locale
                                             // (before the report, which `set_ui` clears).
