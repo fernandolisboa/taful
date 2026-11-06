@@ -76,30 +76,35 @@ pub fn number(x: f64, decimals: u8, locale: &str) -> String {
 
 /// The suit symbol shown in the UI and in content: `♣ ♦ ♥ ♠`.
 ///
-/// This module is the single source of truth for card text; the app and the
-/// desktop felt call it instead of mapping suits themselves.
+/// This module is the single source of truth for card text.
 pub fn suit_symbol(s: Suit) -> char {
-    match s {
-        Suit::CLUBS => '♣',
-        Suit::DIAMONDS => '♦',
-        Suit::HEARTS => '♥',
-        _ => '♠',
-    }
+    // Indexed by `Suit::index()` (clubs, diamonds, hearts, spades).
+    ['♣', '♦', '♥', '♠'][usize::from(s.index())]
 }
 
 /// One card with its suit symbol: `Th` → `T♥`.
 pub fn card(c: Card) -> String {
-    format!("{}{}", c.rank().to_char(), suit_symbol(c.suit()))
+    let mut out = String::with_capacity(4);
+    push_card(&mut out, c);
+    out
+}
+
+fn push_card(out: &mut String, c: Card) {
+    out.push(c.rank().to_char());
+    out.push(suit_symbol(c.suit()));
 }
 
 /// Card text (a hand or a board) with suit symbols, space-separated:
 /// `AhKs` → `A♥ K♠`.
 pub fn cards(s: &str) -> Result<String, ParseError> {
-    Ok(parse_cards(s)?
-        .into_iter()
-        .map(card)
-        .collect::<Vec<_>>()
-        .join(" "))
+    let mut out = String::new();
+    for (i, c) in parse_cards(s)?.into_iter().enumerate() {
+        if i > 0 {
+            out.push(' ');
+        }
+        push_card(&mut out, c);
+    }
+    Ok(out)
 }
 
 /// Formats an evaluated value.
