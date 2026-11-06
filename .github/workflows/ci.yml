@@ -103,6 +103,45 @@ jobs:
           Get-Content stdout.log, stderr.log -ErrorAction SilentlyContinue
           if (-not $alive) { throw "taful.exe exited early (code $($app.ExitCode))" }
 
+      # Unsigned per-user installer (D14, issue #20). Version = workspace version.
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $version = (cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json).packages |
+            Where-Object name -eq 'taful-desktop' | Select-Object -ExpandProperty version
+          function Find-Iscc {
+            $c = Get-Command iscc.exe -ErrorAction SilentlyContinue
+            if ($c) { return $c.Source }
+            Get-ChildItem "${env:ProgramFiles(x86)}\Inno Setup *\ISCC.exe", "$env:ProgramFiles\Inno Setup *\ISCC.exe" -ErrorAction SilentlyContinue |
+              Select-Object -First 1 -ExpandProperty FullName
+          }
+          $iscc = Find-Iscc
+          if (-not $iscc) {
+            choco install innosetup --no-progress -y
+            if ($LASTEXITCODE -ne 0) { throw "choco install innosetup failed" }
+            $iscc = Find-Iscc
+          }
+          if (-not $iscc) { throw "ISCC.exe not found after installing Inno Setup" }
+          # taful.iss needs Inno Setup >= 6.3 (x64compatible).
+          Write-Host "ISCC $((Get-Item $iscc).VersionInfo.ProductVersion) at $iscc"
+          # VersionInfoVersion takes numbers only: drop any SemVer suffix.
+          $numeric = ($version -split '[-+]')[0]
+          & $iscc "/DAppVersion=$version" "/DNumericVersion=$numeric" installer\taful.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed ($LASTEXITCODE)" }
+          "INSTALLER=target\installer\taful-setup-$version.exe" >> $env:GITHUB_ENV
+          "INSTALLER_VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Install, upgrade, uninstall (data folder must survive)
+        shell: pwsh
+        run: ./installer/check.ps1 -Setup $env:INSTALLER
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: taful-setup-${{ env.INSTALLER_VERSION }}
+          path: ${{ env.INSTALLER }}
+          if-no-files-found: error
+
       - name: Upload app
         uses: actions/upload-artifact@v4
         with:
@@ -119,4 +158,6 @@ jobs:
             screenshot.png
             stdout.log
             stderr.log
+            install.log
+            upgrade.log
           if-no-files-found: ignore
