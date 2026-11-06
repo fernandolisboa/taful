@@ -146,11 +146,17 @@ impl Color {
         }
     }
 
+    /// Hue a gray takes when it gains saturation: a warm amber, so that
+    /// tinting a gray never turns it red (a gray's HSL hue is 0°, pure red).
+    pub const GRAY_HUE: f64 = 40.0;
+
     /// This color with its hue turned by `dh` degrees and its saturation
     /// and lightness moved by `ds` and `dl` (0–1 scale, clamped). Alpha is
-    /// kept. The editor's color steppers.
+    /// kept. The editor's color steppers. A gray has no hue: it starts
+    /// from [`Color::GRAY_HUE`].
     pub fn adjust(self, dh: f64, ds: f64, dl: f64) -> Color {
         let (h, s, l) = self.hsl();
+        let h = if s < 1e-3 { Self::GRAY_HUE } else { h };
         Color::from_hsl(h + dh, s + ds, l + dl, self.a)
     }
 
@@ -904,6 +910,10 @@ mod tests {
         assert_eq!(c("#808080").adjust(90.0, 0.0, 1.0), c("#ffffff"));
         assert_eq!(c("#ff000080").adjust(120.0, 0.0, 0.0), c("#00ff0080"));
         assert_eq!(c("#ffffff").adjust(0.0, 0.0, -2.0), c("#000000"));
+        // Saturating a gray tints it amber, never red.
+        let tinted = c("#808080").adjust(0.0, 0.5, 0.0);
+        assert!(!tinted.is_red(), "{tinted}");
+        assert!((tinted.hsl().0 - Color::GRAY_HUE).abs() < 2.0);
     }
 
     #[test]

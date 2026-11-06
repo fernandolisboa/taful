@@ -121,6 +121,11 @@ impl App {
             })
             .collect();
         for row in self.store.themes()? {
+            // A theme this build cannot read (corrupt row, newer schema
+            // from an import) is not offered: it could not be selected.
+            if Theme::from_json(&row.json).is_err() {
+                continue;
+            }
             out.push(ThemeChoice {
                 key: format!("{USER}{}", row.id),
                 name: row.name,
@@ -193,47 +198,53 @@ impl App {
         })
     }
 
-    /// The row id of a live user theme.
-    fn user_theme_id<'k>(&self, key: &'k str) -> Result<&'k str> {
+    /// The row of a live user theme.
+    fn user_theme_row(&self, key: &str) -> Result<taful_store::ThemeRow> {
         let id = key
             .strip_prefix(USER)
             .ok_or_else(|| Error::Invalid(format!("theme {key} is built in")))?;
-        match self.store.theme(id)? {
-            Some(_) => Ok(id),
-            None => Err(Error::NotFound(format!("theme {key}"))),
+        self.store
+            .theme(id)?
+            .ok_or_else(|| Error::NotFound(format!("theme {key}")))
+    }
+
+    fn update_theme_row(&self, key: &str, id: &str, theme: &Theme) -> Result<()> {
+        if self
+            .store
+            .update_theme(id, &theme.name, SCHEMA_VERSION, &theme.to_json())?
+        {
+            Ok(())
+        } else {
+            Err(Error::NotFound(format!("theme {key}")))
         }
     }
 
     /// Stores the editor's tokens for a user theme. Warnings do not block
     /// the save; the theme keeps its stored name. Returns the saved theme.
     pub fn save_theme(&self, key: &str, theme: &Theme) -> Result<Theme> {
-        let id = self.user_theme_id(key)?;
-        let row = self.store.theme(id)?.expect("checked above");
+        let row = self.user_theme_row(key)?;
         let mut theme = theme.clone();
         theme.name = row.name;
         theme.schema = SCHEMA_VERSION;
-        self.store
-            .update_theme(id, &theme.name, SCHEMA_VERSION, &theme.to_json())?;
+        self.update_theme_row(key, &row.id, &theme)?;
         Ok(theme)
     }
 
     /// Renames a user theme. Returns the stored name (trimmed, capped).
     pub fn rename_theme(&self, key: &str, name: &str) -> Result<String> {
-        let id = self.user_theme_id(key)?;
+        let row = self.user_theme_row(key)?;
         let name = theme_name(name)?;
-        let row = self.store.theme(id)?.expect("checked above");
-        let mut v: serde_json::Value = serde_json::from_str(&row.json)
-            .map_err(|e| Error::Invalid(format!("theme {key}: {e}")))?;
-        v["name"] = json!(name);
-        self.store
-            .update_theme(id, &name, row.schema_version, &v.to_string())?;
+        let mut theme =
+            Theme::from_json(&row.json).map_err(|e| Error::Invalid(format!("theme {key}: {e}")))?;
+        theme.name = name.clone();
+        self.update_theme_row(key, &row.id, &theme)?;
         Ok(name)
     }
 
     /// Deletes a user theme; the default theme becomes active if it was.
     pub fn delete_theme(&self, key: &str) -> Result<()> {
-        let id = self.user_theme_id(key)?;
-        self.store.delete_theme(id)?;
+        let row = self.user_theme_row(key)?;
+        self.store.delete_theme(&row.id)?;
         if self.string_setting(keys::THEME).as_deref() == Some(key) {
             self.store.set_setting(keys::THEME, &json!(DEFAULT_THEME))?;
         }
@@ -471,6 +482,15 @@ mod tests {
         assert_eq!(app.theme_key(), "default");
         assert_eq!(app.theme().name, "default");
         assert!(app.set_theme(&key).is_err());
+        assert_eq!(
+            app.theme_choices().unwrap().len(),
+            BUILTIN_THEMES.len(),
+            "a broken theme is not offered"
+        );
+        assert!(
+            app.rename_theme(&key, "x").is_err(),
+            "no panic on a broken row"
+        );
     }
 
     /// User themes are user data: they survive an export/import round trip.

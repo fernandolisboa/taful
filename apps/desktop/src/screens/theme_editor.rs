@@ -104,6 +104,15 @@ pub enum Field {
     Name(String),
 }
 
+/// Where the user wanted to go while the draft had unsaved edits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Leave {
+    /// Close the editor.
+    Close,
+    /// Switch to this theme key.
+    Switch(String),
+}
+
 /// The open editor: one user theme, its saved tokens and the working draft.
 pub struct ThemeEditor {
     /// `user:<id>` of the theme being edited.
@@ -117,6 +126,11 @@ pub struct ThemeEditor {
     pub field: Option<Field>,
     /// Asking to confirm a delete.
     pub confirm_delete: bool,
+    /// Asking to confirm dropping unsaved edits.
+    pub confirm_leave: Option<Leave>,
+    /// The hex field still shows the token's value: the first typed
+    /// character replaces it.
+    pub hex_fresh: bool,
     /// Result of the last save, rename or delete.
     pub status: Option<String>,
     /// Hex text that did not parse.
@@ -133,13 +147,22 @@ impl ThemeEditor {
             selected: None,
             field: None,
             confirm_delete: false,
+            confirm_leave: None,
+            hex_fresh: false,
             status: None,
             hex_invalid: false,
             preview: theme_preview_state(),
         }
     }
 
-    fn dirty(&self) -> bool {
+    /// The hex field showing `c`, ready to be typed over.
+    fn open_hex(&mut self, c: Color) {
+        self.field = Some(Field::Hex(c.to_string()));
+        self.hex_fresh = true;
+        self.hex_invalid = false;
+    }
+
+    pub(crate) fn dirty(&self) -> bool {
         self.draft.colors != self.saved.colors
             || self.draft.spacing != self.saved.spacing
             || self.draft.radii != self.saved.radii
@@ -147,8 +170,26 @@ impl ThemeEditor {
     }
 }
 
+/// A size token by group (from `SIZE_GROUPS`) and name.
+fn size_get(t: &Theme, group: &str, token: &str) -> Option<f32> {
+    match group {
+        "spacing" => t.spacing.get(token),
+        "radii" => t.radii.get(token),
+        _ => t.text_size.get(token),
+    }
+}
+
+/// Sets a size token by group and name.
+fn size_set(t: &mut Theme, group: &str, token: &str, v: f32) {
+    match group {
+        "spacing" => t.spacing.set(token, v),
+        "radii" => t.radii.set(token, v),
+        _ => t.text_size.set(token, v),
+    };
+}
+
 /// `value` one step up (`dir` = 1) or down (-1), within the token's range.
-fn step_size(group: &str, token: &str, value: f32, dir: f32) -> f32 {
+fn step_size(group: &str, value: f32, dir: f32) -> f32 {
     match group {
         "text" => (value + dir).clamp(9., 40.),
         "radii" => {
@@ -160,15 +201,13 @@ fn step_size(group: &str, token: &str, value: f32, dir: f32) -> f32 {
                 (value + dir).clamp(0., RADIUS_STEPS_MAX)
             }
         }
-        _ => {
-            let _ = token;
-            (value + dir).clamp(0., 64.)
-        }
+        _ => (value + dir).clamp(0., 64.),
     }
 }
 
 /// Edits `field` with one key; `Some(true)` on Enter, `Some(false)` on Esc.
-fn edit_field(field: &mut Field, ev: &KeyDownEvent) -> Option<bool> {
+/// While `fresh`, the first edit replaces the whole text.
+fn edit_field(field: &mut Field, fresh: &mut bool, ev: &KeyDownEvent) -> Option<bool> {
     let ks = &ev.keystroke;
     if ks.modifiers.control || ks.modifiers.alt || ks.modifiers.platform {
         return None;
@@ -180,12 +219,19 @@ fn edit_field(field: &mut Field, ev: &KeyDownEvent) -> Option<bool> {
         "enter" => return Some(true),
         "escape" => return Some(false),
         "backspace" => {
-            text.pop();
+            if std::mem::take(fresh) {
+                text.clear();
+            } else {
+                text.pop();
+            }
             return None;
         }
         _ => {}
     }
     let ch = ks.key_char.as_deref().and_then(|s| s.chars().next())?;
+    if std::mem::take(fresh) {
+        text.clear();
+    }
     match field {
         Field::Hex(s) => {
             // A `#` starts over: type a whole new value without erasing.
@@ -259,6 +305,28 @@ impl Shell {
         self.preview_theme(theme, cx);
     }
 
+    /// Close asked for: unsaved edits ask before they are dropped.
+    fn theme_edit_request_close(&mut self, cx: &mut Context<Self>) {
+        match &mut self.settings.theme_editor {
+            Some(e) if e.dirty() => e.confirm_leave = Some(Leave::Close),
+            _ => self.theme_edit_close(cx),
+        }
+    }
+
+    /// Unsaved edits confirmed dropped: do what was asked.
+    fn theme_edit_leave(&mut self, window: &mut gpui::Window, cx: &mut Context<Self>) {
+        let leave = self
+            .settings
+            .theme_editor
+            .as_mut()
+            .and_then(|e| e.confirm_leave.take());
+        match leave {
+            Some(Leave::Close) => self.theme_edit_close(cx),
+            Some(Leave::Switch(key)) => self.set_theme(&key, window, cx),
+            None => {}
+        }
+    }
+
     /// Closes the editor; unsaved changes are dropped.
     pub(crate) fn theme_edit_close(&mut self, cx: &mut Context<Self>) {
         if self.settings.theme_editor.take().is_some() {
@@ -291,6 +359,12 @@ impl Shell {
         let Some(e) = &mut self.settings.theme_editor else {
             return;
         };
+        if name.trim().is_empty() {
+            // Keep the field open so the user can type a name.
+            e.field = Some(Field::Name(name));
+            e.status = Some(self.ui.i18n.tr("theme-editor-name-empty"));
+            return;
+        }
         match self.app.rename_theme(&e.key, &name) {
             Ok(name) => {
                 e.saved.name = name.clone();
@@ -308,14 +382,24 @@ impl Shell {
     }
 
     fn theme_edit_delete(&mut self, cx: &mut Context<Self>) {
-        let Some(e) = self.settings.theme_editor.take() else {
+        let Some(e) = &mut self.settings.theme_editor else {
             return;
         };
-        let r = self.app.delete_theme(&e.key);
-        let theme = self.app.theme();
-        self.preview_theme(theme, cx);
-        if r.is_err() {
-            self.report(r, |_| None);
+        e.confirm_delete = false;
+        match self.app.delete_theme(&e.key) {
+            Ok(()) => {
+                self.settings.theme_editor = None;
+                let theme = self.app.theme();
+                self.preview_theme(theme, cx);
+            }
+            // The editor and its draft stay; the failure shows in it.
+            Err(err) => {
+                e.status = Some(
+                    self.ui
+                        .i18n
+                        .tr_args("settings-failed", &[("error", err.to_string().into())]),
+                );
+            }
         }
     }
 
@@ -323,10 +407,9 @@ impl Shell {
     fn theme_set_color(&mut self, token: &'static str, c: Color, cx: &mut Context<Self>) {
         if let Some(e) = &mut self.settings.theme_editor {
             e.draft.colors.set(token, c);
-            if let Some(Field::Hex(s)) = &mut e.field {
-                *s = c.to_string();
+            if matches!(e.field, Some(Field::Hex(_))) {
+                e.open_hex(c);
             }
-            e.hex_invalid = false;
         }
         self.theme_draft_changed(cx);
     }
@@ -339,14 +422,16 @@ impl Shell {
         let Some(field) = &mut e.field else {
             return;
         };
-        let Some(enter) = edit_field(field, ev) else {
+        let Some(enter) = edit_field(field, &mut e.hex_fresh, ev) else {
+            // Any edit clears a stale "not a color" note.
+            e.hex_invalid = false;
             return;
         };
         let field = e.field.take();
         match (field, enter) {
             (Some(Field::Hex(s)), true) => match (parse_hex(&s), e.selected) {
                 (Some(c), Some(token)) => {
-                    e.field = Some(Field::Hex(c.to_string()));
+                    e.field = Some(Field::Hex(s));
                     self.theme_set_color(token, c, cx);
                 }
                 _ => {
@@ -506,10 +591,11 @@ impl Shell {
                                 e.field = None;
                             } else {
                                 e.selected = Some(token);
-                                e.field =
-                                    e.draft.colors.get(token).map(|c| Field::Hex(c.to_string()));
+                                e.field = None;
+                                if let Some(c) = e.draft.colors.get(token) {
+                                    e.open_hex(c);
+                                }
                             }
-                            e.hex_invalid = false;
                         }
                         cx.notify();
                     }));
@@ -531,34 +617,17 @@ impl Shell {
         ));
         for (gi, (group, tokens)) in SIZE_GROUPS.into_iter().enumerate() {
             for (ti, &token) in tokens.iter().enumerate() {
-                let value = match group {
-                    "spacing" => e.draft.spacing.get(token),
-                    "radii" => e.draft.radii.get(token),
-                    _ => e.draft.text_size.get(token),
-                }
-                .unwrap_or(0.);
+                let value = size_get(&e.draft, group, token).unwrap_or(0.);
                 let id = gi * 100 + ti;
                 let step = move |dir: f32| {
                     move |this: &mut Shell,
                           _: &gpui::ClickEvent,
                           _: &mut gpui::Window,
                           cx: &mut Context<Shell>| {
-                        if let Some(e) = &mut this.settings.theme_editor {
-                            let d = &mut e.draft;
-                            let (get, set): (Option<f32>, &mut dyn FnMut(f32)) = match group {
-                                "spacing" => (d.spacing.get(token), &mut |v| {
-                                    d.spacing.set(token, v);
-                                }),
-                                "radii" => (d.radii.get(token), &mut |v| {
-                                    d.radii.set(token, v);
-                                }),
-                                _ => (d.text_size.get(token), &mut |v| {
-                                    d.text_size.set(token, v);
-                                }),
-                            };
-                            if let Some(v) = get {
-                                set(step_size(group, token, v, dir));
-                            }
+                        if let Some(e) = &mut this.settings.theme_editor
+                            && let Some(v) = size_get(&e.draft, group, token)
+                        {
+                            size_set(&mut e.draft, group, token, step_size(group, v, dir));
                         }
                         this.theme_draft_changed(cx);
                         cx.notify();
@@ -567,7 +636,8 @@ impl Shell {
                 let shown = if value >= ROUND {
                     "∞".to_string()
                 } else {
-                    felt::num(&ui, f64::from(value), 0)
+                    let decimals = if value.fract() == 0. { 0 } else { 1 };
+                    felt::num(&ui, f64::from(value), decimals)
                 };
                 sizes = sizes.child(
                     div()
@@ -617,9 +687,11 @@ impl Shell {
                 .on_click(cx.listener(|this, _, _, cx| {
                     if let Some(e) = &mut this.settings.theme_editor {
                         e.draft = e.saved.clone();
-                        e.field = e.selected.and_then(|tok| {
-                            e.draft.colors.get(tok).map(|c| Field::Hex(c.to_string()))
-                        });
+                        e.field = None;
+                        e.hex_invalid = false;
+                        if let Some(c) = e.selected.and_then(|tok| e.draft.colors.get(tok)) {
+                            e.open_hex(c);
+                        }
                     }
                     this.theme_draft_changed(cx);
                     cx.notify();
@@ -630,7 +702,7 @@ impl Shell {
             .child(
                 button("theme_close", i18n.tr("theme-editor-close"), false, &ui, &p).on_click(
                     cx.listener(|this, _, _, cx| {
-                        this.theme_edit_close(cx);
+                        this.theme_edit_request_close(cx);
                         cx.notify();
                     }),
                 ),
@@ -650,6 +722,51 @@ impl Shell {
                     cx.notify();
                 })),
             );
+        let confirm_leave = e.confirm_leave.is_some().then(|| {
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(t.spacing.sm))
+                .p(px(t.spacing.md))
+                .rounded(px(t.radii.md))
+                .bg(p.surface_raised)
+                .child(i18n.tr("theme-editor-leave-confirm"))
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(t.spacing.sm))
+                        .child(
+                            button(
+                                "theme_leave_yes",
+                                i18n.tr("theme-editor-discard"),
+                                true,
+                                &ui,
+                                &p,
+                            )
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
+                                    this.theme_edit_leave(window, cx);
+                                    cx.notify();
+                                },
+                            )),
+                        )
+                        .child(
+                            button(
+                                "theme_leave_no",
+                                i18n.tr("theme-editor-keep-editing"),
+                                false,
+                                &ui,
+                                &p,
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                if let Some(e) = &mut this.settings.theme_editor {
+                                    e.confirm_leave = None;
+                                }
+                                cx.notify();
+                            })),
+                        ),
+                )
+        });
         let confirm = e.confirm_delete.then(|| {
             div()
                 .flex()
@@ -704,6 +821,7 @@ impl Shell {
                 .child(name_row)
                 .child(actions)
                 .children(status.map(|s| muted(s, &ui, &p)))
+                .children(confirm_leave)
                 .children(confirm)
                 .child(preview)
                 .child(checks)
@@ -896,12 +1014,12 @@ mod tests {
 
     #[test]
     fn size_steps_stay_in_range() {
-        assert_eq!(step_size("spacing", "xs", 0., -1.), 0.);
-        assert_eq!(step_size("spacing", "xs", 4., 1.), 5.);
-        assert_eq!(step_size("text", "sm", 9., -1.), 9.);
-        assert_eq!(step_size("radii", "pill", ROUND, -1.), RADIUS_STEPS_MAX);
-        assert_eq!(step_size("radii", "pill", RADIUS_STEPS_MAX, 1.), ROUND);
-        assert_eq!(step_size("radii", "sm", 4., 1.), 5.);
+        assert_eq!(step_size("spacing", 0., -1.), 0.);
+        assert_eq!(step_size("spacing", 4., 1.), 5.);
+        assert_eq!(step_size("text", 9., -1.), 9.);
+        assert_eq!(step_size("radii", ROUND, -1.), RADIUS_STEPS_MAX);
+        assert_eq!(step_size("radii", RADIUS_STEPS_MAX, 1.), ROUND);
+        assert_eq!(step_size("radii", 4., 1.), 5.);
     }
 
     #[test]

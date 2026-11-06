@@ -12,7 +12,7 @@ use taful_app::i18n::Locale;
 use taful_app::layout::Layout;
 
 use crate::Ui;
-use crate::screens::theme_editor::ThemeEditor;
+use crate::screens::theme_editor::{Leave, ThemeEditor};
 use crate::shell::Shell;
 use crate::widgets::{button, card, chip, muted, title};
 
@@ -33,18 +33,40 @@ impl Shell {
         }
         let theme = self.ui.theme.clone();
         self.set_ui(Rc::new(Ui::new(locale, theme)), window, cx);
+        // The editor's status line is in the old language.
+        if let Some(e) = &mut self.settings.theme_editor {
+            e.status = None;
+        }
     }
 
-    fn set_theme(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
-        // Picking another theme closes the editor (unsaved edits dropped).
-        self.settings.theme_editor = None;
-        match self.app.set_theme(key) {
-            Ok(theme) => {
-                let locale = self.ui.i18n.locale();
-                self.set_ui(Rc::new(Ui::new(locale, theme)), window, cx);
+    /// A theme chip was clicked. With the editor open: the edited theme's
+    /// own chip does nothing, and unsaved edits ask before they are dropped.
+    fn pick_theme(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(e) = &mut self.settings.theme_editor {
+            if e.key == key {
+                return;
             }
-            Err(e) => eprintln!("taful: saving the theme failed: {e}"),
+            if e.dirty() {
+                e.confirm_leave = Some(Leave::Switch(key.to_owned()));
+                return;
+            }
         }
+        self.set_theme(key, window, cx);
+    }
+
+    /// Makes a theme active; closes the editor (unsaved edits dropped).
+    pub(crate) fn set_theme(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.settings.theme_editor = None;
+        let theme = match self.app.set_theme(key) {
+            Ok(theme) => theme,
+            Err(e) => {
+                eprintln!("taful: saving the theme failed: {e}");
+                // Repaint with the stored theme, not a leftover draft.
+                self.app.theme()
+            }
+        };
+        let locale = self.ui.i18n.locale();
+        self.set_ui(Rc::new(Ui::new(locale, theme)), window, cx);
     }
 
     /// Hands the active layout to the table screen.
@@ -106,7 +128,7 @@ impl Shell {
                 let key = c.key.clone();
                 chip(("theme", i), label, c.key == active_theme, &ui, &p).on_click(cx.listener(
                     move |this, _, window, cx| {
-                        this.set_theme(&key, window, cx);
+                        this.pick_theme(&key, window, cx);
                         cx.notify();
                     },
                 ))
