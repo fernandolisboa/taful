@@ -150,6 +150,20 @@ impl Shell {
                 }
                 Err(e) => eprintln!("taful: storing a hand failed: {e}"),
             },
+            TableEvent::SaveLayout(draft) => {
+                let i18n = &self.ui.i18n;
+                let name = self.app.new_layout_copy_name(|n| {
+                    i18n.tr_args("settings-layout-copy-name", &[("n", n.into())])
+                });
+                let r = match self.app.save_edited_layout(draft, &name) {
+                    Ok((_, layout)) => Ok(layout),
+                    Err(e) => {
+                        eprintln!("taful: saving the edited layout failed: {e}");
+                        Err(i18n.tr("layout-edit-save-failed"))
+                    }
+                };
+                self.table.update(cx, |t, cx| t.layout_saved(r, cx));
+            }
             TableEvent::ReviewHand => {
                 let id = self.hand_review.last_stored.clone();
                 self.select(Screen::HandReview, window, cx);

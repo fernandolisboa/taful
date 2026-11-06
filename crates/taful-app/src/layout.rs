@@ -8,13 +8,20 @@
 //! The schema is versioned: a file from an older version is migrated when it
 //! is read, and a panel the file does not know yet gets its position from the
 //! default preset.
+//!
+//! Schema 2 (layout edit mode, #22) lets a panel's position be a fraction of
+//! a cell, in steps of [`FREE_STEP`], so a panel dropped with Alt keeps where
+//! it was let go. Sizes stay whole cells.
 
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
 /// Layout schema version this build reads and writes.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
+
+/// Positions are kept in steps of this fraction of a cell.
+pub const FREE_STEP: f32 = 0.125;
 
 /// Grid size every layout uses.
 pub const GRID_COLS: u16 = 48;
@@ -88,12 +95,14 @@ fn yes() -> bool {
 }
 
 /// One panel's place on the grid, in cells.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Panel {
     pub id: String,
-    pub x: u16,
-    pub y: u16,
+    /// Left edge in cells; a multiple of [`FREE_STEP`] (schema 2).
+    pub x: f32,
+    /// Top edge in cells; a multiple of [`FREE_STEP`] (schema 2).
+    pub y: f32,
     pub w: u16,
     pub h: u16,
     #[serde(default = "yes")]
@@ -109,7 +118,7 @@ pub struct Grid {
 }
 
 /// A complete layout.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Layout {
     pub schema: u32,
@@ -128,6 +137,45 @@ pub enum LayoutError {
     Schema(u32),
     /// Parsed, but breaks a rule (see [`Layout::problems`]).
     Invalid(Vec<String>),
+}
+
+/// A rule a layout breaks (spec §15.3). The editor shows these to the user,
+/// so they carry ids rather than text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Problem {
+    /// The grid is not [`GRID_COLS`] × [`GRID_ROWS`].
+    Grid { cols: u16, rows: u16 },
+    /// A panel id this build does not know.
+    UnknownPanel(String),
+    /// A panel listed twice.
+    Duplicate(String),
+    /// A panel the table screen cannot work without is hidden.
+    Hidden(String),
+    /// Zero width or height.
+    Empty(String),
+    /// Part of the panel is outside the grid.
+    LeavesGrid(String),
+    /// Two visible panels overlap: `(earlier, later)` in the file.
+    Overlap(String, String),
+    /// A panel the file does not have.
+    Missing(String),
+}
+
+impl fmt::Display for Problem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Problem::Grid { cols, rows } => {
+                write!(f, "grid must be {GRID_COLS}×{GRID_ROWS}, is {cols}×{rows}")
+            }
+            Problem::UnknownPanel(p) => write!(f, "unknown panel `{p}`"),
+            Problem::Duplicate(p) => write!(f, "panel `{p}` appears twice"),
+            Problem::Hidden(p) => write!(f, "panel `{p}` must be visible"),
+            Problem::Empty(p) => write!(f, "panel `{p}` is empty"),
+            Problem::LeavesGrid(p) => write!(f, "panel `{p}` leaves the grid"),
+            Problem::Overlap(a, b) => write!(f, "panels `{a}` and `{b}` overlap"),
+            Problem::Missing(p) => write!(f, "panel `{p}` is missing"),
+        }
+    }
 }
 
 impl fmt::Display for LayoutError {
@@ -167,10 +215,15 @@ impl Layout {
         if schema > SCHEMA_VERSION || schema == 0 {
             return Err(LayoutError::Schema(schema));
         }
-        // Schema 1 is current: no migration step yet. A bump adds one here.
+        // Schema 1 → 2: positions became numbers that may be fractions of a
+        // cell; whole cells read as they are, so no rewrite is needed.
         let mut layout: Layout =
             serde_json::from_value(v).map_err(|e| LayoutError::Parse(e.to_string()))?;
         layout.schema = SCHEMA_VERSION;
+        for p in &mut layout.panels {
+            p.x = quantize(p.x);
+            p.y = quantize(p.y);
+        }
         layout.add_missing_panels();
         let problems = layout.problems();
         if problems.is_empty() {
@@ -230,45 +283,53 @@ impl Layout {
     /// panel present, panels inside the grid and non-empty, required panels
     /// visible, visible panels not overlapping.
     pub fn problems(&self) -> Vec<String> {
+        self.violations().iter().map(Problem::to_string).collect()
+    }
+
+    /// [`Self::problems`] as values.
+    pub fn violations(&self) -> Vec<Problem> {
         let mut out = Vec::new();
         if self.grid.cols != GRID_COLS || self.grid.rows != GRID_ROWS {
-            out.push(format!(
-                "grid must be {GRID_COLS}×{GRID_ROWS}, is {}×{}",
-                self.grid.cols, self.grid.rows
-            ));
+            out.push(Problem::Grid {
+                cols: self.grid.cols,
+                rows: self.grid.rows,
+            });
         }
         for (i, p) in self.panels.iter().enumerate() {
             match PanelId::parse(&p.id) {
-                None => out.push(format!("unknown panel `{}`", p.id)),
+                None => out.push(Problem::UnknownPanel(p.id.clone())),
                 Some(id) => {
                     if id.required() && !p.visible {
-                        out.push(format!("panel `{}` must be visible", p.id));
+                        out.push(Problem::Hidden(p.id.clone()));
                     }
                 }
             }
             if self.panels[..i].iter().any(|q| q.id == p.id) {
-                out.push(format!("panel `{}` appears twice", p.id));
+                out.push(Problem::Duplicate(p.id.clone()));
             }
             if p.w == 0 || p.h == 0 {
-                out.push(format!("panel `{}` is empty", p.id));
+                out.push(Problem::Empty(p.id.clone()));
             }
-            if u32::from(p.x) + u32::from(p.w) > u32::from(self.grid.cols)
-                || u32::from(p.y) + u32::from(p.h) > u32::from(self.grid.rows)
-            {
-                out.push(format!("panel `{}` leaves the grid", p.id));
+            if !inside(p, self.grid) {
+                out.push(Problem::LeavesGrid(p.id.clone()));
             }
             for q in &self.panels[..i] {
                 if p.visible && q.visible && overlaps(p, q) {
-                    out.push(format!("panels `{}` and `{}` overlap", q.id, p.id));
+                    out.push(Problem::Overlap(q.id.clone(), p.id.clone()));
                 }
             }
         }
         for p in PanelId::ALL {
             if !self.panels.iter().any(|q| q.id == p.id()) {
-                out.push(format!("panel `{}` is missing", p.id()));
+                out.push(Problem::Missing(p.id().to_owned()));
             }
         }
         out
+    }
+
+    /// A panel by id, visible or not.
+    pub fn panel_any(&self, id: PanelId) -> Option<&Panel> {
+        self.panels.iter().find(|p| p.id == id.id())
     }
 
     /// A panel by id, if it is visible.
@@ -287,16 +348,36 @@ impl Layout {
     /// A visible panel's rectangle for a cell size.
     pub fn rect(&self, id: PanelId, cell: f32) -> Option<Rect> {
         self.panel(id).map(|p| Rect {
-            x: f32::from(p.x) * cell,
-            y: f32::from(p.y) * cell,
+            x: p.x * cell,
+            y: p.y * cell,
             w: f32::from(p.w) * cell,
             h: f32::from(p.h) * cell,
         })
     }
 }
 
-fn overlaps(a: &Panel, b: &Panel) -> bool {
-    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+/// Rounds a position to the nearest [`FREE_STEP`].
+pub fn quantize(v: f32) -> f32 {
+    (v / FREE_STEP).round() * FREE_STEP
+}
+
+fn inside(p: &Panel, grid: Grid) -> bool {
+    p.x.is_finite()
+        && p.y.is_finite()
+        && p.x >= 0.
+        && p.y >= 0.
+        && p.x + f32::from(p.w) <= f32::from(grid.cols)
+        && p.y + f32::from(p.h) <= f32::from(grid.rows)
+}
+
+pub(crate) fn overlaps(a: &Panel, b: &Panel) -> bool {
+    let (aw, ah, bw, bh) = (
+        f32::from(a.w),
+        f32::from(a.h),
+        f32::from(b.w),
+        f32::from(b.h),
+    );
+    a.x < b.x + bw && b.x < a.x + aw && a.y < b.y + bh && b.y < a.y + ah
 }
 
 #[cfg(test)]
@@ -338,7 +419,7 @@ mod tests {
         assert_eq!(l.panels.len(), 4);
         assert!(l.panel(PanelId::Table).is_some());
         assert!(l.panel(PanelId::Controls).is_some());
-        assert_eq!(l.panel(PanelId::Explanation).unwrap().x, 33);
+        assert_eq!(l.panel(PanelId::Explanation).unwrap().x, 33.);
     }
 
     #[test]
@@ -355,7 +436,7 @@ mod tests {
                 "{l:?}"
             );
         };
-        bad(&|l| l.panels[1].x = 40); // overlaps the explanation, leaves the grid
+        bad(&|l| l.panels[1].x = 40.); // overlaps the explanation, leaves the grid
         bad(&|l| l.panels[1].w = 0);
         bad(&|l| l.panels[1].visible = false); // the table is required
         bad(&|l| l.panels[0].id = "chat".into());
@@ -367,7 +448,7 @@ mod tests {
         // The explanation may be hidden, and then may overlap.
         let mut l = base.clone();
         l.panels[3].visible = false;
-        l.panels[3].x = 0;
+        l.panels[3].x = 0.;
         assert!(Layout::from_json(&l.to_json()).is_ok());
 
         let mut v: serde_json::Value = serde_json::from_str(&base.to_json()).unwrap();

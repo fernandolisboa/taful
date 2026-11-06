@@ -37,7 +37,7 @@ settings-grading = Limites de avaliação
 settings-grading-body = Limites de perda de EV para correto / imprecisão / erro (só leitura, versão { $version }).
 settings-grading-abs = Em big blinds: { $values }
 settings-grading-rel = Em % do pote: { $values }
-settings-later = Editar layouts e temas, e baixar a biblioteca, vêm logo depois do primeiro recorte.
+settings-later = Editar temas e baixar a biblioteca vêm logo depois do primeiro recorte.
 
 settings-appearance = Aparência
 settings-theme = Tema
@@ -45,7 +45,7 @@ theme-default = Petróleo (padrão)
 theme-midnight = Meia-noite
 theme-daylight = Dia
 settings-layout = Layout da mesa
-settings-layout-body = Onde a tela da mesa coloca os painéis. A mesa cresce para ocupar o espaço dela.
+settings-layout-body = Onde a tela da mesa coloca os painéis. A mesa cresce para ocupar o espaço dela. Para mover ou redimensionar painéis, use Editar layout na tela da mesa.
 layout-default = Painel à direita
 layout-panel-left = Painel à esquerda
 layout-wide-panel = Painel largo

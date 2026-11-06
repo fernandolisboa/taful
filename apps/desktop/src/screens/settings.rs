@@ -246,7 +246,6 @@ impl Shell {
             .collect();
         let (active, layout) = self.app.active_layout();
         let choices = self.app.layout_choices().unwrap_or_default();
-        let user_layouts = choices.iter().filter(|c| !c.builtin).count();
         let layout_chips: Vec<_> = choices
             .into_iter()
             .enumerate()
@@ -267,10 +266,10 @@ impl Shell {
             })
             .collect();
         let active_is_user = active.starts_with("user:");
-        let copy_name = ui.i18n.tr_args(
-            "settings-layout-copy-name",
-            &[("n", (user_layouts + 1).into())],
-        );
+        let copy_name = self.app.new_layout_copy_name(|n| {
+            ui.i18n
+                .tr_args("settings-layout-copy-name", &[("n", n.into())])
+        });
         let mut buttons = div()
             .flex()
             .flex_wrap()
@@ -711,8 +710,8 @@ fn layout_preview(layout: &Layout, ui: &Ui, p: &crate::theme::Palette) -> gpui::
         map = map.child(
             div()
                 .absolute()
-                .left(px(CELL * f32::from(panel.x) + 1.))
-                .top(px(CELL * f32::from(panel.y) + 1.))
+                .left(px(CELL * panel.x + 1.))
+                .top(px(CELL * panel.y + 1.))
                 .w(px(CELL * f32::from(panel.w) - 2.))
                 .h(px(CELL * f32::from(panel.h) - 2.))
                 .rounded(px(t.radii.sm))

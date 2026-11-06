@@ -37,7 +37,7 @@ settings-grading = Grading thresholds
 settings-grading-body = EV loss bounds for correct / inaccuracy / mistake (read-only, version { $version }).
 settings-grading-abs = In big blinds: { $values }
 settings-grading-rel = In % of the pot: { $values }
-settings-later = Editing layouts and themes, and downloading the library, come right after the first slice.
+settings-later = Editing themes and downloading the library come right after the first slice.
 
 settings-appearance = Appearance
 settings-theme = Theme
@@ -45,7 +45,7 @@ theme-default = Petrol (default)
 theme-midnight = Midnight
 theme-daylight = Daylight
 settings-layout = Table layout
-settings-layout-body = Where the table screen puts its panels. The table grows to fill its space.
+settings-layout-body = Where the table screen puts its panels. The table grows to fill its space. To move or resize panels, use Edit layout on the table screen.
 layout-default = Panel on the right
 layout-panel-left = Panel on the left
 layout-wide-panel = Wide panel

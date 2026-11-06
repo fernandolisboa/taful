@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "name": "wide-panel",
   "grid": { "cols": 48, "rows": 27 },
   "panels": [
