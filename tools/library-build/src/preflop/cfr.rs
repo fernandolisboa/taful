@@ -34,6 +34,10 @@ enum Mode {
     Eval,
     /// Best response for one seat against everyone else's average strategy.
     BestResponse(usize),
+    /// Best response for one seat against every other seat playing its
+    /// locked profile strategy (`Decision::locked`); fills `br_ev` at the
+    /// seat's nodes.
+    Profiled(usize),
 }
 
 fn matvec(a: &[f32], x: &V) -> V {
@@ -169,7 +173,7 @@ impl Ctx<'_> {
         let d = match node {
             TNode::Terminal(t) => {
                 let only = match mode {
-                    Mode::BestResponse(p) => Some(p),
+                    Mode::BestResponse(p) | Mode::Profiled(p) => Some(p),
                     _ => None,
                 };
                 return self.terminal(t, reach, m, only);
@@ -180,13 +184,18 @@ impl Ctx<'_> {
         let k = d.actions.len();
         let sigma = match mode {
             Mode::Train(_) => current_strategy(&d.regrets, k),
+            Mode::Profiled(q) if q != p => {
+                assert_eq!(d.locked.len(), k * N, "profile locked at every node");
+                d.locked.clone()
+            }
             _ => average_strategy(d),
         };
-        let br_self = matches!(mode, Mode::BestResponse(q) if q == p);
+        let br_self = matches!(mode, Mode::BestResponse(q) | Mode::Profiled(q) if q == p);
 
         // The best responder's own reach follows its average strategy too:
         // its values do not depend on it, but the multiway renormalization
-        // does, and it must match the evaluation pass (same payoffs).
+        // does, and it must match the evaluation pass (same payoffs). Against
+        // a profile the responder's reach stays the reference's as well.
         let child_inputs = |a: usize| -> (Vec<V>, Vec<V>) {
             let mut r = reach.to_vec();
             let mut mm = m.to_vec();
@@ -294,6 +303,16 @@ impl Ctx<'_> {
                 };
             }
             Mode::BestResponse(_) => {}
+            Mode::Profiled(q) if q == p => {
+                let mm = others_mass(m, p);
+                d.br_ev = vec![0.0; k * N];
+                for (a, cv) in child_vals.iter().enumerate() {
+                    for h in 0..N {
+                        d.br_ev[a * N + h] = if mm[h] > 0.0 { cv[p][h] / mm[h] } else { 0.0 };
+                    }
+                }
+            }
+            Mode::Profiled(_) => {}
         }
         if let Mode::Eval = mode {
             d.reach_cache = reach[p];
@@ -344,6 +363,22 @@ impl Solver<'_> {
             if t % 50 == 0 || t == iterations {
                 progress(t);
             }
+        }
+    }
+
+    /// Every seat's best-response EVs against the others playing the
+    /// locked profile (`Decision::locked` must be set at every node). Fills
+    /// `Decision::br_ev`.
+    pub fn best_response_vs_locked(&mut self) {
+        let (compat, sizes, seats) = self.ctx();
+        let ctx = Ctx {
+            compat: &compat,
+            sizes,
+            seats,
+        };
+        let (reach, m) = self.root_inputs();
+        for p in 0..seats {
+            ctx.walk(&mut self.tree.root, &reach, &m, Mode::Profiled(p), 0);
         }
     }
 

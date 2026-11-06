@@ -1,0 +1,18 @@
+# Plays few hands, folds too much to aggression (spec §9). Multipliers scale
+# the share of the range that takes an action group; 1 = the reference.
+id = "nit"
+
+[preflop]
+vpip_mult = 0.6
+pfr_mult = 0.7
+threebet_mult = 0.5
+
+# Postflop and sizing come with the postflop profiles (#27).
+[postflop]
+fold_to_cbet = 0.25
+fold_to_raise = 0.3
+bluff_value_shift = 0.4
+aggression = -0.2
+
+[sizing]
+prefer = "reference"

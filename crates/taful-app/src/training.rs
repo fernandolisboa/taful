@@ -406,6 +406,19 @@ impl App {
         ctx: &SpotContext,
         review_item: Option<&str>,
     ) -> Result<()> {
+        // Decisions against a bot profile are kept out of the history, the
+        // review queue and leaks until those are keyed by profile (#26):
+        // stored now they would count as reference mistakes.
+        if d.vs_profile.is_some() {
+            // Reviews deal reference spots; answering one against a
+            // profile would leave the item due while looking graded.
+            if review_item.is_some() {
+                return Err(Error::NotFound(
+                    "a review answered against a bot profile".into(),
+                ));
+            }
+            return Ok(());
+        }
         // The decision and its review land together, or neither does: a
         // decision without its review would leave the item due forever.
         self.store.atomic(|_| {
@@ -623,6 +636,92 @@ mod tests {
             a.string_setting(crate::keys::LIBRARY_DIR).as_deref(),
             Some(&*dir.to_string_lossy())
         );
+    }
+
+    /// #25 acceptance: through `App`, a preflop spot against a profile is
+    /// graded on the profile's best-response EVs, the payload carries both
+    /// EV sets, reference grades are unchanged, and profile decisions stay
+    /// out of the history until #26 keys them by profile.
+    #[test]
+    fn spots_against_a_profile_grade_on_best_responses() {
+        use crate::preflop::SpotKind;
+        let mut a = app();
+        let t = a.trainers().unwrap();
+        let pre = &t.preflop;
+        let mut checked = 0;
+        let mut station_ctx = None;
+        for seed in 0..40 {
+            let spot = pre.spot(SpotKind::VsOpen, seed).unwrap();
+            let station =
+                DrillSpot::Preflop(Box::new(spot.clone().against(Some("calling-station"))));
+            let reference = DrillSpot::Preflop(Box::new(spot.clone()));
+            let br = &pre.profile("calling-station").unwrap().chart;
+            for (i, &act) in spot_actions(&reference, &t).iter().enumerate() {
+                let r = t.answer(&reference, act).unwrap();
+                // Reference grades are what they always were.
+                assert_eq!(r, pre.grade(spot.node, spot.hand, i).unwrap());
+                assert!(r.vs_profile.is_none());
+                let d = t.answer(&station, act).unwrap();
+                let vs = d.vs_profile.as_ref().expect("graded against the profile");
+                assert_eq!(vs.profile, "calling-station");
+                assert_eq!(d.hand_evs, br.ev(spot.node, spot.hand).unwrap());
+                assert_eq!(vs.reference_evs, r.hand_evs);
+                assert_eq!(d.hand_freqs, r.hand_freqs);
+                let best = d.hand_evs.iter().copied().fold(f32::MIN, f32::max);
+                assert!((d.ev_loss_bb - f64::from(best - d.hand_evs[i])).abs() < 1e-9);
+                assert_eq!(vs.exploit, d.best());
+                assert_eq!(vs.gto, crate::preflop::argmax(&r.hand_freqs));
+                assert!(
+                    (vs.ev_gap_bb - f64::from(d.hand_evs[vs.exploit] - d.hand_evs[vs.gto])).abs()
+                        < 1e-9
+                );
+                // Not stored until decisions are keyed by profile (#26).
+                let ctx = station.context(&t);
+                a.record_spot_decision(&d, &ctx, None).unwrap();
+                station_ctx = Some((ctx.clone(), d.clone()));
+                assert!(
+                    a.store
+                        .review_item(ItemKind::SpotTemplate.id(), &ctx.template.key())
+                        .unwrap()
+                        .is_none()
+                );
+                checked += 1;
+            }
+            // The exploitative line is always Best against the profile.
+            let exploit = spot_actions(&station, &t)[t
+                .answer(&station, spot_actions(&station, &t)[0])
+                .unwrap()
+                .vs_profile
+                .unwrap()
+                .exploit];
+            assert_eq!(t.answer(&station, exploit).unwrap().grade, Grade::Best);
+        }
+        assert!(checked > 40);
+        // A due review cannot be answered against a profile.
+        let ctx = station_ctx.unwrap();
+        let item = a
+            .store
+            .ensure_review_item("spot_template", &ctx.0.template.key(), None, 0)
+            .unwrap();
+        assert!(
+            a.record_spot_decision(&ctx.1, &ctx.0, Some(&item.id))
+                .is_err()
+        );
+        assert!(a.leaks().unwrap().is_empty());
+        assert!(
+            pre.spot(SpotKind::VsOpen, 0)
+                .unwrap()
+                .against(Some("nobody"))
+                .answer(
+                    pre,
+                    pre.actions(pre.spot(SpotKind::VsOpen, 0).unwrap().node)[0]
+                )
+                .is_err()
+        );
+    }
+
+    fn spot_actions(s: &DrillSpot, t: &Trainers) -> Vec<Action> {
+        s.actions(t)
     }
 
     #[test]

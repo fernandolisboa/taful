@@ -34,3 +34,10 @@ iterations = 2000
 equity_samples = 3000
 seed = 20261105
 prune_reach_pct = 0.1
+
+# Best responses against each bot profile (spec §9, D8, D12): one extra chart
+# per profile, `preflop-<id>.tafl`, next to the reference chart. Not part of
+# the reference chart's hash.
+[profiles]
+dir = "../../../content/bots"
+ids = ["nit", "calling-station", "maniac", "tag"]

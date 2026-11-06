@@ -10,6 +10,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use taful_core::profile::Profile;
+
 use crate::Finding;
 use crate::lesson::Lesson;
 use crate::quiz::Quiz;
@@ -95,6 +97,27 @@ impl Files {
     }
 }
 
+/// Bot profiles from `bots/*.toml` (spec §9). A file that does not parse,
+/// or whose id is not its file name, is left out with a finding.
+pub fn load_profiles(files: &Files) -> (BTreeMap<String, Profile>, Vec<Finding>) {
+    let mut out = BTreeMap::new();
+    let mut findings = Vec::new();
+    for (stem, text) in files.in_dir("bots", ".toml") {
+        let path = format!("bots/{stem}.toml");
+        match Profile::from_toml(text) {
+            Ok(p) if p.id != stem => findings.push(Finding::new(
+                &path,
+                format!("id `{}` does not match the file name", p.id),
+            )),
+            Ok(p) => {
+                out.insert(stem.to_owned(), p);
+            }
+            Err(e) => findings.push(Finding::new(&path, e)),
+        }
+    }
+    (out, findings)
+}
+
 /// `content/skill-tree.toml`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -128,6 +151,8 @@ pub struct Library {
     pub lessons: BTreeMap<String, BTreeMap<String, Lesson>>,
     /// Quiz id → quiz.
     pub quizzes: BTreeMap<String, Quiz>,
+    /// Bot profile id → profile (`bots/<id>.toml`, spec §9).
+    pub profiles: BTreeMap<String, Profile>,
 }
 
 impl Library {
@@ -178,6 +203,9 @@ impl Library {
                 Err(e) => findings.push(Finding::new(&path, e)),
             }
         }
+        let (profiles, profile_findings) = load_profiles(files);
+        lib.profiles = profiles;
+        findings.extend(profile_findings);
         (lib, findings)
     }
 

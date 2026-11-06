@@ -15,6 +15,7 @@
 //!   editor (#23); [`layout_edit`]: the layout edit mode (#22).
 
 pub mod appearance;
+pub mod bots;
 pub mod calc_trainer;
 pub mod content;
 pub mod fmt;

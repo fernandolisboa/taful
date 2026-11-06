@@ -82,3 +82,24 @@ layout-panel-controls = Controls
 layout-panel-table = Table
 layout-panel-actions = Actions
 layout-panel-explanation = Explanation
+
+## Opponent profiles (spec §9). Names and one-line descriptions.
+table-opponent = Opponent
+bot-profile-reference = Reference (GTO)
+bot-profile-reference-about = Plays the reference strategy.
+bot-profile-nit = Nit
+bot-profile-nit-about = Plays few hands and folds too much to aggression.
+bot-profile-calling-station = Calling station
+bot-profile-calling-station-about = Calls too much and rarely raises.
+bot-profile-maniac = Maniac
+bot-profile-maniac-about = Plays too many hands and raises far too often.
+bot-profile-tag = TAG
+bot-profile-tag-about = Tight-aggressive regular, close to the reference.
+table-opponent-practice = Practice only for now: decisions against profiles don't go to reviews or leaks yet.
+table-col-ev-profile = EV vs bot
+table-col-ev-gto = GTO EV
+table-vs-profile = Graded against { $profile }: EV against this bot.
+table-exploit-line = Exploitative line: { $action }
+table-gto-line = GTO line: { $action }
+table-ev-gap = EV gap: { $amount } bb
+table-vs-profile-prompt = Opponent: { $profile }. { $about } Graded by EV against this bot.

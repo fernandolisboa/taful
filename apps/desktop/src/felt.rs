@@ -277,6 +277,8 @@ pub struct Explain<'a> {
     pub hand_freqs: &'a [f32],
     pub hand_evs: &'a [f32],
     pub range_freqs: &'a [f32],
+    /// Graded against a bot profile: `hand_evs` are against the profile.
+    pub vs_profile: Option<&'a taful_app::preflop::VsProfile>,
 }
 
 impl<'a> Explain<'a> {
@@ -290,6 +292,7 @@ impl<'a> Explain<'a> {
             hand_freqs: &d.hand_freqs,
             hand_evs: &d.hand_evs,
             range_freqs: &d.range_freqs,
+            vs_profile: d.vs_profile.as_ref(),
         }
     }
 
@@ -333,13 +336,24 @@ pub fn explanation(ui: &Ui, p: &Palette, d: &Explain<'_>) -> Div {
     // panel's width); the numbers keep fixed columns.
     let first = |s: String| div().flex_1().min_w(px(0.)).child(s);
     let cell = |s: String, w: f32| div().w(px(w)).flex_none().child(s);
+    let vs = d.vs_profile;
     let head = div()
         .flex()
         .text_size(px(t.text_size.sm))
         .text_color(p.text_muted)
         .child(first(i18n.tr("table-col-action")))
         .child(cell(i18n.tr("table-col-hand-freq"), 64.))
-        .child(cell(i18n.tr("table-col-ev"), 56.))
+        .child(cell(
+            i18n.tr(if vs.is_some() {
+                "table-col-ev-profile"
+            } else {
+                "table-col-ev"
+            }),
+            56.,
+        ))
+        .when(vs.is_some(), |h| {
+            h.child(cell(i18n.tr("table-col-ev-gto"), 56.))
+        })
         .child(cell(i18n.tr("table-col-range-freq"), 56.));
     let pct = |v: Option<&f32>| match v {
         Some(x) => format!("{}%", num(ui, f64::from(*x) * 100., 0)),
@@ -361,7 +375,48 @@ pub fn explanation(ui: &Ui, p: &Palette, d: &Explain<'_>) -> Div {
                     .map_or("–".into(), |e| num(ui, f64::from(*e), 2)),
                 56.,
             ))
+            .when_some(vs, |r, v| {
+                r.child(cell(
+                    v.reference_evs
+                        .get(i)
+                        .map_or("–".into(), |e| num(ui, f64::from(*e), 2)),
+                    56.,
+                ))
+            })
             .child(cell(pct(d.range_freqs.get(i)), 56.))
+    });
+    // GTO line vs exploitative line and their EV gap (spec §8, D8).
+    let lines = vs.map(|v| {
+        let line = |key: &str, a: usize| {
+            i18n.tr_args(
+                key,
+                &[(
+                    "action",
+                    d.actions
+                        .get(a)
+                        .map_or("–".into(), |&x| action_short(ui, x))
+                        .into(),
+                )],
+            )
+        };
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(t.spacing.xs))
+            .text_size(px(t.text_size.sm))
+            .child(div().text_color(p.text_muted).child(i18n.tr_args(
+                "table-vs-profile",
+                &[(
+                    "profile",
+                    i18n.tr(&format!("bot-profile-{}", v.profile)).into(),
+                )],
+            )))
+            .child(line("table-exploit-line", v.exploit))
+            .child(line("table-gto-line", v.gto))
+            .child(i18n.tr_args(
+                "table-ev-gap",
+                &[("amount", num(ui, v.ev_gap_bb, 2).into())],
+            ))
     });
     div()
         .flex()
@@ -382,6 +437,7 @@ pub fn explanation(ui: &Ui, p: &Palette, d: &Explain<'_>) -> Div {
                     )),
             )
         })
+        .children(lines)
         .child(head)
         .children(rows)
 }

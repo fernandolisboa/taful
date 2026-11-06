@@ -16,6 +16,7 @@ pub mod eval;
 pub mod grading;
 pub mod iso;
 pub mod position;
+pub mod profile;
 pub mod range;
 pub mod srs;
 
