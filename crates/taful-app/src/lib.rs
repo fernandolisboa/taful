@@ -11,7 +11,8 @@
 //! - [`preflop`]: the preflop spot mode and full hands over the solver library
 //!   (M3).
 //! - [`layout`] and [`appearance`]: table-screen layout presets, saved
-//!   layouts and the theme choice (M6).
+//!   layouts and the theme choice (M6); [`layout_edit`]: the layout edit
+//!   mode (#22).
 
 pub mod appearance;
 pub mod calc_trainer;
@@ -20,6 +21,7 @@ pub mod fmt;
 pub mod hand;
 pub mod i18n;
 pub mod layout;
+pub mod layout_edit;
 pub mod lessons;
 pub mod model;
 pub mod postflop;
@@ -48,6 +50,8 @@ pub enum Error {
     /// Content failed to render (a bug: content is checked in CI).
     Content(Vec<String>),
     Io(std::io::Error),
+    /// A layout that breaks a rule (layout edit mode).
+    Layout(layout::LayoutError),
 }
 
 impl std::fmt::Display for Error {
@@ -58,6 +62,7 @@ impl std::fmt::Display for Error {
             Error::NotFound(what) => write!(f, "not found: {what}"),
             Error::Content(errs) => write!(f, "content: {}", errs.join("; ")),
             Error::Io(e) => write!(f, "io: {e}"),
+            Error::Layout(e) => write!(f, "{e}"),
         }
     }
 }

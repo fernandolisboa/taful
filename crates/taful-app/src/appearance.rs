@@ -7,6 +7,7 @@
 use serde_json::json;
 
 use crate::layout::{BUILTIN_LAYOUTS, DEFAULT_LAYOUT, Layout};
+use crate::layout_edit::LayoutEditor;
 use crate::theme::{BUILTIN_THEMES, DEFAULT_THEME, Theme};
 use crate::{App, Error, Result, keys};
 
@@ -116,7 +117,25 @@ impl App {
 
     /// Saves a copy of the active layout under `name` and makes it active.
     pub fn save_layout_copy(&self, name: &str) -> Result<LayoutChoice> {
-        let (_, mut layout) = self.active_layout();
+        let (_, layout) = self.active_layout();
+        self.insert_layout_copy(layout, name)
+    }
+
+    /// Starts editing the active layout (layout edit mode, #22).
+    pub fn edit_layout(&self) -> LayoutEditor {
+        LayoutEditor::new(self.active_layout().1)
+    }
+
+    /// Saves an edited layout as a new user copy named `name` and makes it
+    /// active; built-in presets are never written. The draft goes through
+    /// the same parse-and-migrate step as a saved copy on load, and is
+    /// refused (nothing stored) if it breaks a rule.
+    pub fn save_edited_layout(&self, draft: &Layout, name: &str) -> Result<LayoutChoice> {
+        let layout = Layout::from_json(&draft.to_json()).map_err(Error::Layout)?;
+        self.insert_layout_copy(layout, name)
+    }
+
+    fn insert_layout_copy(&self, mut layout: Layout, name: &str) -> Result<LayoutChoice> {
         let name = name.trim();
         if name.is_empty() {
             return Err(Error::NotFound("layout name".into()));

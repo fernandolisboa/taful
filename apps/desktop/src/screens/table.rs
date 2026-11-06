@@ -7,6 +7,8 @@
 //! scales to its panel. Work that can solve a river (postflop deals, drills,
 //! every full-hand step) runs on the background executor; the screen shows
 //! a busy line and ignores clicks until it lands (M6 performance pass).
+//!
+//! The layout edit mode (#22) lives in `table_edit.rs`.
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -22,6 +24,9 @@ use taful_app::model::{
 use taful_app::postflop::PostflopError;
 use taful_app::preflop::{Action, GameState, GradedDecision, SpotKind};
 use taful_app::template::{street_id, texture_label_keys};
+
+#[path = "table_edit.rs"]
+mod edit;
 
 use crate::Ui;
 use crate::felt::{self, Explain};
@@ -43,6 +48,9 @@ pub enum TableEvent {
     HandOver(Box<FullHand>),
     /// Open the hand review on the last stored hand.
     ReviewHand,
+    /// Save the edited layout as a user copy; the shell answers through
+    /// [`TableScreen::layout_saved`].
+    SaveLayout(Box<Layout>),
 }
 
 impl EventEmitter<TableEvent> for TableScreen {}
@@ -66,6 +74,10 @@ pub struct TableScreen {
     hand_sent: bool,
     /// Panel placement (settings).
     layout: Layout,
+    /// Layout edit mode, while on.
+    editing: Option<edit::Editing>,
+    /// Grid cell size of the last frame, in pixels (edit-mode drags).
+    cell: f32,
     /// Background work in flight, if any.
     busy: Option<Busy>,
     /// Bumped by every deal and action; a background result for an older
@@ -111,9 +123,10 @@ impl TableScreen {
         cx.notify();
     }
 
-    /// Switches the panel placement (settings).
+    /// Switches the panel placement (settings); ends an edit in progress.
     pub fn set_layout(&mut self, layout: Layout) {
         self.layout = layout;
+        self.editing = None;
     }
 
     pub fn new(
@@ -142,6 +155,8 @@ impl TableScreen {
             hand: None,
             hand_sent: false,
             layout,
+            editing: None,
+            cell: MIN_CELL,
             busy: None,
             generation: 0,
             _job: None,
@@ -156,6 +171,10 @@ impl TableScreen {
             s.seed = seed.unwrap_or(s.seed);
         }
         s.deal(cx);
+        // Dev override (screenshots): TAFUL_LAYOUT_EDIT=1 opens edit mode.
+        if std::env::var_os("TAFUL_LAYOUT_EDIT").is_some() {
+            s.start_edit(cx);
+        }
         s
     }
 
@@ -616,6 +635,15 @@ impl TableScreen {
                 |this, cx| this.set_mode(Mode::Drill, cx),
             ));
         }
+        if !self.is_editing() {
+            modes = modes.child(self.chip(
+                "layout_edit",
+                i18n.tr("layout-edit-start"),
+                false,
+                cx,
+                |this, cx| this.start_edit(cx),
+            ));
+        }
         let kinds: Vec<_> = trainers
             .preflop
             .available_kinds()
@@ -735,14 +763,19 @@ impl Render for TableScreen {
                     .into_any_element();
             }
         };
-        // Cells from the space the shell leaves us (spec §15.3).
+        // Cells from the space the shell leaves us (spec §15.3); the edit
+        // bar takes a strip above the grid while editing.
         let vp = window.viewport_size();
+        let editing = self.is_editing();
+        let bar = if editing { edit::EDIT_BAR } else { 0. };
         let w = f32::from(vp.width) - crate::shell::NAV_WIDTH - 2. * th.spacing.xxl;
-        let h = f32::from(vp.height) - 2. * th.spacing.xxl - TITLE_ROOM;
-        let layout = self.layout.clone();
+        let h = f32::from(vp.height) - 2. * th.spacing.xxl - TITLE_ROOM - bar;
+        let layout = self.shown_layout();
         let cell = layout.cell_size(w, h, MIN_CELL);
-        let rect = |id| layout.rect(id, cell);
-        let scale = rect(PanelId::Table).map_or(1., |r| felt::fit_scale(r.w, r.h));
+        self.cell = cell;
+        let scale = self
+            .panel_rect(&layout, PanelId::Table, cell)
+            .map_or(1., |r| felt::fit_scale(r.w, r.h));
         let parts = match self.mode {
             Mode::Hand => self.hand_parts(&trainers, scale, cx),
             _ => self.question_parts(&trainers, scale, cx),
@@ -753,13 +786,17 @@ impl Render for TableScreen {
             .flex_none()
             .w(px(cell * f32::from(layout.grid.cols)))
             .h(px(cell * f32::from(layout.grid.rows)));
+        grid = self.edit_grid(grid, &layout, cell, cx);
         let mut parts = Some(parts);
         let mut controls = Some(controls);
+        let mut on_top = None;
         for id in PanelId::ALL {
-            let Some(r) = rect(id) else { continue };
-            let el: AnyElement = match id {
+            let Some(r) = self.panel_rect(&layout, id, cell) else {
+                continue;
+            };
+            let el: Div = match id {
                 PanelId::Controls => match controls.take() {
-                    Some(c) => Self::place(r).child(c).into_any_element(),
+                    Some(c) => Self::place(r).child(c),
                     None => continue,
                 },
                 PanelId::Table => {
@@ -771,7 +808,6 @@ impl Render for TableScreen {
                         .items_center()
                         .justify_center()
                         .children(table)
-                        .into_any_element()
                 }
                 PanelId::Actions => {
                     let actions = parts
@@ -783,29 +819,42 @@ impl Render for TableScreen {
                         .justify_center()
                         .pt(px(th.spacing.sm))
                         .children(actions)
-                        .into_any_element()
                 }
                 PanelId::Explanation => {
                     let panel = parts.take().map(|p| p.panel);
-                    Self::place(r)
-                        .child(
-                            div()
-                                .id("explanation")
-                                .size_full()
-                                .overflow_y_scroll()
-                                .p(px(th.spacing.lg))
-                                .rounded(px(th.radii.lg))
-                                .bg(p.surface)
-                                .border_1()
-                                .border_color(p.border)
-                                .children(panel),
-                        )
-                        .into_any_element()
+                    Self::place(r).child(
+                        div()
+                            .id("explanation")
+                            .size_full()
+                            .overflow_y_scroll()
+                            .p(px(th.spacing.lg))
+                            .rounded(px(th.radii.lg))
+                            .bg(p.surface)
+                            .border_1()
+                            .border_color(p.border)
+                            .children(panel),
+                    )
                 }
             };
-            grid = grid.child(el);
+            let el: AnyElement = self.edit_chrome(id, el, cx);
+            if self.dragged_panel() == Some(id) {
+                on_top = Some(el);
+            } else {
+                grid = grid.child(el);
+            }
         }
-        grid.into_any_element()
+        let grid = grid.children(on_top).children(self.landing_outline(cell));
+        if editing {
+            div()
+                .flex()
+                .flex_col()
+                .flex_none()
+                .child(self.edit_bar(cell * f32::from(layout.grid.cols), cx))
+                .child(grid)
+                .into_any_element()
+        } else {
+            grid.into_any_element()
+        }
     }
 }
 

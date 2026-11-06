@@ -565,8 +565,8 @@ fn layout_preview(layout: &Layout, ui: &Ui, p: &crate::theme::Palette) -> gpui::
         map = map.child(
             div()
                 .absolute()
-                .left(px(CELL * f32::from(panel.x) + 1.))
-                .top(px(CELL * f32::from(panel.y) + 1.))
+                .left(px(CELL * panel.x + 1.))
+                .top(px(CELL * panel.y + 1.))
                 .w(px(CELL * f32::from(panel.w) - 2.))
                 .h(px(CELL * f32::from(panel.h) - 2.))
                 .rounded(px(t.radii.sm))
