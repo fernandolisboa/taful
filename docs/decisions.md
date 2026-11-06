@@ -365,3 +365,22 @@ Mapping a random flop to the "nearest" solved flop changes hero's real hand stre
 - The flop subset is a build-manifest parameter; adding flops is a build job, never a code change.
 - Build machine: the author's PC (Ryzen 9 9950X3D, 16 cores / 32 threads, 32GB), at low priority at night and on weekends; the build must be resumable and pausable. Benchmarked 2026-11-04 (spec §7.3): SRP medium ~4–7 min per flop, 3-bet pot large ~1.5 min. The first slice takes ~16 h; full coverage takes ~430–700 h, about 3–4 weeks 24/7 or 6–10 weeks of nights and weekends.
 - 32GB RAM fits one SRP solve at a time (up to ~14GB in 16-bit). Shipped size grows proportionally (to be measured with the compact format, spec §7.5).
+
+---
+
+## D14 — Desktop installer for personal use
+
+**Date:** 2026-11-06 · **Spec ref:** §19 Q3, Q5
+
+### Decision
+- Once the first slice is minimally usable (first-slice library finished and installed), CI produces a **simple Windows installer** so the author can install Taful himself.
+- **Unsigned**, no auto-update. SmartScreen warns on first run ("More info → Run anyway"); that is accepted for personal use.
+- The postflop library is **not** bundled: it stays in a folder the user picks in settings (`LocalDir`, spec §7.6).
+- A **full release** (code signing, auto-update, library downloaded from a host (Q5), INPI filing (D10)) happens only if the author decides to sell the app. It is tracked as a placeholder, not planned work.
+
+### Why
+The only user today is the author, on his own PC. Signing certificates, hosting and trademark filing cost money that is only worth spending if the app is sold.
+
+### Implications
+- The installer format must not require a signature to install (rules out MSIX); an MSI or a setup executable built in CI fits.
+- Q5 (library host) and the INPI filing stay deferred until a sell decision.
