@@ -812,7 +812,8 @@ impl TableScreen {
             .h(px(r.h))
     }
 
-    /// The drill's bucket as one line, ending with who it was against.
+    /// The drill's bucket as one line, ending with the bot profile it was
+    /// against (nothing for the reference bot).
     pub fn bucket_label(ui: &Ui, b: &LeakBucket) -> String {
         let i18n = &ui.i18n;
         let mut parts = vec![felt::spot_label(ui, &b.spot)];

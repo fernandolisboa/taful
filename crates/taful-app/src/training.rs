@@ -79,6 +79,12 @@ impl Trainers {
         short_config_key(self.preflop.config())
     }
 
+    /// Whether this build can deal against `opponent` (`None` = the
+    /// reference bot, always).
+    pub fn knows_opponent(&self, opponent: Option<&str>) -> bool {
+        opponent.is_none_or(|id| self.preflop.profile(id).is_some())
+    }
+
     /// A spot of `template` (a review of a past mistake, spec §13): same
     /// configuration, line, history, hero position and opponent, a fresh
     /// board of the same family and fresh hands.
@@ -91,9 +97,7 @@ impl Trainers {
             return Err(TemplateError::Gone);
         }
         // A profile this build no longer ships is gone with its items.
-        if let Some(id) = &t.opponent
-            && self.preflop.profile(id).is_none()
-        {
+        if !self.knows_opponent(t.opponent.as_deref()) {
             return Err(TemplateError::Gone);
         }
         if t.is_preflop() {
@@ -144,9 +148,7 @@ impl Trainers {
         b: &LeakBucket,
         seed: u64,
     ) -> std::result::Result<DrillSpot, PostflopError> {
-        if let Some(id) = &b.opponent
-            && self.preflop.profile(id).is_none()
-        {
+        if !self.knows_opponent(b.opponent.as_deref()) {
             return Err(PostflopError::Empty);
         }
         if b.spot == PREFLOP {
@@ -372,6 +374,17 @@ impl App {
         ctx: &SpotContext,
         step: Option<usize>,
     ) -> Result<String> {
+        // Decisions are keyed by who they were graded against (#26): a
+        // context that names another opponent would file the mistake under
+        // the wrong template and leak.
+        let graded_vs = d.vs_profile.as_ref().map(|v| v.profile.as_str());
+        if graded_vs != ctx.template.opponent.as_deref() {
+            return Err(Error::Invalid(format!(
+                "a decision graded against `{}` filed under `{}`",
+                opponent_id(graded_vs),
+                opponent_id(ctx.template.opponent.as_deref())
+            )));
+        }
         let (ev, freqs) = decision_json(d);
         let template_key = ctx.template.key();
         let texture = ctx.template.texture.clone();
@@ -431,17 +444,6 @@ impl App {
         ctx: &SpotContext,
         review_item: Option<&str>,
     ) -> Result<()> {
-        // Decisions are keyed by who they were graded against (#26): a
-        // context that names another opponent would file the mistake under
-        // the wrong template and leak.
-        let graded_vs = d.vs_profile.as_ref().map(|v| v.profile.as_str());
-        if graded_vs != ctx.template.opponent.as_deref() {
-            return Err(Error::Invalid(format!(
-                "a decision graded against `{}` filed under `{}`",
-                opponent_id(graded_vs),
-                opponent_id(ctx.template.opponent.as_deref())
-            )));
-        }
         // The decision and its review land together, or neither does: a
         // decision without its review would leave the item due forever.
         self.store.atomic(|_| {
@@ -521,8 +523,10 @@ impl App {
     }
 
     /// The top leaks over the rolling window (spec §13): buckets with at
-    /// least one mistake, by total EV loss.
-    pub fn leaks(&self) -> Result<Vec<Leak>> {
+    /// least one mistake, by total EV loss. Buckets against a profile this
+    /// build no longer ships are left out (they cannot be drilled).
+    pub fn leaks(&mut self) -> Result<Vec<Leak>> {
+        let trainers = self.trainers()?;
         Ok(self
             .store
             .bucket_stats(LEAK_WINDOW)?
@@ -542,6 +546,7 @@ impl App {
                     total_ev_loss_bb: b.total_ev_loss,
                 })
             })
+            .filter(|l| trainers.knows_opponent(l.bucket.opponent.as_deref()))
             .take(TOP_LEAKS)
             .collect())
     }
