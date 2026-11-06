@@ -185,6 +185,10 @@ Since layout and theme are pure data, the editor is a UI over an existing model 
 - GPUI drag-and-drop is still validated early in spike §9.1, so the deferred editor carries no hidden technical risk.
 - No widget hard-codes a color: everything reads tokens, enforced by a lint/test that rejects literal colors outside theme files.
 
+### Theme editor validation (amended 2026-11-06)
+- The in-app theme editor runs the same checks as the built-in themes (WCAG AA for text and grade colors, no red, grade colors distinct) **live, as warnings only**: the user can save a theme that fails them.
+- Built-in themes keep failing CI on any violation; the relaxation applies only to user themes.
+
 ---
 
 ## D8 — Bots with profiles
