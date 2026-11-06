@@ -1,0 +1,44 @@
+id = "blind-defense-quiz"
+version = 1
+lesson = "blind-defense"
+pass = 0.75
+
+[[questions]]
+id = "price"
+kind = "numeric"
+prompt = { en-US = "BTN opens to 2.5 bb, SB folds. The BB calls 1.5 bb to win 4 bb. Equity needed, in %?", pt-BR = "O BTN abre para 2,5 bb, o SB folda. O BB paga 1,5 bb para ganhar 4 bb. Equity necessária, em %?" }
+answer = "{{ calc: div(a=1.5, b=5.5) | pct(1) }}"
+tolerance = 1.0
+
+[[questions]]
+id = "vs-utg"
+kind = "choice"
+prompt = { en-US = "Against which open does the BB fold the most?", pt-BR = "Contra qual open o BB mais folda?" }
+choices = [
+    { en-US = "BTN", pt-BR = "BTN" },
+    { en-US = "SB", pt-BR = "SB" },
+    { en-US = "UTG", pt-BR = "UTG" },
+]
+answer = 2
+
+[[questions]]
+id = "suited"
+kind = "choice"
+prompt = { en-US = "Which hands defend best from the big blind?", pt-BR = "Quais mãos defendem melhor no big blind?" }
+choices = [
+    { en-US = "Suited and connected hands", pt-BR = "Mãos suited e conectadas" },
+    { en-US = "Weak offsuit kings like K4o", pt-BR = "Reis offsuit fracos como K4o" },
+    { en-US = "Only pairs", pt-BR = "Só pares" },
+]
+answer = 0
+
+[[questions]]
+id = "vs-sb"
+kind = "choice"
+prompt = { en-US = "Against a small blind open, the BB defends…", pt-BR = "Contra um open do small blind, o BB defende…" }
+choices = [
+    { en-US = "Very tight", pt-BR = "Muito fechado" },
+    { en-US = "Never", pt-BR = "Nunca" },
+    { en-US = "Very wide (folds only about 20%)", pt-BR = "Muito largo (folda só cerca de 20%)" },
+]
+answer = 2

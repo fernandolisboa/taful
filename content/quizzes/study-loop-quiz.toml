@@ -1,0 +1,37 @@
+id = "study-loop-quiz"
+version = 1
+lesson = "study-loop"
+pass = 0.75
+
+[[questions]]
+id = "progress"
+kind = "choice"
+prompt = { en-US = "The best measure of progress is…", pt-BR = "A melhor medida de progresso é…" }
+choices = [
+    { en-US = "Average EV loss per decision over weeks", pt-BR = "A perda média de EV por decisão ao longo de semanas" },
+    { en-US = "Results of one session", pt-BR = "O resultado de uma sessão" },
+    { en-US = "Hands played", pt-BR = "Mãos jogadas" },
+]
+answer = 0
+
+[[questions]]
+id = "leaks"
+kind = "choice"
+prompt = { en-US = "Leaks on the home screen group spots by…", pt-BR = "Os leaks na tela inicial agrupam spots por…" }
+choices = [
+    { en-US = "Configuration, street, node type and texture", pt-BR = "Configuração, rodada, tipo de nó e textura" },
+    { en-US = "Day of the week", pt-BR = "Dia da semana" },
+    { en-US = "Opponent name", pt-BR = "Nome do adversário" },
+]
+answer = 0
+
+[[questions]]
+id = "reviews"
+kind = "choice"
+prompt = { en-US = "When should you do reviews?", pt-BR = "Quando você deve fazer as revisões?" }
+choices = [
+    { en-US = "Once a month, all at once", pt-BR = "Uma vez por mês, todas de uma vez" },
+    { en-US = "Never", pt-BR = "Nunca" },
+    { en-US = "When they are due, a little every day", pt-BR = "Quando vencem, um pouco por dia" },
+]
+answer = 2

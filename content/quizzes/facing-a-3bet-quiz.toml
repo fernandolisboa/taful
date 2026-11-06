@@ -1,0 +1,44 @@
+id = "facing-a-3bet-quiz"
+version = 1
+lesson = "facing-a-3bet"
+pass = 0.75
+
+[[questions]]
+id = "price"
+kind = "numeric"
+prompt = { en-US = "You call 7 bb more to win a pot of 12.5 bb. Equity needed, in %?", pt-BR = "Você paga mais 7 bb para ganhar um pote de 12,5 bb. Equity necessária, em %?" }
+answer = "{{ calc: div(a=7, b=19.5) | pct(1) }}"
+tolerance = 1.0
+
+[[questions]]
+id = "overfold"
+kind = "choice"
+prompt = { en-US = "If you fold too often to 3-bets…", pt-BR = "Se você folda demais contra 3-bets…" }
+choices = [
+    { en-US = "Opponents profit by 3-betting any two cards", pt-BR = "Os adversários lucram dando 3-bet com quaisquer duas cartas" },
+    { en-US = "You lose less", pt-BR = "Você perde menos" },
+    { en-US = "Nothing changes", pt-BR = "Nada muda" },
+]
+answer = 0
+
+[[questions]]
+id = "ip"
+kind = "choice"
+prompt = { en-US = "With position, your calling range against a 3-bet can be…", pt-BR = "Com posição, seu range de call contra 3-bet pode ser…" }
+choices = [
+    { en-US = "Wider than out of position", pt-BR = "Mais largo do que fora de posição" },
+    { en-US = "Tighter than out of position", pt-BR = "Mais fechado do que fora de posição" },
+    { en-US = "Empty", pt-BR = "Vazio" },
+]
+answer = 0
+
+[[questions]]
+id = "dominated"
+kind = "choice"
+prompt = { en-US = "Why are AJo and KQo tricky against a 3-bet?", pt-BR = "Por que AJo e KQo são complicadas contra um 3-bet?" }
+choices = [
+    { en-US = "They often make second-best top pairs", pt-BR = "Muitas vezes fazem top pair que perde" },
+    { en-US = "They are too strong to call", pt-BR = "São fortes demais para pagar" },
+    { en-US = "They block nothing", pt-BR = "Não bloqueiam nada" },
+]
+answer = 0

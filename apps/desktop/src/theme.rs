@@ -3,6 +3,7 @@
 //! color literals anywhere else in `src/`.
 
 use gpui::Rgba;
+use taful_app::model::Grade;
 use taful_app::preflop::Suit;
 use taful_app::theme::{Color, Colors};
 
@@ -39,6 +40,11 @@ pub struct Palette {
     pub suit_hearts: Rgba,
     pub suit_diamonds: Rgba,
     pub suit_clubs: Rgba,
+    pub grade_best: Rgba,
+    pub grade_correct: Rgba,
+    pub grade_inaccuracy: Rgba,
+    pub grade_mistake: Rgba,
+    pub grade_blunder: Rgba,
 }
 
 impl Palette {
@@ -64,6 +70,22 @@ impl Palette {
             suit_hearts: rgba(c.suit_hearts),
             suit_diamonds: rgba(c.suit_diamonds),
             suit_clubs: rgba(c.suit_clubs),
+            grade_best: rgba(c.grade_best),
+            grade_correct: rgba(c.grade_correct),
+            grade_inaccuracy: rgba(c.grade_inaccuracy),
+            grade_mistake: rgba(c.grade_mistake),
+            grade_blunder: rgba(c.grade_blunder),
+        }
+    }
+
+    /// Color of a grade label (spec §15.4: no red; blunder is violet).
+    pub fn grade(&self, g: Grade) -> Rgba {
+        match g {
+            Grade::Best => self.grade_best,
+            Grade::Correct => self.grade_correct,
+            Grade::Inaccuracy => self.grade_inaccuracy,
+            Grade::Mistake => self.grade_mistake,
+            Grade::Blunder => self.grade_blunder,
         }
     }
 

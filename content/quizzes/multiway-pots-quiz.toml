@@ -1,0 +1,37 @@
+id = "multiway-pots-quiz"
+version = 1
+lesson = "multiway-pots"
+pass = 0.75
+
+[[questions]]
+id = "cbet"
+kind = "choice"
+prompt = { en-US = "Multiway, compared with heads-up, you should c-bet…", pt-BR = "Em multiway, comparado com heads-up, você deve dar c-bet…" }
+choices = [
+    { en-US = "More", pt-BR = "Mais" },
+    { en-US = "The same", pt-BR = "Igual" },
+    { en-US = "Much less", pt-BR = "Bem menos" },
+]
+answer = 2
+
+[[questions]]
+id = "gains"
+kind = "choice"
+prompt = { en-US = "Which hands gain value in multiway pots?", pt-BR = "Quais mãos ganham valor em potes multiway?" }
+choices = [
+    { en-US = "Dominated offsuit hands", pt-BR = "Mãos offsuit dominadas" },
+    { en-US = "Nut draws", pt-BR = "Projetos de nuts" },
+    { en-US = "Weak top pairs", pt-BR = "Top pairs fracos" },
+]
+answer = 1
+
+[[questions]]
+id = "fe"
+kind = "choice"
+prompt = { en-US = "Fold equity in multiway pots is…", pt-BR = "A fold equity em potes multiway é…" }
+choices = [
+    { en-US = "Higher", pt-BR = "Maior" },
+    { en-US = "Lower", pt-BR = "Menor" },
+    { en-US = "The same", pt-BR = "Igual" },
+]
+answer = 1

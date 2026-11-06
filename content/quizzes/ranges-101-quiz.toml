@@ -1,0 +1,40 @@
+id = "ranges-101-quiz"
+version = 1
+lesson = "ranges-101"
+pass = 0.75
+
+[[questions]]
+id = "qq-plus"
+kind = "numeric"
+prompt = { en-US = "How many combos are in QQ+?", pt-BR = "Quantos combos há em QQ+?" }
+answer = "{{ calc: combos(range=\"QQ+\") | int }}"
+tolerance = 0
+
+[[questions]]
+id = "ak"
+kind = "numeric"
+prompt = { en-US = "How many combos of AK (suited and offsuit)?", pt-BR = "Quantos combos de AK (suited e offsuit)?" }
+answer = "{{ calc: combos(range=\"AK\") | int }}"
+tolerance = 0
+
+[[questions]]
+id = "ats"
+kind = "choice"
+prompt = { en-US = "ATs+ means…", pt-BR = "ATs+ significa…" }
+choices = [
+    { en-US = "Every ace with a ten", pt-BR = "Todo ás com um dez" },
+    { en-US = "ATs, AJs, AQs and AKs", pt-BR = "ATs, AJs, AQs e AKs" },
+    { en-US = "AT offsuit and better", pt-BR = "AT offsuit e melhores" },
+]
+answer = 1
+
+[[questions]]
+id = "mixed"
+kind = "choice"
+prompt = { en-US = "A solver raises a hand 60% and calls 40%. This means…", pt-BR = "Um solver aumenta uma mão 60% e paga 40%. Isso significa…" }
+choices = [
+    { en-US = "The solver is unsure", pt-BR = "O solver está em dúvida" },
+    { en-US = "Both actions have about the same EV", pt-BR = "As duas ações têm quase o mesmo EV" },
+    { en-US = "One of them is a big mistake", pt-BR = "Uma delas é um erro grande" },
+]
+answer = 1

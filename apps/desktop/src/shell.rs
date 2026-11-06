@@ -20,7 +20,7 @@ use crate::screens::{
 };
 use crate::theme::Palette;
 
-const NAV_WIDTH: f32 = 232.;
+pub(crate) const NAV_WIDTH: f32 = 232.;
 pub const CONTENT_MAX_WIDTH: f32 = 760.;
 const SELECTION_BAR: f32 = 3.;
 /// How often the live timer repaints while an exercise is running.
@@ -63,7 +63,12 @@ impl Shell {
         let palette = Palette::new(&ui.theme.colors);
         let focus = cx.focus_handle();
         let trainers = app.trainers().map_err(|e| e.to_string());
-        let table = cx.new(|_| TableScreen::new(ui.clone(), trainers));
+        // TAFUL_LAYOUT=<preset> (screenshots) beats the saved layout.
+        let layout = std::env::var("TAFUL_LAYOUT")
+            .ok()
+            .and_then(|id| taful_app::layout::Layout::builtin(&id))
+            .unwrap_or_else(|| app.active_layout().1);
+        let table = cx.new(|cx| TableScreen::new(ui.clone(), trainers, layout, cx));
         window.focus(&focus);
         let ticker = cx.spawn(async move |this, cx| {
             let mut since_use = Duration::ZERO;
@@ -119,7 +124,7 @@ impl Shell {
         };
         // Dev override (screenshots): TAFUL_REVIEW_START=1 deals the first review.
         if shell.screen == Screen::Review && std::env::var_os("TAFUL_REVIEW_START").is_some() {
-            shell.review_load_next();
+            shell.review_load_next(cx);
         }
         shell
     }
@@ -238,8 +243,9 @@ impl Shell {
         cx.notify();
     }
 
-    /// Re-reads strings after a locale change.
+    /// Re-reads strings and tokens after a locale or theme change.
     pub(crate) fn set_ui(&mut self, ui: Rc<Ui>, window: &mut Window, cx: &mut Context<Self>) {
+        self.palette = Palette::new(&ui.theme.colors);
         window.set_window_title(&ui.i18n.tr("window-title"));
         let table_ui = ui.clone();
         self.table.update(cx, |table, cx| {

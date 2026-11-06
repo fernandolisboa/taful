@@ -1,0 +1,44 @@
+id = "facing-cbet-quiz"
+version = 1
+lesson = "facing-cbet"
+pass = 0.75
+
+[[questions]]
+id = "mdf-half"
+kind = "numeric"
+prompt = { en-US = "MDF against a half-pot bet, in %?", pt-BR = "MDF contra uma aposta de meio pote, em %?" }
+answer = "{{ calc: mdf(pot=2, bet=1) | pct(0) }}"
+tolerance = 1.0
+
+[[questions]]
+id = "raise-what"
+kind = "choice"
+prompt = { en-US = "Which hands raise a c-bet?", pt-BR = "Quais mãos dão raise num c-bet?" }
+choices = [
+    { en-US = "Strong made hands and good draws", pt-BR = "Mãos feitas fortes e bons projetos" },
+    { en-US = "Medium pairs", pt-BR = "Pares médios" },
+    { en-US = "Complete misses", pt-BR = "Mãos que erraram tudo" },
+]
+answer = 0
+
+[[questions]]
+id = "small"
+kind = "choice"
+prompt = { en-US = "Small c-bets get called a lot because…", pt-BR = "C-bets pequenos são muito pagos porque…" }
+choices = [
+    { en-US = "They look weak", pt-BR = "Parecem fracos" },
+    { en-US = "They give a good price to many hands", pt-BR = "Dão um bom preço para muitas mãos" },
+    { en-US = "Of the rake", pt-BR = "Por causa do rake" },
+]
+answer = 1
+
+[[questions]]
+id = "mdf-guide"
+kind = "choice"
+prompt = { en-US = "If the bettor's range is very strong, you should defend…", pt-BR = "Se o range de quem aposta é muito forte, você deve defender…" }
+choices = [
+    { en-US = "More than MDF", pt-BR = "Mais que o MDF" },
+    { en-US = "Less than MDF", pt-BR = "Menos que o MDF" },
+    { en-US = "Exactly MDF", pt-BR = "Exatamente o MDF" },
+]
+answer = 1

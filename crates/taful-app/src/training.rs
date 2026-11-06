@@ -105,8 +105,10 @@ impl Trainers {
             .postflop
             .as_ref()
             .map_err(|_| TemplateError::Unavailable)?;
+        // A library without this spot may be partial or older (it grows,
+        // D13): the item waits rather than losing its history.
         if !post.spots().iter().any(|s| s.id == t.spot) {
-            return Err(TemplateError::Gone);
+            return Err(TemplateError::Unavailable);
         }
         post.generate(
             &SpotRequest {
@@ -309,6 +311,26 @@ impl App {
             ),
         };
         let t = Arc::new(Trainers::open(dir).map_err(|e| Error::NotFound(e.to_string()))?);
+        self.trainers = Some(t.clone());
+        Ok(t)
+    }
+
+    /// Loads the library in `dir` and, if it opens, remembers the folder
+    /// (settings). A folder without a usable library changes nothing.
+    pub fn set_library_folder(&mut self, dir: PathBuf) -> Result<Arc<Trainers>> {
+        let t = Trainers::open(dir.clone()).map_err(|e| Error::NotFound(e.to_string()))?;
+        if let Err(e) = &t.postflop {
+            return Err(Error::NotFound(format!(
+                "library in {}: {e}",
+                dir.display()
+            )));
+        }
+        self.store.set_setting(
+            crate::keys::LIBRARY_DIR,
+            &serde_json::json!(dir.to_string_lossy()),
+        )?;
+        let t = Arc::new(t);
+        self.library_dir = Some(dir);
         self.trainers = Some(t.clone());
         Ok(t)
     }
@@ -583,6 +605,20 @@ mod tests {
         a.set_library_dir("/nonexistent/taful".into());
         let t = a.trainers().unwrap();
         assert!(t.post().is_none());
+    }
+
+    #[test]
+    fn library_folder_is_saved_only_when_it_opens() {
+        let (mut a, _) = app_at(1_000_000);
+        assert!(a.set_library_folder("/nonexistent/taful".into()).is_err());
+        assert_eq!(a.string_setting(crate::keys::LIBRARY_DIR), None);
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/postflop");
+        let t = a.set_library_folder(dir.clone()).unwrap();
+        assert!(t.post().is_some());
+        assert_eq!(
+            a.string_setting(crate::keys::LIBRARY_DIR).as_deref(),
+            Some(&*dir.to_string_lossy())
+        );
     }
 
     #[test]

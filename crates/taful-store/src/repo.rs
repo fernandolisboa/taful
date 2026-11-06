@@ -1094,3 +1094,56 @@ mod tests {
         assert_eq!(c.len(), 2);
     }
 }
+
+// ---- layouts (spec §15.3) ---------------------------------------------------------------
+
+/// A user's saved layout (built-in presets are not stored).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayoutRow {
+    pub id: String,
+    pub name: String,
+    pub schema_version: u32,
+    pub json: String,
+}
+
+impl Store {
+    /// Saves a layout; returns its id.
+    pub fn insert_layout(&self, name: &str, schema_version: u32, json: &str) -> Result<String> {
+        let id = new_id();
+        let now = self.now();
+        self.conn().execute(
+            "INSERT INTO layouts (id, created_at, updated_at, name, schema_version, json)
+             VALUES (?1, ?2, ?2, ?3, ?4, ?5)",
+            params![id, now, name, schema_version, json],
+        )?;
+        Ok(id)
+    }
+
+    /// Saved layouts, oldest first.
+    pub fn layouts(&self) -> Result<Vec<LayoutRow>> {
+        let mut st = self.conn().prepare(
+            "SELECT id, name, schema_version, json FROM layouts
+             WHERE deleted_at IS NULL ORDER BY created_at, id",
+        )?;
+        let rows = st.query_map([], |r| {
+            Ok(LayoutRow {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                schema_version: r.get(2)?,
+                json: r.get(3)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Soft-deletes a saved layout.
+    pub fn delete_layout(&self, id: &str) -> Result<()> {
+        let now = self.now();
+        self.conn().execute(
+            "UPDATE layouts SET deleted_at = ?1, updated_at = ?1
+             WHERE id = ?2 AND deleted_at IS NULL",
+            params![now, id],
+        )?;
+        Ok(())
+    }
+}

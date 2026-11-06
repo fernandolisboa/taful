@@ -1,9 +1,10 @@
 //! Review session (spec §15.1 item 7): the FSRS queue, mixing kinds.
 
-use gpui::{AnyElement, Context, div, prelude::*, px};
+use gpui::{AnyElement, Context, Task, div, prelude::*, px};
 use taful_app::fmt;
 use taful_app::model::{Answer, CalcOutcome, ReviewPrompt};
 use taful_app::preflop::{Action, GradedDecision};
+use taful_app::review_session::ReviewStep;
 
 use crate::felt::{self, Explain};
 use crate::screens::calc::{outcome_view, round_view};
@@ -18,6 +19,11 @@ pub struct ReviewView {
     /// Reviews answered since the screen was opened.
     pub done: u32,
     pub loaded: bool,
+    /// A spot-template deal runs in the background (it can solve rivers).
+    pub dealing: bool,
+    /// Bumped by every load; an older background deal is dropped.
+    generation: u64,
+    _deal: Option<Task<()>>,
 }
 
 pub enum Feedback {
@@ -37,16 +43,64 @@ impl Shell {
         self.review = ReviewView::default();
     }
 
-    pub(crate) fn review_load_next(&mut self) {
+    /// Loads the next due item. Spot templates are dealt on the background
+    /// executor (river templates solve the river, spec §7.7).
+    pub(crate) fn review_load_next(&mut self, cx: &mut Context<Self>) {
         self.review.feedback = None;
         self.input.clear();
-        self.review.prompt = match self.app.next_review(self.ui.i18n.locale()) {
-            Ok(p) => p,
+        self.review.prompt = None;
+        self.review.generation += 1;
+        self.review_step(Vec::new(), cx);
+    }
+
+    fn review_step(&mut self, mut skip: Vec<String>, cx: &mut Context<Self>) {
+        let locale = self.ui.i18n.locale();
+        let step = match self.app.next_review_step(locale, &skip) {
+            Ok(s) => s,
             Err(e) => {
                 eprintln!("taful: review queue failed: {e}");
-                None
+                ReviewStep::Empty
             }
         };
+        match step {
+            ReviewStep::Ready(p) => self.review_show(Some(p)),
+            ReviewStep::Empty => self.review_show(None),
+            ReviewStep::Deal(deal) => {
+                self.review.dealing = true;
+                let generation = self.review.generation;
+                let job = cx.background_executor().spawn(async move {
+                    let outcome = deal.run();
+                    (deal, outcome)
+                });
+                self.review._deal = Some(cx.spawn(async move |this, cx| {
+                    let (deal, outcome) = job.await;
+                    this.update(cx, |s, cx| {
+                        if s.review.generation != generation {
+                            return;
+                        }
+                        let id = deal.item_id.clone();
+                        match s.app.finish_review_deal(deal, outcome) {
+                            Ok(Some(p)) => s.review_show(Some(p)),
+                            Ok(None) => {
+                                skip.push(id);
+                                s.review_step(skip, cx);
+                            }
+                            Err(e) => {
+                                eprintln!("taful: review deal failed: {e}");
+                                s.review_show(None);
+                            }
+                        }
+                        cx.notify();
+                    })
+                    .ok();
+                }));
+            }
+        }
+    }
+
+    fn review_show(&mut self, prompt: Option<ReviewPrompt>) {
+        self.review.prompt = prompt;
+        self.review.dealing = false;
         self.review.loaded = true;
     }
 
@@ -173,12 +227,12 @@ impl Shell {
             .into_any_element()
     }
 
-    pub(crate) fn review_key(&mut self, key: KeyResult, _cx: &mut Context<Self>) {
-        if !self.review.loaded {
+    pub(crate) fn review_key(&mut self, key: KeyResult, cx: &mut Context<Self>) {
+        if !self.review.loaded || self.review.dealing {
             return;
         }
         match key {
-            KeyResult::Submit if self.review.feedback.is_some() => self.review_load_next(),
+            KeyResult::Submit if self.review.feedback.is_some() => self.review_load_next(cx),
             KeyResult::Submit => match &self.review.prompt {
                 Some(ReviewPrompt::Calc { .. }) => {
                     if let Some(x) = fmt::parse_number(&self.input, self.ui.i18n.locale()) {
@@ -206,7 +260,9 @@ impl Shell {
             &self.palette,
         )
         .on_click(cx.listener(|this, _, window, cx| {
-            this.review_load_next();
+            if !this.review.dealing {
+                this.review_load_next(cx);
+            }
             window.focus(&this.focus);
             cx.notify();
         }))
@@ -233,6 +289,9 @@ impl Shell {
 
         let spot = matches!(self.review.prompt, Some(ReviewPrompt::Spot { .. }));
         let body: AnyElement = match (&self.review.prompt, &self.review.feedback) {
+            _ if self.review.dealing => card(&ui, &p)
+                .child(muted(ui.i18n.tr("review-dealing"), &ui, &p))
+                .into_any_element(),
             _ if spot && self.review.loaded => self.review_spot_view(cx),
             _ if !self.review.loaded => card(&ui, &p)
                 .child(ui.i18n.tr_args("review-due", &[("count", due.into())]))

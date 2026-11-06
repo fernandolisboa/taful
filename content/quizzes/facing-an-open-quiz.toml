@@ -1,0 +1,48 @@
+id = "facing-an-open-quiz"
+version = 1
+lesson = "facing-an-open"
+pass = 0.75
+
+[[questions]]
+id = "sb"
+kind = "choice"
+prompt = { en-US = "Facing an open, the small blind mostly…", pt-BR = "Contra um open, o small blind na maioria das vezes…" }
+choices = [
+    { en-US = "3-bets or folds", pt-BR = "Dá 3-bet ou folda" },
+    { en-US = "Calls", pt-BR = "Paga" },
+    { en-US = "Goes all-in", pt-BR = "Vai all-in" },
+]
+answer = 0
+
+[[questions]]
+id = "most-calls"
+kind = "choice"
+prompt = { en-US = "Which seat calls opens the most?", pt-BR = "Qual posição mais paga opens?" }
+choices = [
+    { en-US = "The big blind", pt-BR = "O big blind" },
+    { en-US = "UTG", pt-BR = "UTG" },
+    { en-US = "The small blind", pt-BR = "O small blind" },
+]
+answer = 0
+
+[[questions]]
+id = "respect"
+kind = "choice"
+prompt = { en-US = "You face an UTG open. Compared with a button open, your continuing range should be…", pt-BR = "Você enfrenta um open do UTG. Comparado com um open do botão, seu range que continua deve ser…" }
+choices = [
+    { en-US = "Wider", pt-BR = "Mais largo" },
+    { en-US = "The same", pt-BR = "O mesmo" },
+    { en-US = "Tighter", pt-BR = "Mais fechado" },
+]
+answer = 2
+
+[[questions]]
+id = "oop-size"
+kind = "choice"
+prompt = { en-US = "Why are out-of-position 3-bets bigger?", pt-BR = "Por que os 3-bets fora de posição são maiores?" }
+choices = [
+    { en-US = "You will be at a disadvantage after the flop", pt-BR = "Você vai estar em desvantagem depois do flop" },
+    { en-US = "To use more chips", pt-BR = "Para usar mais fichas" },
+    { en-US = "They are not bigger", pt-BR = "Eles não são maiores" },
+]
+answer = 0

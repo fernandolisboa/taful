@@ -1,0 +1,37 @@
+id = "check-raise-101-quiz"
+version = 1
+lesson = "check-raise-101"
+pass = 0.75
+
+[[questions]]
+id = "where"
+kind = "choice"
+prompt = { en-US = "The big blind check-raises most on…", pt-BR = "O big blind dá check-raise mais em…" }
+choices = [
+    { en-US = "A-K-3 rainbow", pt-BR = "A-K-3 rainbow" },
+    { en-US = "K-Q-2 rainbow", pt-BR = "K-Q-2 rainbow" },
+    { en-US = "Low and middle connected flops", pt-BR = "Flops baixos e médios conectados" },
+]
+answer = 2
+
+[[questions]]
+id = "medium"
+kind = "choice"
+prompt = { en-US = "Medium pairs facing a c-bet usually…", pt-BR = "Pares médios contra um c-bet normalmente…" }
+choices = [
+    { en-US = "Check-raise", pt-BR = "Dão check-raise" },
+    { en-US = "Fold always", pt-BR = "Sempre foldam" },
+    { en-US = "Call", pt-BR = "Pagam" },
+]
+answer = 2
+
+[[questions]]
+id = "semi"
+kind = "choice"
+prompt = { en-US = "Which hand is a good semi-bluff check-raise?", pt-BR = "Qual mão é um bom check-raise de semiblefe?" }
+choices = [
+    { en-US = "Third pair, no draw", pt-BR = "Terceiro par, sem projeto" },
+    { en-US = "A flush draw", pt-BR = "Um projeto de flush" },
+    { en-US = "Ace-high, no draw", pt-BR = "Ás alto, sem projeto" },
+]
+answer = 1

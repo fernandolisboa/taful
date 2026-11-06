@@ -27,3 +27,4 @@ home-calc-start = Train
 home-progress = { $done } of { $total } lessons done
 home-leaks-title = Top leaks
 home-leaks-body = No leaks yet. They show up once graded decisions pile up mistakes in a spot.
+review-dealing = Dealing a spot…

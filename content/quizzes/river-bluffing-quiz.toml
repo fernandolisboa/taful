@@ -1,0 +1,48 @@
+id = "river-bluffing-quiz"
+version = 1
+lesson = "river-bluffing"
+pass = 0.75
+
+[[questions]]
+id = "ratio"
+kind = "choice"
+prompt = { en-US = "With a pot-size river bet, about how many bluffs per value bet keep it balanced?", pt-BR = "Com uma aposta do tamanho do pote no river, quantos blefes por aposta de valor mais ou menos equilibram?" }
+choices = [
+    { en-US = "Two bluffs per value bet", pt-BR = "Dois blefes por aposta de valor" },
+    { en-US = "No bluffs", pt-BR = "Nenhum blefe" },
+    { en-US = "One bluff per two value bets", pt-BR = "Um blefe para cada duas apostas de valor" },
+]
+answer = 2
+
+[[questions]]
+id = "missed"
+kind = "choice"
+prompt = { en-US = "Which hand is a natural river bluff?", pt-BR = "Qual mão é um blefe natural no river?" }
+choices = [
+    { en-US = "A medium pair", pt-BR = "Um par médio" },
+    { en-US = "Ace-high with showdown value", pt-BR = "Ás alto com valor de showdown" },
+    { en-US = "A missed draw", pt-BR = "Um projeto que não fechou" },
+]
+answer = 2
+
+[[questions]]
+id = "blocker"
+kind = "choice"
+prompt = { en-US = "On a three-flush river, bluffing with the ace of that suit…", pt-BR = "Num river com três cartas do mesmo naipe, blefar com o ás desse naipe…" }
+choices = [
+    { en-US = "Is always bad", pt-BR = "É sempre ruim" },
+    { en-US = "Changes nothing", pt-BR = "Não muda nada" },
+    { en-US = "Removes the nut flush from their range", pt-BR = "Tira o flush nuts do range dele" },
+]
+answer = 2
+
+[[questions]]
+id = "calling-station"
+kind = "choice"
+prompt = { en-US = "Against players who call too much, you should bluff…", pt-BR = "Contra jogadores que pagam demais, você deve blefar…" }
+choices = [
+    { en-US = "More", pt-BR = "Mais" },
+    { en-US = "The same", pt-BR = "Igual" },
+    { en-US = "Less", pt-BR = "Menos" },
+]
+answer = 2

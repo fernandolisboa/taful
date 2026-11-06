@@ -23,6 +23,8 @@ pub mod keys {
     pub const LAYOUT: &str = "layout";
     pub const THEME: &str = "theme";
     pub const LIBRARY_BASE_URL: &str = "library.base_url";
+    /// The postflop library folder picked in settings (M6).
+    pub const LIBRARY_DIR: &str = "library.dir";
 }
 
 /// The database file name inside the data folder.
@@ -126,6 +128,10 @@ impl App {
             seed,
         };
         app.scheduler = Scheduler::new(app.retention());
+        // The folder picked in settings, unless the dev override is set.
+        if std::env::var_os("TAFUL_LIBRARY_DIR").is_none_or(|v| v.is_empty()) {
+            app.library_dir = app.setting_str(keys::LIBRARY_DIR).map(PathBuf::from);
+        }
         app
     }
 

@@ -68,18 +68,18 @@ pub fn action_short(ui: &Ui, a: Action) -> String {
     }
 }
 
-/// One card face (or a back for `None`).
-pub fn card(ui: &Ui, p: &Palette, c: Option<Card>) -> Div {
+/// One card face (or a back for `None`), `s` times the normal size.
+fn card(ui: &Ui, p: &Palette, c: Option<Card>, s: f32) -> Div {
     let t = &ui.theme;
     let base = div()
-        .w(px(CARD_W))
-        .h(px(CARD_H))
-        .rounded(px(t.radii.sm))
+        .w(px(CARD_W * s))
+        .h(px(CARD_H * s))
+        .rounded(px(t.radii.sm * s))
         .flex()
         .flex_col()
         .items_center()
         .justify_center()
-        .text_size(px(t.text_size.sm))
+        .text_size(px(t.text_size.sm * s))
         .font_weight(FontWeight::BOLD);
     match c {
         Some(c) => {
@@ -98,14 +98,41 @@ pub fn card(ui: &Ui, p: &Palette, c: Option<Card>) -> Div {
     }
 }
 
-/// Felt, seats, pot and board. `reveal` shows every live hand (end of hand).
+/// Width of [`table`] at scale 1.
+pub const TABLE_W: f32 = FELT_W;
+/// Height of [`table`] at scale 1 (felt plus room for the top and bottom seats).
+pub const TABLE_H: f32 = FELT_H + 2. * PAD;
+
+/// The scale at which [`table`] fits a `w` × `h` box, within the range
+/// that stays readable.
+pub fn fit_scale(w: f32, h: f32) -> f32 {
+    (w / TABLE_W).min(h / TABLE_H).clamp(0.7, 1.8)
+}
+
+/// Felt, seats, pot and board, at scale 1. `reveal` shows every live hand
+/// (end of hand).
 pub fn table(ui: &Ui, p: &Palette, state: &GameState, hero: Seat, reveal: bool) -> Div {
+    table_scaled(ui, p, state, hero, reveal, 1.)
+}
+
+/// [`table`] drawn `s` times its normal size (layout panels, spec §15.3).
+pub fn table_scaled(
+    ui: &Ui,
+    p: &Palette,
+    state: &GameState,
+    hero: Seat,
+    reveal: bool,
+    s: f32,
+) -> Div {
     let (t, i18n) = (&ui.theme, &ui.i18n);
     let n = state.players().len();
-    let (cx0, cy0) = (FELT_W / 2., FELT_H / 2. + PAD);
+    let (felt_w, felt_h, pad) = (FELT_W * s, FELT_H * s, PAD * s);
+    let (seat_w, seat_h) = (SEAT_W * s, SEAT_H * s);
+    let (sm, md) = (t.text_size.sm * s, t.text_size.md * s);
+    let (cx0, cy0) = (felt_w / 2., felt_h / 2. + pad);
     let (rx, ry) = (
-        FELT_W / 2. - SEAT_W / 2. + 8.,
-        FELT_H / 2. - SEAT_H / 2. + 18.,
+        felt_w / 2. - seat_w / 2. + 8. * s,
+        felt_h / 2. - seat_h / 2. + 18. * s,
     );
     let to_act = state.to_act();
     let seats = (0..n).map(|seat| {
@@ -134,11 +161,11 @@ pub fn table(ui: &Ui, p: &Palette, state: &GameState, hero: Seat, reveal: bool) 
             .map(|(_, a)| action_short(ui, *a));
         div()
             .absolute()
-            .left(px(x - SEAT_W / 2.))
-            .top(px(y - SEAT_H / 2.))
-            .w(px(SEAT_W))
-            .h(px(SEAT_H))
-            .rounded(px(t.radii.lg))
+            .left(px(x - seat_w / 2.))
+            .top(px(y - seat_h / 2.))
+            .w(px(seat_w))
+            .h(px(seat_h))
+            .rounded(px(t.radii.lg * s))
             .border_1()
             .border_color(if active { p.accent } else { p.rail_edge })
             .bg(if active { p.seat_active } else { p.seat })
@@ -147,12 +174,12 @@ pub fn table(ui: &Ui, p: &Palette, state: &GameState, hero: Seat, reveal: bool) 
             .flex_col()
             .items_center()
             .justify_center()
-            .gap(px(2.))
+            .gap(px(2. * s))
             .child(
                 div()
                     .flex()
-                    .gap(px(t.spacing.xs))
-                    .text_size(px(t.text_size.sm))
+                    .gap(px(t.spacing.xs * s))
+                    .text_size(px(sm))
                     .child(
                         div()
                             .font_weight(FontWeight::BOLD)
@@ -166,16 +193,11 @@ pub fn table(ui: &Ui, p: &Palette, state: &GameState, hero: Seat, reveal: bool) 
             .child(
                 div()
                     .flex()
-                    .gap(px(2.))
-                    .children(cards.into_iter().map(|c| card(ui, p, c))),
+                    .gap(px(2. * s))
+                    .children(cards.into_iter().map(|c| card(ui, p, c, s))),
             )
             .when_some(last, |d, l| {
-                d.child(
-                    div()
-                        .text_size(px(t.text_size.sm))
-                        .text_color(p.text_muted)
-                        .child(l),
-                )
+                d.child(div().text_size(px(sm)).text_color(p.text_muted).child(l))
             })
     });
     // Chips in front of each seat on this street, between seat and pot.
@@ -190,17 +212,17 @@ pub fn table(ui: &Ui, p: &Palette, state: &GameState, hero: Seat, reveal: bool) 
         Some(
             div()
                 .absolute()
-                .left(px(x - 28.))
-                .top(px(y - 10.))
-                .w(px(56.))
+                .left(px(x - 28. * s))
+                .top(px(y - 10. * s))
+                .w(px(56. * s))
                 .flex()
                 .justify_center()
                 .child(
                     div()
-                        .px(px(t.spacing.sm))
+                        .px(px(t.spacing.sm * s))
                         .rounded(px(t.radii.pill))
                         .bg(p.rail)
-                        .text_size(px(t.text_size.sm))
+                        .text_size(px(sm))
                         .text_color(p.accent)
                         .child(bb(ui, c)),
                 ),
@@ -209,28 +231,28 @@ pub fn table(ui: &Ui, p: &Palette, state: &GameState, hero: Seat, reveal: bool) 
     let board = state.board().to_vec();
     div()
         .relative()
-        .w(px(FELT_W))
-        .h(px(FELT_H + 2. * PAD))
+        .w(px(felt_w))
+        .h(px(felt_h + 2. * pad))
         .flex_none()
         .child(
             div()
                 .absolute()
-                .left(px(SEAT_W / 2.))
-                .top(px(SEAT_H / 2. - 6. + PAD))
-                .w(px(FELT_W - SEAT_W))
-                .h(px(FELT_H - SEAT_H + 12.))
+                .left(px(seat_w / 2.))
+                .top(px(seat_h / 2. - 6. * s + pad))
+                .w(px(felt_w - seat_w))
+                .h(px(felt_h - seat_h + 12. * s))
                 .rounded(px(t.radii.pill))
                 .bg(p.felt)
-                .border(px(6.))
+                .border(px(6. * s))
                 .border_color(p.rail)
                 .flex()
                 .flex_col()
                 .items_center()
                 .justify_center()
-                .gap(px(t.spacing.sm))
+                .gap(px(t.spacing.sm * s))
                 .child(
                     div()
-                        .text_size(px(t.text_size.md))
+                        .text_size(px(md))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(p.text)
                         .child(
@@ -241,8 +263,8 @@ pub fn table(ui: &Ui, p: &Palette, state: &GameState, hero: Seat, reveal: bool) 
                     d.child(
                         div()
                             .flex()
-                            .gap(px(t.spacing.xs))
-                            .children(board.iter().map(|&c| card(ui, p, Some(c)))),
+                            .gap(px(t.spacing.xs * s))
+                            .children(board.iter().map(|&c| card(ui, p, Some(c), s))),
                     )
                 }),
         )
@@ -301,7 +323,7 @@ pub fn explanation(ui: &Ui, p: &Palette, d: &Explain<'_>) -> Div {
             div()
                 .text_size(px(t.text_size.lg))
                 .font_weight(FontWeight::BOLD)
-                .text_color(p.accent)
+                .text_color(p.grade(d.grade))
                 .child(i18n.tr(&grade_key(d.grade))),
         )
         .child(
@@ -313,15 +335,18 @@ pub fn explanation(ui: &Ui, p: &Palette, d: &Explain<'_>) -> Div {
                     &[("amount", num(ui, d.ev_loss_bb, 2).into())],
                 )),
         );
-    let cell = |s: String, w: f32| div().w(px(w)).child(s);
+    // The action column takes what the panel has left (layouts change the
+    // panel's width); the numbers keep fixed columns.
+    let first = |s: String| div().flex_1().min_w(px(0.)).child(s);
+    let cell = |s: String, w: f32| div().w(px(w)).flex_none().child(s);
     let head = div()
         .flex()
         .text_size(px(t.text_size.sm))
         .text_color(p.text_muted)
-        .child(cell(i18n.tr("table-col-action"), 120.))
-        .child(cell(i18n.tr("table-col-hand-freq"), 70.))
-        .child(cell(i18n.tr("table-col-ev"), 60.))
-        .child(cell(i18n.tr("table-col-range-freq"), 60.));
+        .child(first(i18n.tr("table-col-action")))
+        .child(cell(i18n.tr("table-col-hand-freq"), 64.))
+        .child(cell(i18n.tr("table-col-ev"), 56.))
+        .child(cell(i18n.tr("table-col-range-freq"), 56.));
     let pct = |v: Option<&f32>| match v {
         Some(x) => format!("{}%", num(ui, f64::from(*x) * 100., 0)),
         None => "–".into(),
@@ -334,15 +359,15 @@ pub fn explanation(ui: &Ui, p: &Palette, d: &Explain<'_>) -> Div {
             .when(i == best, |r| {
                 r.text_color(p.accent).font_weight(FontWeight::SEMIBOLD)
             })
-            .child(cell(format!("{mark}{}", action_short(ui, a)), 120.))
-            .child(cell(pct(d.hand_freqs.get(i)), 70.))
+            .child(first(format!("{mark}{}", action_short(ui, a))))
+            .child(cell(pct(d.hand_freqs.get(i)), 64.))
             .child(cell(
                 d.hand_evs
                     .get(i)
                     .map_or("–".into(), |e| num(ui, f64::from(*e), 2)),
-                60.,
+                56.,
             ))
-            .child(cell(pct(d.range_freqs.get(i)), 60.))
+            .child(cell(pct(d.range_freqs.get(i)), 56.))
     });
     div()
         .flex()
@@ -381,6 +406,13 @@ pub fn panel(ui: &Ui, p: &Palette) -> Div {
         .bg(p.surface)
         .border_1()
         .border_color(p.border)
+}
+
+/// A grade label in its color (decision lists).
+pub fn grade_label(ui: &Ui, p: &Palette, g: Grade) -> Div {
+    div()
+        .text_color(p.grade(g))
+        .child(ui.i18n.tr(&grade_key(g)))
 }
 
 /// Readable name of a spot configuration (`preflop` or a library id).

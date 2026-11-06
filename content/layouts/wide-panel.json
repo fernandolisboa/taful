@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "name": "wide-panel",
+  "grid": { "cols": 48, "rows": 27 },
+  "panels": [
+    { "id": "controls", "x": 0, "y": 0, "w": 48, "h": 5, "visible": true },
+    { "id": "table", "x": 0, "y": 5, "w": 26, "h": 17, "visible": true },
+    { "id": "actions", "x": 0, "y": 22, "w": 26, "h": 5, "visible": true },
+    { "id": "explanation", "x": 26, "y": 5, "w": 22, "h": 22, "visible": true }
+  ]
+}

@@ -14,10 +14,40 @@ use serde::{Deserialize, Deserializer};
 
 /// Version of the token schema this build reads. A bump ships a migration
 /// (missing tokens get defaults), like the layout schema.
-pub const SCHEMA_VERSION: u32 = 1;
+///
+/// - 1: first slice tokens.
+/// - 2 (M6): the five grade colors. A schema 1 file gets them from the
+///   built-in default theme.
+pub const SCHEMA_VERSION: u32 = 2;
 
-/// The built-in theme, embedded in the binary.
+/// The built-in default theme, embedded in the binary.
 pub const DEFAULT_THEME_JSON: &str = include_str!("../../../content/themes/default.json");
+
+/// Id of the default theme.
+pub const DEFAULT_THEME: &str = "default";
+
+/// Every built-in theme as `(id, JSON)`, in the order settings lists them.
+/// A test checks that this is exactly the set of files in `content/themes/`.
+pub const BUILTIN_THEMES: &[(&str, &str)] = &[
+    (DEFAULT_THEME, DEFAULT_THEME_JSON),
+    (
+        "midnight",
+        include_str!("../../../content/themes/midnight.json"),
+    ),
+    (
+        "daylight",
+        include_str!("../../../content/themes/daylight.json"),
+    ),
+];
+
+/// Tokens added in schema 2.
+const GRADE_TOKENS: [&str; 5] = [
+    "grade_best",
+    "grade_correct",
+    "grade_inaccuracy",
+    "grade_mistake",
+    "grade_blunder",
+];
 
 /// An sRGB color with alpha, written `#rrggbb` or `#rrggbbaa` in token files.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -225,6 +255,16 @@ tokens! {
         chip_100,
         /// Chip, largest denomination.
         chip_500,
+        /// Grade label: best action (spec §8).
+        grade_best,
+        /// Grade label: correct.
+        grade_correct,
+        /// Grade label: inaccuracy.
+        grade_inaccuracy,
+        /// Grade label: mistake (amber, never red).
+        grade_mistake,
+        /// Grade label: blunder (violet, never red).
+        grade_blunder,
     }
 }
 
@@ -319,24 +359,54 @@ pub struct TextPair {
 }
 
 impl Theme {
-    /// Parses a theme file.
+    /// Parses a theme file, migrating older schema versions.
     pub fn from_json(json: &str) -> Result<Self, ThemeError> {
         // Read the version first: a newer schema may add tokens that the
         // strict parse below would reject as unknown fields.
-        #[derive(Deserialize)]
-        struct Probe {
-            schema: u32,
+        let mut v: serde_json::Value = serde_json::from_str(json).map_err(ThemeError::Parse)?;
+        let schema = v
+            .get("schema")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| ThemeError::Parse(serde::de::Error::missing_field("schema")))?;
+        let schema = u32::try_from(schema).unwrap_or(u32::MAX);
+        match schema {
+            SCHEMA_VERSION => {}
+            1 => migrate_v1(&mut v),
+            other => return Err(ThemeError::Schema(other)),
         }
-        let probe: Probe = serde_json::from_str(json).map_err(ThemeError::Parse)?;
-        if probe.schema != SCHEMA_VERSION {
-            return Err(ThemeError::Schema(probe.schema));
-        }
-        serde_json::from_str(json).map_err(ThemeError::Parse)
+        serde_json::from_value(v).map_err(ThemeError::Parse)
     }
 
     /// The built-in default theme.
     pub fn builtin_default() -> Self {
         Self::from_json(DEFAULT_THEME_JSON).expect("built-in theme is valid (tested)")
+    }
+
+    /// A built-in theme by id.
+    pub fn builtin(id: &str) -> Option<Self> {
+        BUILTIN_THEMES
+            .iter()
+            .find(|(i, _)| *i == id)
+            .map(|(_, json)| Self::from_json(json).expect("built-in themes are valid (tested)"))
+    }
+
+    /// A built-in theme by id, or the default one for an unknown id.
+    pub fn builtin_or_default(id: Option<&str>) -> Self {
+        id.and_then(Self::builtin)
+            .unwrap_or_else(Self::builtin_default)
+    }
+
+    /// The color of a grade, by its id (`best`, `correct`, `inaccuracy`,
+    /// `mistake`, `blunder`).
+    pub fn grade_colors(&self) -> [(&'static str, Color); 5] {
+        let c = &self.colors;
+        [
+            ("best", c.grade_best),
+            ("correct", c.grade_correct),
+            ("inaccuracy", c.grade_inaccuracy),
+            ("mistake", c.grade_mistake),
+            ("blunder", c.grade_blunder),
+        ]
     }
 
     /// Every text-over-background combination the UI draws. A widget that
@@ -394,8 +464,109 @@ impl Theme {
                 Large,
             ),
             pair("suit_clubs on card_face", c.suit_clubs, c.card_face, Large),
+            pair("accent on seat", c.accent, c.seat, Normal),
+            pair("accent on rail", c.accent, c.rail, Normal),
+            pair(
+                "grade_best on background",
+                c.grade_best,
+                c.background,
+                Normal,
+            ),
+            pair("grade_best on surface", c.grade_best, c.surface, Normal),
+            pair(
+                "grade_best on surface_raised",
+                c.grade_best,
+                c.surface_raised,
+                Normal,
+            ),
+            pair(
+                "grade_correct on background",
+                c.grade_correct,
+                c.background,
+                Normal,
+            ),
+            pair(
+                "grade_correct on surface",
+                c.grade_correct,
+                c.surface,
+                Normal,
+            ),
+            pair(
+                "grade_correct on surface_raised",
+                c.grade_correct,
+                c.surface_raised,
+                Normal,
+            ),
+            pair(
+                "grade_inaccuracy on background",
+                c.grade_inaccuracy,
+                c.background,
+                Normal,
+            ),
+            pair(
+                "grade_inaccuracy on surface",
+                c.grade_inaccuracy,
+                c.surface,
+                Normal,
+            ),
+            pair(
+                "grade_inaccuracy on surface_raised",
+                c.grade_inaccuracy,
+                c.surface_raised,
+                Normal,
+            ),
+            pair(
+                "grade_mistake on background",
+                c.grade_mistake,
+                c.background,
+                Normal,
+            ),
+            pair(
+                "grade_mistake on surface",
+                c.grade_mistake,
+                c.surface,
+                Normal,
+            ),
+            pair(
+                "grade_mistake on surface_raised",
+                c.grade_mistake,
+                c.surface_raised,
+                Normal,
+            ),
+            pair(
+                "grade_blunder on background",
+                c.grade_blunder,
+                c.background,
+                Normal,
+            ),
+            pair(
+                "grade_blunder on surface",
+                c.grade_blunder,
+                c.surface,
+                Normal,
+            ),
+            pair(
+                "grade_blunder on surface_raised",
+                c.grade_blunder,
+                c.surface_raised,
+                Normal,
+            ),
         ]
     }
+}
+
+/// Schema 1 → 2: the grade colors, taken from the built-in default theme.
+fn migrate_v1(v: &mut serde_json::Value) {
+    let defaults: serde_json::Value =
+        serde_json::from_str(DEFAULT_THEME_JSON).expect("built-in theme is JSON");
+    if let Some(colors) = v.get_mut("colors").and_then(|c| c.as_object_mut()) {
+        for token in GRADE_TOKENS {
+            if !colors.contains_key(token) {
+                colors.insert(token.to_owned(), defaults["colors"][token].clone());
+            }
+        }
+    }
+    v["schema"] = SCHEMA_VERSION.into();
 }
 
 #[cfg(test)]
@@ -473,6 +644,63 @@ mod tests {
     }
 
     #[test]
+    fn builtin_list_matches_the_theme_files() {
+        let mut files: Vec<String> = all_themes().into_iter().map(|(n, _)| n).collect();
+        let mut listed: Vec<String> = BUILTIN_THEMES.iter().map(|(n, _)| n.to_string()).collect();
+        files.sort();
+        listed.sort();
+        assert_eq!(files, listed);
+        for (id, _) in BUILTIN_THEMES {
+            assert_eq!(Theme::builtin(id).unwrap().name, *id);
+        }
+        assert_eq!(Theme::builtin_or_default(Some("nope")).name, DEFAULT_THEME);
+        assert_eq!(Theme::builtin_or_default(None).name, DEFAULT_THEME);
+    }
+
+    /// Spec §15.4 (M6): the five grades must be told apart at a glance. Any
+    /// two grade colors differ clearly in RGB, and their lightness against
+    /// the surface is in the AA range (checked in `text_pairs`).
+    #[test]
+    fn grade_colors_are_distinct() {
+        for (name, theme) in all_themes() {
+            let g = theme.grade_colors();
+            for i in 0..g.len() {
+                for j in i + 1..g.len() {
+                    let (a, b) = (g[i].1, g[j].1);
+                    let d = [(a.r, b.r), (a.g, b.g), (a.b, b.b)]
+                        .iter()
+                        .map(|&(x, y)| (f64::from(x) - f64::from(y)).powi(2))
+                        .sum::<f64>()
+                        .sqrt();
+                    assert!(
+                        d >= 60.0,
+                        "theme {name}: grade {} and {} are too close ({d:.0})",
+                        g[i].0,
+                        g[j].0
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn schema_1_themes_migrate() {
+        let mut v: serde_json::Value = serde_json::from_str(DEFAULT_THEME_JSON).unwrap();
+        v["schema"] = 1.into();
+        v["name"] = "old".into();
+        v["colors"]["text"] = "#ffffff".into();
+        for t in GRADE_TOKENS {
+            v["colors"].as_object_mut().unwrap().remove(t);
+        }
+        let t = Theme::from_json(&v.to_string()).unwrap();
+        assert_eq!(t.schema, SCHEMA_VERSION);
+        assert_eq!(t.colors.text.to_string(), "#ffffff");
+        let d = Theme::builtin_default();
+        assert_eq!(t.colors.grade_blunder, d.colors.grade_blunder);
+        assert_eq!(t.colors.grade_best, d.colors.grade_best);
+    }
+
+    #[test]
     fn red_detector() {
         let c = |s: &str| s.parse::<Color>().unwrap();
         assert!(c("#ff0000").is_red());
@@ -521,11 +749,11 @@ mod tests {
         assert!(Theme::from_json(&v.to_string()).is_err());
 
         let mut v: serde_json::Value = serde_json::from_str(DEFAULT_THEME_JSON).unwrap();
-        v["schema"] = 2.into();
+        v["schema"] = (SCHEMA_VERSION + 1).into();
         v["colors"]["focus_ring"] = "#ffffff".into();
         assert!(matches!(
             Theme::from_json(&v.to_string()),
-            Err(ThemeError::Schema(2))
+            Err(ThemeError::Schema(v)) if v == SCHEMA_VERSION + 1
         ));
     }
 }

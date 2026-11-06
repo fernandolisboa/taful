@@ -397,6 +397,7 @@ Facing a half-pot bet you need {{ calc: pot_odds(pot=100, bet=50) | pct(1) }} eq
 - `content/skill-tree.toml` orders lessons and groups them into tracks. The first track has ~40 lessons up to intermediate cash 6-max 100bb.
 - Quizzes are TOML: multiple choice, numeric (with tolerance), range-painting (wave 2) and spot questions (a `SpotTemplate` id). Numeric answers are placeholders too. A quiz has a `pass` share (default 0.8); passing it marks the lesson done and unlocks lessons whose prerequisites are all done.
 - Glossary terms are linked inline as `[text](term:<id>)` and must be listed in the lesson's `glossary`; strings are `glossary-<id>` and `glossary-<id>-def`. Track names are `track-<id>` (M2).
+- **As built (M6):** 40 lessons in five tracks: foundations (4), poker math (10), preflop (9), postflop (12), game plan (5). Every lesson unlocks through a quiz (choice and numeric questions, `pass` 0.75); drill unlocks stay available in the format. Preflop lessons quote the embedded reference chart (open, defend and 3-bet frequencies), so a chart rebuild should be followed by a read of those lines. Choice answers are spread over the positions because the app shows choices in file order.
 
 ### 12.2 Expression language
 
@@ -482,6 +483,8 @@ Facing a half-pot bet you need {{ calc: pot_odds(pot=100, bet=50) | pct(1) }} eq
 
 As in spike §9.1: oval rail + felt, seats on an ellipse, avatars, stacks, positions, dealer button, chips, pot, 4-color deck, card backs. Animations: dealing, chips to pot, pot to winner (GPUI animation, 150–300 ms, can be disabled).
 
+**Performance (M6):** nothing that can solve a river runs on the UI thread. The table screen deals postflop spots, drills and full hands, and plays every full-hand step (bots, library file loads, the river solve), on GPUI's background executor; the screen shows a busy line and ignores clicks until the result lands, and a result from an older deal is dropped. The review session deals spot templates the same way (`App::next_review_step` → `TemplateDeal::run` off-thread → `App::finish_review_deal`). The types that cross threads are checked `Send` by a test. Preflop spots and grading stay synchronous (table lookups).
+
 ### 15.3 Layout model (D7)
 
 ```json
@@ -494,6 +497,7 @@ As in spike §9.1: oval rail + felt, seats on an ellipse, avatars, stacks, posit
 - Built-in presets in `content/layouts/`; user copies in `layouts`. Save / load / reset in the first slice.
 - Schema is versioned; each version bump ships a migration function (panels added later get default positions).
 - **Edit mode (right after the first slice):** drag by header, free follow, dashed landing preview, snap to grid on release, Alt drops without snap, dot grid painted in one canvas pass and shown only in edit mode (behavior approved in spike §9.1).
+- **As built (M6):** `taful-app::layout`. Panels: `controls` (mode and spot pickers), `table`, `actions` (hero's buttons, then next spot / new hand / review hand) and `explanation` (grade, EV table, hand log). Only `explanation` may be hidden. Rules checked on load: known and unique ids, inside the 48 × 27 grid, non-empty, visible panels do not overlap. A file missing a panel gets the default preset's position (the migration hook). Presets: `default` (panel on the right), `panel-left`, `wide-panel`. The table screen takes the space the shell leaves, uses the largest square cell that fits (at least 14 px), and scales the felt to its panel (0.7–1.8×). Settings: pick a preset or a saved copy, save a copy of the active layout (`layouts` table), delete a copy, back to default; the choice is the `layout` setting (`builtin:<id>` or `user:<ulid>`), and an unknown or broken choice falls back to the default preset.
 
 ### 15.4 Themes (D7)
 
@@ -502,6 +506,7 @@ As in spike §9.1: oval rail + felt, seats on an ellipse, avatars, stacks, posit
 - A test scans `apps/desktop/src` and fails on color literals (`rgb(`, `rgba(`, `hsla(`, hex) outside the theme module.
 - WCAG AA contrast is checked for text tokens over their backgrounds in the same test.
 - In-app theme editor comes right after the first slice, on the same token model.
+- **As built (M6):** token schema 2 adds `grade_best`, `grade_correct`, `grade_inaccuracy`, `grade_mistake`, `grade_blunder`; a schema 1 file gets them from the default theme. Default grades: best teal `#46c9a6`, correct green `#9fcd6a`, inaccuracy yellow `#e8cf5a`, mistake amber `#ee8a42`, blunder violet `#b994f2`. Tests: every grade color meets AA (4.5:1) on background, surface and surface_raised, no grade color is red, and any two grade colors are at least 60 apart in RGB. Built-in themes: `default` (petrol), `midnight` (deep blue felt) and `daylight` (light); each passes the same contrast and no-red tests. The choice is the `theme` setting; switching repaints at once.
 
 ### 15.5 i18n
 

@@ -1,0 +1,44 @@
+id = "four-bet-pots-quiz"
+version = 1
+lesson = "four-bet-pots"
+pass = 0.75
+
+[[questions]]
+id = "spr"
+kind = "numeric"
+prompt = { en-US = "Pot 42.5 bb, 79 bb behind after a called 4-bet. SPR?", pt-BR = "Pote de 42,5 bb, 79 bb atrás depois de um 4-bet pago. SPR?" }
+answer = "{{ calc: spr(stack=79, pot=42.5) | ratio }}"
+tolerance = 0.2
+
+[[questions]]
+id = "tp"
+kind = "choice"
+prompt = { en-US = "In a 4-bet pot with SPR under 2, top pair good kicker usually…", pt-BR = "Num pote de 4-bet com SPR abaixo de 2, top pair com bom kicker normalmente…" }
+choices = [
+    { en-US = "Should fold to a bet", pt-BR = "Deve foldar para uma aposta" },
+    { en-US = "Is happy to get all-in", pt-BR = "Topa ir all-in" },
+    { en-US = "Should never bet", pt-BR = "Nunca deve apostar" },
+]
+answer = 1
+
+[[questions]]
+id = "bluff"
+kind = "choice"
+prompt = { en-US = "What matters most in a 4-bet bluff?", pt-BR = "O que mais importa num 4-bet de blefe?" }
+choices = [
+    { en-US = "Blockers", pt-BR = "Blockers" },
+    { en-US = "Suitedness only", pt-BR = "Só ser suited" },
+    { en-US = "Being a pair", pt-BR = "Ser um par" },
+]
+answer = 0
+
+[[questions]]
+id = "vs4"
+kind = "choice"
+prompt = { en-US = "Facing a 4-bet, a 3-bet bluff usually…", pt-BR = "Contra um 4-bet, um 3-bet de blefe normalmente…" }
+choices = [
+    { en-US = "Calls", pt-BR = "Paga" },
+    { en-US = "Folds", pt-BR = "Folda" },
+    { en-US = "Goes all-in", pt-BR = "Vai all-in" },
+]
+answer = 1

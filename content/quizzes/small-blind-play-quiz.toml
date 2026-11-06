@@ -1,0 +1,37 @@
+id = "small-blind-play-quiz"
+version = 1
+lesson = "small-blind-play"
+pass = 0.75
+
+[[questions]]
+id = "why-not-call"
+kind = "choice"
+prompt = { en-US = "Why does the SB rarely call opens?", pt-BR = "Por que o SB raramente paga opens?" }
+choices = [
+    { en-US = "The BB can squeeze and the SB is out of position", pt-BR = "O BB pode dar squeeze e o SB está fora de posição" },
+    { en-US = "Calling is not allowed", pt-BR = "Pagar não é permitido" },
+    { en-US = "The SB has no chips", pt-BR = "O SB não tem fichas" },
+]
+answer = 0
+
+[[questions]]
+id = "folded-to"
+kind = "choice"
+prompt = { en-US = "When it folds to the SB, Taful's chart…", pt-BR = "Quando todos foldam até o SB, o chart do Taful…" }
+choices = [
+    { en-US = "Limps every hand", pt-BR = "Dá limp em todas" },
+    { en-US = "Folds everything", pt-BR = "Folda tudo" },
+    { en-US = "Raises about 44% and folds the rest", pt-BR = "Aumenta cerca de 44% e folda o resto" },
+]
+answer = 2
+
+[[questions]]
+id = "long-run"
+kind = "choice"
+prompt = { en-US = "In the long run the small blind…", pt-BR = "No longo prazo o small blind…" }
+choices = [
+    { en-US = "Is the most profitable seat", pt-BR = "É a posição mais lucrativa" },
+    { en-US = "Loses money for every player; the goal is to lose less", pt-BR = "Perde dinheiro para todo jogador; o objetivo é perder menos" },
+    { en-US = "Breaks even", pt-BR = "Empata" },
+]
+answer = 1

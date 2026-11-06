@@ -1,0 +1,37 @@
+id = "river-value-quiz"
+version = 1
+lesson = "river-value"
+pass = 0.75
+
+[[questions]]
+id = "test"
+kind = "choice"
+prompt = { en-US = "A river value bet makes money when…", pt-BR = "Uma aposta de valor no river dá lucro quando…" }
+choices = [
+    { en-US = "Your hand is strong in absolute terms", pt-BR = "Sua mão é forte em termos absolutos" },
+    { en-US = "The opponent folds", pt-BR = "O adversário folda" },
+    { en-US = "You are ahead of the calling range more than half the time", pt-BR = "Você está à frente do range que paga mais da metade das vezes" },
+]
+answer = 2
+
+[[questions]]
+id = "thin"
+kind = "choice"
+prompt = { en-US = "A thin value bet is…", pt-BR = "Uma aposta de valor fino é…" }
+choices = [
+    { en-US = "A tiny bluff", pt-BR = "Um blefe minúsculo" },
+    { en-US = "A bet with a hand only slightly ahead of the calls", pt-BR = "Uma aposta com uma mão só um pouco à frente dos calls" },
+    { en-US = "A bet with the nuts", pt-BR = "Uma aposta com o nuts" },
+]
+answer = 1
+
+[[questions]]
+id = "check"
+kind = "choice"
+prompt = { en-US = "A medium pair after the opponent called two streets usually…", pt-BR = "Um par médio depois de o adversário pagar duas rodadas normalmente…" }
+choices = [
+    { en-US = "Overbets", pt-BR = "Dá overbet" },
+    { en-US = "Checks", pt-BR = "Dá check" },
+    { en-US = "Folds", pt-BR = "Folda" },
+]
+answer = 1

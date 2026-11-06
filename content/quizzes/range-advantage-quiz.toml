@@ -1,0 +1,48 @@
+id = "range-advantage-quiz"
+version = 1
+lesson = "range-advantage"
+pass = 0.75
+
+[[questions]]
+id = "akx"
+kind = "choice"
+prompt = { en-US = "BTN opens, BB calls. Flop A-K-4 rainbow. Who has the range advantage?", pt-BR = "O BTN abre, o BB paga. Flop A-K-4 rainbow. Quem tem vantagem de range?" }
+choices = [
+    { en-US = "The button", pt-BR = "O botão" },
+    { en-US = "The big blind", pt-BR = "O big blind" },
+    { en-US = "Neither", pt-BR = "Nenhum" },
+]
+answer = 0
+
+[[questions]]
+id = "765"
+kind = "choice"
+prompt = { en-US = "On 7-6-5 two-tone, the range advantage shifts toward…", pt-BR = "Em 7-6-5 two-tone, a vantagem de range vai para…" }
+choices = [
+    { en-US = "The big blind", pt-BR = "O big blind" },
+    { en-US = "The button", pt-BR = "O botão" },
+    { en-US = "Nobody", pt-BR = "Ninguém" },
+]
+answer = 0
+
+[[questions]]
+id = "nuts"
+kind = "choice"
+prompt = { en-US = "With a nut advantage you tend to bet…", pt-BR = "Com vantagem de nuts você tende a apostar…" }
+choices = [
+    { en-US = "Small", pt-BR = "Pequeno" },
+    { en-US = "Never", pt-BR = "Nunca" },
+    { en-US = "Big", pt-BR = "Grande" },
+]
+answer = 2
+
+[[questions]]
+id = "range-only"
+kind = "choice"
+prompt = { en-US = "With range advantage but no nut advantage, you tend to bet…", pt-BR = "Com vantagem de range mas sem vantagem de nuts, você tende a apostar…" }
+choices = [
+    { en-US = "Small and often", pt-BR = "Pequeno e com frequência" },
+    { en-US = "Big and rarely", pt-BR = "Grande e raramente" },
+    { en-US = "All-in", pt-BR = "All-in" },
+]
+answer = 0

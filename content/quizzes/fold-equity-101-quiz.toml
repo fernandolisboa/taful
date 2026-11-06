@@ -1,0 +1,44 @@
+id = "fold-equity-101-quiz"
+version = 1
+lesson = "fold-equity-101"
+pass = 0.75
+
+[[questions]]
+id = "alpha-half"
+kind = "numeric"
+prompt = { en-US = "A pure bluff of half the pot needs the opponent to fold at least how often (in %)?", pt-BR = "Um blefe puro de meio pote precisa que o adversário folde pelo menos quantas vezes (em %)?" }
+answer = "{{ calc: alpha(pot=2, bet=1) | pct(1) }}"
+tolerance = 1.0
+
+[[questions]]
+id = "semi"
+kind = "choice"
+prompt = { en-US = "A semi-bluff is a bet with…", pt-BR = "Um semiblefe é uma aposta com…" }
+choices = [
+    { en-US = "The nuts", pt-BR = "O nuts" },
+    { en-US = "A hand with zero equity", pt-BR = "Uma mão sem equity" },
+    { en-US = "A hand that is behind now but can improve", pt-BR = "Uma mão que está atrás agora, mas pode melhorar" },
+]
+answer = 2
+
+[[questions]]
+id = "fewer"
+kind = "choice"
+prompt = { en-US = "Compared with a pure bluff, a semi-bluff needs…", pt-BR = "Comparado com um blefe puro, um semiblefe precisa de…" }
+choices = [
+    { en-US = "More folds", pt-BR = "Mais folds" },
+    { en-US = "Fewer folds", pt-BR = "Menos folds" },
+    { en-US = "The same folds", pt-BR = "Os mesmos folds" },
+]
+answer = 1
+
+[[questions]]
+id = "low"
+kind = "choice"
+prompt = { en-US = "Fold equity is lowest…", pt-BR = "A fold equity é menor…" }
+choices = [
+    { en-US = "In multiway pots against strong ranges", pt-BR = "Em potes multiway contra ranges fortes" },
+    { en-US = "Heads-up against a wide range", pt-BR = "Heads-up contra um range largo" },
+    { en-US = "When the bet is large", pt-BR = "Quando a aposta é grande" },
+]
+answer = 0

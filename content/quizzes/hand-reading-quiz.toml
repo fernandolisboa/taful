@@ -1,0 +1,29 @@
+id = "hand-reading-quiz"
+version = 1
+lesson = "hand-reading"
+pass = 0.75
+
+[[questions]]
+id = "sets"
+kind = "numeric"
+prompt = { en-US = "Flop Q-8-3. How many combos of a set of queens can the opponent have (you hold no queen)?", pt-BR = "Flop Q-8-3. Quantos combos de trinca de damas o adversário pode ter (você não tem dama)?" }
+answer = "{{ calc: choose(n=3, k=2) | int }}"
+tolerance = 0
+
+[[questions]]
+id = "aq"
+kind = "numeric"
+prompt = { en-US = "Flop Q-8-3. How many AQ combos (you hold no ace or queen)?", pt-BR = "Flop Q-8-3. Quantos combos de AQ (você não tem ás nem dama)?" }
+answer = "{{ calc: mul(a=3, b=4) | int }}"
+tolerance = 0
+
+[[questions]]
+id = "checkback"
+kind = "choice"
+prompt = { en-US = "A player checks back the turn in position. Their range has fewer…", pt-BR = "Um jogador dá check no turn em posição. O range dele tem menos…" }
+choices = [
+    { en-US = "Strong hands that want to build the pot", pt-BR = "Mãos fortes que querem crescer o pote" },
+    { en-US = "Weak hands", pt-BR = "Mãos fracas" },
+    { en-US = "Draws", pt-BR = "Projetos" },
+]
+answer = 0

@@ -1,0 +1,37 @@
+id = "out-of-position-quiz"
+version = 1
+lesson = "out-of-position"
+pass = 0.75
+
+[[questions]]
+id = "checks"
+kind = "choice"
+prompt = { en-US = "Out of position, your checking range should…", pt-BR = "Fora de posição, seu range de check deve…" }
+choices = [
+    { en-US = "Include some strong hands", pt-BR = "Incluir algumas mãos fortes" },
+    { en-US = "Hold only weak hands", pt-BR = "Ter só mãos fracas" },
+    { en-US = "Be empty", pt-BR = "Ser vazio" },
+]
+answer = 0
+
+[[questions]]
+id = "donk"
+kind = "choice"
+prompt = { en-US = "Leading into the preflop raiser on the flop is…", pt-BR = "Apostar de saída contra quem deu raise antes do flop é…" }
+choices = [
+    { en-US = "The main strategy", pt-BR = "A estratégia principal" },
+    { en-US = "Rare; turns and rivers that favor you are more common", pt-BR = "Raro; turns e rivers que te favorecem são mais comuns" },
+    { en-US = "Not allowed", pt-BR = "Proibido" },
+]
+answer = 1
+
+[[questions]]
+id = "realize"
+kind = "choice"
+prompt = { en-US = "Out of position you realize…", pt-BR = "Fora de posição você realiza…" }
+choices = [
+    { en-US = "Less of your equity", pt-BR = "Menos da sua equity" },
+    { en-US = "More of your equity", pt-BR = "Mais da sua equity" },
+    { en-US = "Exactly your equity", pt-BR = "Exatamente a sua equity" },
+]
+answer = 0

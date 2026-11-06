@@ -22,7 +22,7 @@ use taful_app::i18n::{Locale, Localizer};
 use taful_app::theme::Theme;
 
 /// Everything views read but never change: strings and tokens. Replaced as
-/// a whole when the locale changes.
+/// a whole when the locale or the theme changes.
 pub struct Ui {
     /// Localized strings.
     pub i18n: Localizer,
@@ -31,10 +31,10 @@ pub struct Ui {
 }
 
 impl Ui {
-    pub fn new(locale: Locale) -> Self {
+    pub fn new(locale: Locale, theme: Theme) -> Self {
         Self {
             i18n: Localizer::new(locale).expect("embedded strings are valid (tested)"),
-            theme: Theme::builtin_default(),
+            theme,
         }
     }
 }
@@ -53,7 +53,12 @@ fn main() {
         .ok()
         .and_then(|tag| Locale::from_tag(&tag))
         .unwrap_or_else(|| app.locale());
-    let ui = Rc::new(Ui::new(locale));
+    // TAFUL_THEME=<id> (screenshots) beats the saved theme.
+    let theme = std::env::var("TAFUL_THEME")
+        .ok()
+        .and_then(|id| Theme::builtin(&id))
+        .unwrap_or_else(|| app.theme());
+    let ui = Rc::new(Ui::new(locale, theme));
     let mut app = Some(app);
     Application::new().run(move |cx: &mut App| {
         cx.on_window_closed(|cx| {
