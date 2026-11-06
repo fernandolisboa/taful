@@ -24,6 +24,12 @@ pub const PREFLOP: &str = "preflop";
 /// Template key format version.
 const KEY_VERSION: &str = "v1";
 
+/// SQLite GLOBs over [`SpotTemplate::key`]: every key of this version, and
+/// its preflop keys. No field holds a `|` and only the spot field can be
+/// [`PREFLOP`], so a key matching the first and not the second is postflop.
+pub(crate) const KEY_GLOB: &str = "v1|*";
+pub(crate) const PREFLOP_KEY_GLOB: &str = "v1|*|preflop|*";
+
 /// What kind of decision a node is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NodeType {
@@ -279,6 +285,10 @@ mod tests {
         };
         assert_eq!(SpotTemplate::parse(&first.key()), Some(first.clone()));
         assert_eq!(first.street(), Street::Flop);
+
+        assert!(KEY_GLOB.starts_with(&format!("{KEY_VERSION}|")));
+        assert!(PREFLOP_KEY_GLOB.starts_with(&format!("{KEY_VERSION}|")));
+        assert!(PREFLOP_KEY_GLOB.contains(&format!("|{PREFLOP}|")));
 
         for bad in [
             "",

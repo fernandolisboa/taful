@@ -14,13 +14,13 @@ use std::sync::Arc;
 use taful_content::quiz::{Answer, RenderedQuestion};
 use taful_core::calc::ExerciseKind;
 use taful_core::srs::Rating;
-use taful_store::ReviewItem;
+use taful_store::{Hold, ReviewItem};
 
 use crate::calc_trainer::CalcRound;
 use crate::i18n::Locale;
 use crate::preflop::{Action, GradedDecision};
 use crate::review::ItemKind;
-use crate::template::SpotTemplate;
+use crate::template::{KEY_GLOB, PREFLOP_KEY_GLOB, SpotTemplate};
 use crate::training::{DrillSpot, TemplateError, Trainers};
 use crate::{App, Error, Result};
 
@@ -83,7 +83,6 @@ impl TemplateDeal {
 
 /// Item kinds the review session presents.
 pub(crate) const PRESENTABLE: &[&str] = &["calc_exercise", "lesson_quiz", SPOT_TEMPLATE];
-const NON_SPOT: &[&str] = &["calc_exercise", "lesson_quiz"];
 const SPOT_TEMPLATE: &str = "spot_template";
 /// Deals tried for a spot template before it is skipped for now.
 const TEMPLATE_TRIES: usize = 3;
@@ -94,41 +93,31 @@ const SCAN: u32 = 100;
 impl App {
     /// Number of items due now that this build can present.
     pub fn due_count(&mut self) -> Result<u32> {
-        if self.has_postflop() {
-            return Ok(self.store.count_due(self.now(), PRESENTABLE)?);
-        }
         let now = self.now();
-        let others = self.store.count_due(now, NON_SPOT)?;
-        let spots = self.presentable_spots(now, u32::MAX)?.len();
-        Ok(others + u32::try_from(spots).unwrap_or(u32::MAX))
+        let hold = self.postflop_hold();
+        Ok(self.store.count_due_held(now, PRESENTABLE, hold.as_ref())?)
     }
 
     fn has_postflop(&mut self) -> bool {
         self.trainers().is_ok_and(|t| t.post().is_some())
     }
 
-    /// Due spot items, without the postflop ones while no library is
-    /// installed (they wait).
-    fn presentable_spots(&self, now: taful_store::Millis, limit: u32) -> Result<Vec<ReviewItem>> {
-        Ok(self
-            .store
-            .due_items(now, &[SPOT_TEMPLATE], limit)?
-            .into_iter()
-            .filter(|i| SpotTemplate::parse(&i.key).is_none_or(|t| t.is_preflop()))
-            .collect())
+    /// Postflop spot items wait while no library is installed.
+    fn postflop_hold(&mut self) -> Option<Hold<'static>> {
+        (!self.has_postflop()).then_some(Hold {
+            kind: SPOT_TEMPLATE,
+            key_glob: KEY_GLOB,
+            unless_glob: PREFLOP_KEY_GLOB,
+        })
     }
 
     /// The earliest due items this build can present now, earliest first.
     fn presentable_due(&mut self, limit: u32) -> Result<Vec<ReviewItem>> {
         let now = self.now();
-        if self.has_postflop() {
-            return Ok(self.store.due_items(now, PRESENTABLE, limit)?);
-        }
-        let mut items = self.store.due_items(now, NON_SPOT, limit)?;
-        items.extend(self.presentable_spots(now, u32::MAX)?);
-        items.sort_by(|a, b| (a.due, &a.id).cmp(&(b.due, &b.id)));
-        items.truncate(limit as usize);
-        Ok(items)
+        let hold = self.postflop_hold();
+        Ok(self
+            .store
+            .due_items_held(now, PRESENTABLE, hold.as_ref(), limit)?)
     }
 
     /// The earliest due item this build can present, or `None` when the
@@ -412,6 +401,23 @@ mod tests {
             SCAN + 21,
             "none retired"
         );
+        // Preflop templates and unknown keys still count; the library
+        // brings the postflop ones back.
+        let pre = format!(
+            "v1|{}|preflop|UTG:f|-|HJ",
+            app.trainers().unwrap().config_key()
+        );
+        app.store
+            .ensure_review_item("spot_template", &pre, None, 0)
+            .unwrap();
+        app.store
+            .ensure_review_item("spot_template", "v0|old", None, 0)
+            .unwrap();
+        assert_eq!(app.due_count().unwrap(), 3);
+        app.set_library_dir(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/postflop"),
+        );
+        assert_eq!(app.due_count().unwrap(), SCAN + 23);
     }
 
     #[test]

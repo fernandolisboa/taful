@@ -457,24 +457,49 @@ impl Store {
     /// Items of `kinds` (all kinds when empty) due at or before `now`,
     /// earliest first.
     pub fn due_items(&self, now: Millis, kinds: &[&str], limit: u32) -> Result<Vec<ReviewItem>> {
+        self.due_items_held(now, kinds, None, limit)
+    }
+
+    /// [`Store::due_items`] without the items `hold` matches.
+    pub fn due_items_held(
+        &self,
+        now: Millis,
+        kinds: &[&str],
+        hold: Option<&Hold<'_>>,
+        limit: u32,
+    ) -> Result<Vec<ReviewItem>> {
         let mut stmt = self.conn().prepare(&format!(
             "SELECT {ITEM_COLS} FROM review_items
-             WHERE deleted_at IS NULL AND due <= ?1 AND {}
-             ORDER BY due, id LIMIT ?2",
+             WHERE deleted_at IS NULL AND due <= ?1 AND {} AND {HOLD_FILTER}
+             ORDER BY due, id LIMIT ?5",
             kind_filter(kinds)
         ))?;
-        let rows = stmt.query_map(params![now, limit], item_row)?;
+        let (k, g, u) = Hold::params(hold);
+        let rows = stmt.query_map(params![now, k, g, u, limit], item_row)?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
     /// Number of items of `kinds` (all kinds when empty) due at or before `now`.
     pub fn count_due(&self, now: Millis, kinds: &[&str]) -> Result<u32> {
+        self.count_due_held(now, kinds, None)
+    }
+
+    /// [`Store::count_due`] without the items `hold` matches. Counts in
+    /// SQLite, so it stays cheap however long the queue grows.
+    pub fn count_due_held(
+        &self,
+        now: Millis,
+        kinds: &[&str],
+        hold: Option<&Hold<'_>>,
+    ) -> Result<u32> {
+        let (k, g, u) = Hold::params(hold);
         Ok(self.conn().query_row(
             &format!(
-                "SELECT count(*) FROM review_items WHERE deleted_at IS NULL AND due <= ?1 AND {}",
+                "SELECT count(*) FROM review_items
+                 WHERE deleted_at IS NULL AND due <= ?1 AND {} AND {HOLD_FILTER}",
                 kind_filter(kinds)
             ),
-            [now],
+            params![now, k, g, u],
             |r| r.get(0),
         )?)
     }
@@ -825,6 +850,27 @@ impl Store {
 
 /// `kind IN (...)` for a fixed set of kind ids (never user input; quoted
 /// defensively anyway), or `1` for all kinds.
+/// Review items to hold back from a due query: those of `kind` whose key
+/// matches the SQLite GLOB `key_glob` and not `unless_glob`.
+#[derive(Debug, Clone, Copy)]
+pub struct Hold<'a> {
+    pub kind: &'a str,
+    pub key_glob: &'a str,
+    pub unless_glob: &'a str,
+}
+
+impl Hold<'_> {
+    /// `?2`–`?4` of [`HOLD_FILTER`]; `None` holds nothing (NULL kind).
+    fn params(hold: Option<&Hold<'_>>) -> (Option<String>, String, String) {
+        hold.map_or((None, String::new(), String::new()), |h| {
+            (Some(h.kind.into()), h.key_glob.into(), h.unless_glob.into())
+        })
+    }
+}
+
+/// SQL for a [`Hold`] bound as `?2` (kind), `?3` and `?4` (globs).
+const HOLD_FILTER: &str = "NOT (kind IS ?2 AND item_key GLOB ?3 AND item_key NOT GLOB ?4)";
+
 fn kind_filter(kinds: &[&str]) -> String {
     if kinds.is_empty() {
         return "1".into();
@@ -877,6 +923,34 @@ mod tests {
         });
         ok.unwrap();
         assert_eq!(s.setting("b").unwrap(), Some(json!(2)));
+    }
+
+    #[test]
+    fn holds_keep_matching_items_out_of_due_queries() {
+        let (s, _) = store();
+        for key in ["v1|a|preflop|x", "v1|a|srp|x", "v1|b|srp|y", "old"] {
+            s.ensure_review_item("spot_template", key, None, 0).unwrap();
+        }
+        s.ensure_review_item("calc_exercise", "v1|a|srp|x", None, 0)
+            .unwrap();
+        let hold = Hold {
+            kind: "spot_template",
+            key_glob: "v1|*",
+            unless_glob: "v1|*|preflop|*",
+        };
+        assert_eq!(s.count_due(10, &[]).unwrap(), 5);
+        assert_eq!(s.count_due_held(10, &[], Some(&hold)).unwrap(), 3);
+        let keys: Vec<(String, String)> = s
+            .due_items_held(10, &[], Some(&hold), 10)
+            .unwrap()
+            .into_iter()
+            .map(|i| (i.kind, i.key))
+            .collect();
+        assert_eq!(keys.len(), 3);
+        assert!(keys.contains(&("spot_template".into(), "v1|a|preflop|x".into())));
+        assert!(keys.contains(&("spot_template".into(), "old".into())));
+        assert!(keys.contains(&("calc_exercise".into(), "v1|a|srp|x".into())));
+        assert_eq!(s.due_items_held(10, &[], Some(&hold), 1).unwrap().len(), 1);
     }
 
     #[test]
