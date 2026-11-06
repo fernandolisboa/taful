@@ -215,6 +215,12 @@ Exploitative play is only teachable if the grade measures EV against the real op
 - **Budget:** each profile adds a few minutes of build time per flop and less storage than the reference strategy (EVs for hero's hands only), instead of a full extra solve. All profiles × all D2 spots are affordable, so there is no need to split pre-solved and on-demand profiles.
 - **Avoid partial locks** (bot locked only at some nodes and re-optimizing elsewhere). Each would be a full re-solve (~35–60 min per SRP flop), which would multiply the D2 build time by the number of profiles.
 
+### Choosing profiled opponents (amended 2026-11-06)
+- **Spot mode:** the user picks the opponent's profile (reference or any profile) in the controls panel.
+- **Full-hand mode:** each bot seat can carry its own profile (for example two nits, one maniac, two TAGs); a single profile for every seat is the simple case.
+- Graded mistakes against a profile land in the FSRS queue and in leak detection **keyed by profile**, so the user sees whether they adjust to each opponent type.
+- Postflop is heads-up in every D2 configuration, so only the remaining opponent's profile matters there and its best responses come precomputed from the build. **Preflop at a mixed table** needs a best response against that seat combination, computed on demand by the own preflop solver (D12). Its cost is unmeasured; the mixed table ships as a separate step after the single-profile one, starting with that measurement.
+
 ### Build sequencing (amended 2026-11-06)
 - **Per-profile best responses can only be computed inside the solve.** Library files are turn-truncated and pruned (spec §7.5), and a best response against an exploitative profile needs the full tree down to the river, including the lines the reference strategy rarely takes. A separate pass over stored `.tafl` files cannot produce them.
 - **Rule:** any per-flop output that needs the full solved tree (profile best responses today, anything similar later) is computed by the build tool during the solve. Profiles are calibrated on the first-slice library before the coverage run, because changing a profile afterwards means re-solving.
