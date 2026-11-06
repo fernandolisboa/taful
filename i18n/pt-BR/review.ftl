@@ -27,3 +27,4 @@ home-calc-start = Treinar
 home-progress = { $done } de { $total } lições concluídas
 home-leaks-title = Maiores vazamentos
 home-leaks-body = Nenhum vazamento ainda. Eles aparecem quando as decisões avaliadas acumulam erros num tipo de spot.
+review-dealing = Distribuindo um spot…

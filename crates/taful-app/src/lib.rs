@@ -10,12 +10,16 @@
 //!   review queue.
 //! - [`preflop`]: the preflop spot mode and full hands over the solver library
 //!   (M3).
+//! - [`layout`] and [`appearance`]: table-screen layout presets, saved
+//!   layouts and the theme choice (M6).
 
+pub mod appearance;
 pub mod calc_trainer;
 pub mod content;
 pub mod fmt;
 pub mod hand;
 pub mod i18n;
+pub mod layout;
 pub mod lessons;
 pub mod model;
 pub mod postflop;
@@ -73,3 +77,26 @@ impl From<std::io::Error> for Error {
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+/// The desktop deals spots, plays bot actions and solves rivers on a
+/// background thread (M6 performance pass). These types cross that thread
+/// boundary.
+#[cfg(test)]
+mod thread_safety {
+    use crate::*;
+
+    fn send<T: Send + 'static>() {}
+    fn sync<T: Sync>() {}
+
+    #[test]
+    fn background_work_types_cross_threads() {
+        send::<hand::FullHand>();
+        send::<training::DrillSpot>();
+        send::<std::sync::Arc<training::Trainers>>();
+        sync::<training::Trainers>();
+        send::<review_session::TemplateDeal>();
+        send::<std::result::Result<training::DrillSpot, training::TemplateError>>();
+        send::<std::result::Result<hand::FullHand, hand::HandError>>();
+        send::<postflop::PostflopError>();
+    }
+}

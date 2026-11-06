@@ -1,0 +1,58 @@
+{
+  "schema": 2,
+  "name": "daylight",
+  "colors": {
+    "background": "#f3eee3",
+    "surface": "#fbf8f1",
+    "surface_raised": "#e9e1cf",
+    "border": "#cbbda3",
+    "text": "#1d2a30",
+    "text_muted": "#4c5a60",
+    "accent": "#7f5300",
+    "accent_muted": "#c99a3c",
+    "on_accent": "#fbf8f1",
+    "felt": "#a9d3c9",
+    "felt_line": "#8cc2b6",
+    "rail": "#ede2cb",
+    "rail_edge": "#b8a888",
+    "seat": "#fbf8f1",
+    "seat_active": "#f0e2c2",
+    "grid_dot": "#cbbda3",
+    "card_face": "#ffffff",
+    "card_back": "#1f4f6b",
+    "suit_spades": "#1b2630",
+    "suit_hearts": "#b4561a",
+    "suit_diamonds": "#946d00",
+    "suit_clubs": "#1e7a52",
+    "chip_1": "#e8dfc6",
+    "chip_5": "#c4621c",
+    "chip_25": "#1e7a52",
+    "chip_100": "#1b2630",
+    "chip_500": "#6b4fa0",
+    "grade_best": "#00695c",
+    "grade_correct": "#33691e",
+    "grade_inaccuracy": "#6f6500",
+    "grade_mistake": "#a84300",
+    "grade_blunder": "#6a3fb0"
+  },
+  "spacing": {
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "xxl": 32
+  },
+  "radii": {
+    "sm": 4,
+    "md": 6,
+    "lg": 10,
+    "pill": 999
+  },
+  "text_size": {
+    "sm": 12,
+    "md": 14,
+    "lg": 18,
+    "xl": 24
+  }
+}

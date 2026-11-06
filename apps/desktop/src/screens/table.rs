@@ -2,11 +2,20 @@
 //! hands from preflop to the river against the reference bots (M5), and
 //! drills from a leak bucket. Every hero decision is graded; the shell
 //! stores decisions and hands through [`TableEvent`]s.
+//!
+//! Panels sit on the active layout's grid (spec §15.3, M6) and the felt
+//! scales to its panel. Work that can solve a river (postflop deals, drills,
+//! every full-hand step) runs on the background executor; the screen shows
+//! a busy line and ignores clicks until it lands (M6 performance pass).
 
 use std::rc::Rc;
 use std::sync::Arc;
 
-use gpui::{Context, Div, EventEmitter, SharedString, Stateful, Window, div, prelude::*, px};
+use gpui::{
+    AnyElement, Context, Div, EventEmitter, SharedString, Stateful, Task, Window, div, prelude::*,
+    px,
+};
+use taful_app::layout::{Layout, PanelId, Rect};
 use taful_app::model::{
     DrillSpot, FullHand, HandEnd, LeakBucket, LeftReason, SpotContext, Street, Trainers,
 };
@@ -15,7 +24,7 @@ use taful_app::preflop::{Action, GameState, GradedDecision, SpotKind};
 use taful_app::template::{street_id, texture_label_keys};
 
 use crate::Ui;
-use crate::felt::{self, Explain, FELT_W};
+use crate::felt::{self, Explain};
 use crate::theme::Palette;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -55,7 +64,34 @@ pub struct TableScreen {
     hand: Option<FullHand>,
     /// The current hand was handed to the shell.
     hand_sent: bool,
+    /// Panel placement (settings).
+    layout: Layout,
+    /// Background work in flight, if any.
+    busy: Option<Busy>,
+    /// Bumped by every deal and action; a background result for an older
+    /// generation is dropped.
+    generation: u64,
+    _job: Option<Task<()>>,
 }
+
+/// What the background is doing (the busy line).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Busy {
+    Dealing,
+    Acting,
+}
+
+/// A background result.
+enum Done {
+    Question(Option<DrillSpot>),
+    Hand(Option<FullHand>),
+    Acted(Result<FullHand, String>),
+}
+
+/// Smallest grid cell in pixels: below it the window scrolls instead.
+const MIN_CELL: f32 = 14.;
+/// Room the shell takes above the screen (title and gap), in pixels.
+const TITLE_ROOM: f32 = 56.;
 
 impl TableScreen {
     /// Switches the strings (locale change); the deal in progress is kept.
@@ -64,7 +100,28 @@ impl TableScreen {
         self.ui = ui;
     }
 
-    pub fn new(ui: Rc<Ui>, trainers: Result<Arc<Trainers>, String>) -> Self {
+    /// New reference strategies (library folder changed in settings).
+    pub fn set_trainers(
+        &mut self,
+        trainers: Result<Arc<Trainers>, String>,
+        cx: &mut Context<Self>,
+    ) {
+        self.trainers = trainers;
+        self.deal(cx);
+        cx.notify();
+    }
+
+    /// Switches the panel placement (settings).
+    pub fn set_layout(&mut self, layout: Layout) {
+        self.layout = layout;
+    }
+
+    pub fn new(
+        ui: Rc<Ui>,
+        trainers: Result<Arc<Trainers>, String>,
+        layout: Layout,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let palette = Palette::new(&ui.theme.colors);
         // A fresh sequence every launch; each deal is still reproducible
         // from its own seed.
@@ -84,6 +141,10 @@ impl TableScreen {
             answer: None,
             hand: None,
             hand_sent: false,
+            layout,
+            busy: None,
+            generation: 0,
+            _job: None,
         };
         // Dev override (and screenshots): TAFUL_TABLE_MODE=postflop|hand.
         match std::env::var("TAFUL_TABLE_MODE").as_deref() {
@@ -94,7 +155,7 @@ impl TableScreen {
         if let Ok(seed) = std::env::var("TAFUL_TABLE_SEED").map(|v| v.parse::<u64>()) {
             s.seed = seed.unwrap_or(s.seed);
         }
-        s.deal();
+        s.deal(cx);
         s
     }
 
@@ -103,13 +164,17 @@ impl TableScreen {
         self.seed
     }
 
-    /// New spot or hand for the current mode.
-    fn deal(&mut self) {
+    /// New spot or hand for the current mode. Postflop deals, drills and
+    /// hands run in the background (they can solve rivers).
+    fn deal(&mut self, cx: &mut Context<Self>) {
         let Ok(t) = self.trainers.clone() else { return };
         let seed = self.next_seed();
         self.answer = None;
+        self.generation += 1;
         match self.mode {
             Mode::Spot => {
+                self.busy = None;
+                self._job = None;
                 self.question = t
                     .preflop
                     .spot(self.kind, seed)
@@ -117,23 +182,71 @@ impl TableScreen {
                     .map(|s| DrillSpot::Preflop(Box::new(s)));
             }
             Mode::Postflop => {
-                self.question = t.post().and_then(|pf| {
-                    pf.spot(self.postflop_spot.as_deref(), seed)
-                        .ok()
-                        .map(|s| DrillSpot::Postflop(Box::new(s)))
+                self.question = None;
+                let spot = self.postflop_spot.clone();
+                self.run(Busy::Dealing, cx, move || {
+                    Done::Question(t.post().and_then(|pf| {
+                        pf.spot(spot.as_deref(), seed)
+                            .ok()
+                            .map(|s| DrillSpot::Postflop(Box::new(s)))
+                    }))
                 });
             }
             Mode::Drill => {
-                self.question = self
-                    .drill
-                    .as_ref()
-                    .and_then(|b| t.spot_for_bucket(b, seed).ok());
+                self.question = None;
+                let bucket = self.drill.clone();
+                self.run(Busy::Dealing, cx, move || {
+                    Done::Question(bucket.and_then(|b| t.spot_for_bucket(&b, seed).ok()))
+                });
             }
             Mode::Hand => {
-                // A new hand starts by the button so every seat comes up.
-                self.hand = FullHand::new(&t.preflop, t.post(), None, seed).ok();
+                self.hand = None;
                 self.hand_sent = false;
+                // A new hand starts by the button so every seat comes up.
+                self.run(Busy::Dealing, cx, move || {
+                    Done::Hand(FullHand::new(&t.preflop, t.post(), None, seed).ok())
+                });
             }
+        }
+    }
+
+    /// Runs `work` on the background executor; its result lands through
+    /// [`Self::finish`] unless a newer deal or action came first.
+    fn run(
+        &mut self,
+        busy: Busy,
+        cx: &mut Context<Self>,
+        work: impl FnOnce() -> Done + Send + 'static,
+    ) {
+        let generation = self.generation;
+        self.busy = Some(busy);
+        let job = cx.background_executor().spawn(async move { work() });
+        self._job = Some(cx.spawn(async move |this, cx| {
+            let done = job.await;
+            this.update(cx, |s, cx| {
+                if s.generation == generation {
+                    s.busy = None;
+                    s.finish(done, cx);
+                    cx.notify();
+                }
+            })
+            .ok();
+        }));
+        cx.notify();
+    }
+
+    fn finish(&mut self, done: Done, cx: &mut Context<Self>) {
+        match done {
+            Done::Question(q) => self.question = q,
+            Done::Hand(h) => self.hand = h,
+            Done::Acted(Ok(h)) => {
+                if h.end.is_some() && !self.hand_sent {
+                    self.hand_sent = true;
+                    cx.emit(TableEvent::HandOver(Box::new(h.clone())));
+                }
+                self.hand = Some(h);
+            }
+            Done::Acted(Err(e)) => eprintln!("taful: hand: {e}"),
         }
     }
 
@@ -141,21 +254,21 @@ impl TableScreen {
     pub fn start_drill(&mut self, bucket: LeakBucket, cx: &mut Context<Self>) {
         self.drill = Some(bucket);
         self.mode = Mode::Drill;
-        self.deal();
+        self.deal(cx);
         cx.notify();
     }
 
     fn set_postflop_spot(&mut self, id: Option<String>, cx: &mut Context<Self>) {
         self.postflop_spot = id;
         self.mode = Mode::Postflop;
-        self.deal();
+        self.deal(cx);
         cx.notify();
     }
 
     fn set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
         if self.mode != mode {
             self.mode = mode;
-            self.deal();
+            self.deal(cx);
             cx.notify();
         }
     }
@@ -163,25 +276,33 @@ impl TableScreen {
     fn set_kind(&mut self, kind: SpotKind, cx: &mut Context<Self>) {
         self.kind = kind;
         self.mode = Mode::Spot;
-        self.deal();
+        self.deal(cx);
         cx.notify();
     }
 
     fn act(&mut self, action: Action, cx: &mut Context<Self>) {
+        if self.busy.is_some() {
+            return;
+        }
         let Ok(t) = self.trainers.clone() else { return };
         match self.mode {
             Mode::Hand => {
-                if let Some(h) = &mut self.hand {
-                    if let Err(e) = h.act(&t.preflop, t.post(), action) {
-                        eprintln!("taful: hand: {e}");
-                    }
-                    if h.end.is_some() && !self.hand_sent {
-                        self.hand_sent = true;
-                        cx.emit(TableEvent::HandOver(Box::new(h.clone())));
-                    }
+                // The bots answer and the river may be solved: background.
+                if let Some(h) = &self.hand {
+                    let mut h = h.clone();
+                    self.generation += 1;
+                    self.run(Busy::Acting, cx, move || {
+                        Done::Acted(
+                            h.act(&t.preflop, t.post(), action)
+                                .map(|_| ())
+                                .map(|()| h)
+                                .map_err(|e| e.to_string()),
+                        )
+                    });
                 }
             }
             _ => {
+                // Grading reads the spot's strategy: no solve here.
                 if self.answer.is_none()
                     && let Some(q) = &self.question
                 {
@@ -244,15 +365,27 @@ impl TableScreen {
                 )
             })
             .collect();
-        div().flex().gap(px(t.spacing.sm)).children(buttons)
+        div()
+            .flex()
+            .flex_wrap()
+            .gap(px(t.spacing.sm))
+            .children(buttons)
     }
 
     fn message(&self, text: String) -> Div {
         div()
-            .w(px(FELT_W))
             .text_size(px(self.ui.theme.text_size.md))
             .text_color(self.palette.text_muted)
             .child(text)
+    }
+
+    /// The busy line while background work runs.
+    fn busy_line(&self) -> Option<Div> {
+        let key = match self.busy? {
+            Busy::Dealing => "table-busy-dealing",
+            Busy::Acting => "table-busy-acting",
+        };
+        Some(self.message(self.ui.i18n.tr(key)))
     }
 
     /// Why postflop spots cannot be dealt.
@@ -275,49 +408,43 @@ impl TableScreen {
     }
 
     /// A single-decision question (spot, postflop, drill).
-    fn question_view(&self, t: &Trainers, cx: &mut Context<Self>) -> Div {
-        let (p, th, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
+    fn question_parts(&self, t: &Trainers, scale: f32, cx: &mut Context<Self>) -> Parts {
+        let (p, i18n) = (&self.palette, &self.ui.i18n);
         if self.mode == Mode::Postflop
             && let Some(msg) = self.postflop_message(t)
         {
-            return self.message(msg);
+            return Parts::message(self.message(msg));
         }
         let Some(q) = &self.question else {
-            return self.message(i18n.tr("table-no-spot"));
+            return match self.busy_line() {
+                Some(b) => Parts::message(b),
+                None => Parts::message(self.message(i18n.tr("table-no-spot"))),
+            };
         };
-        let panel = match &self.answer {
-            Some(d) => felt::panel(&self.ui, p)
-                .child(felt::explanation(&self.ui, p, &Explain::of(d)))
-                .child(
-                    self.button("next", i18n.tr("table-next-spot"), true, cx, |this, cx| {
-                        this.deal();
+        let (panel, actions) = match &self.answer {
+            Some(d) => (
+                div().child(felt::explanation(&self.ui, p, &Explain::of(d))),
+                div().child(self.button(
+                    "next",
+                    i18n.tr("table-next-spot"),
+                    true,
+                    cx,
+                    |this, cx| {
+                        this.deal(cx);
                         cx.notify();
-                    }),
-                ),
-            None => felt::panel(&self.ui, p).child(
-                div()
-                    .text_size(px(th.text_size.md))
-                    .text_color(p.text_muted)
-                    .child(i18n.tr("table-spot-prompt")),
+                    },
+                )),
+            ),
+            None => (
+                self.message(i18n.tr("table-spot-prompt")),
+                self.actions_bar(q.state(), &q.actions(t), cx),
             ),
         };
-        let actions = if self.answer.is_none() {
-            q.actions(t)
-        } else {
-            vec![]
-        };
-        div()
-            .flex()
-            .gap(px(th.spacing.xl))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(th.spacing.lg))
-                    .child(felt::table(&self.ui, p, q.state(), q.hero(), false))
-                    .child(self.actions_bar(q.state(), &actions, cx)),
-            )
-            .child(panel)
+        Parts {
+            table: felt::table_scaled(&self.ui, p, q.state(), q.hero(), false, scale),
+            actions,
+            panel,
+        }
     }
 
     fn end_text(&self, h: &FullHand) -> Option<String> {
@@ -342,16 +469,20 @@ impl TableScreen {
         })
     }
 
-    fn hand_view(&self, t: &Trainers, cx: &mut Context<Self>) -> Div {
+    fn hand_parts(&self, t: &Trainers, scale: f32, cx: &mut Context<Self>) -> Parts {
         let (p, th, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
         let Some(h) = &self.hand else {
-            return self.message(i18n.tr("table-no-spot"));
+            return match self.busy_line() {
+                Some(b) => Parts::message(b),
+                None => Parts::message(self.message(i18n.tr("table-no-spot"))),
+            };
         };
         let over = h.end.is_some();
         let decisions = h.decisions.iter().map(|d| {
             div()
                 .flex()
                 .justify_between()
+                .gap(px(th.spacing.sm))
                 .text_size(px(th.text_size.sm))
                 .child(format!(
                     "{} · {} · {}",
@@ -359,20 +490,11 @@ impl TableScreen {
                     d.graded.position.label(),
                     felt::action_short(&self.ui, d.graded.actions[d.graded.chosen])
                 ))
-                .child(
-                    div()
-                        .text_color(p.accent)
-                        .child(i18n.tr(&felt::grade_key(d.graded.grade))),
-                )
+                .child(felt::grade_label(&self.ui, p, d.graded.grade))
         });
-        let mut panel = felt::panel(&self.ui, p);
+        let mut panel = div().flex().flex_col().gap(px(th.spacing.lg));
         if h.decisions.is_empty() && !over {
-            panel = panel.child(
-                div()
-                    .text_size(px(th.text_size.md))
-                    .text_color(p.text_muted)
-                    .child(i18n.tr("table-spot-prompt")),
-            );
+            panel = panel.child(self.message(i18n.tr("table-spot-prompt")));
         }
         if let Some(d) = h.decisions.last() {
             panel = panel.child(felt::explanation(&self.ui, p, &Explain::of(&d.graded)));
@@ -398,7 +520,7 @@ impl TableScreen {
                     .child(i18n.tr("table-river-solved")),
             );
         }
-        if let Some(text) = self.end_text(h) {
+        let actions = if let Some(text) = self.end_text(h) {
             panel = panel
                 .child(div().text_size(px(th.text_size.md)).child(text))
                 .child(
@@ -412,77 +534,50 @@ impl TableScreen {
                                 felt::num(&self.ui, h.total_ev_loss_bb(), 2).into(),
                             )],
                         )),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .gap(px(th.spacing.sm))
-                        .child(self.button(
-                            "new_hand",
-                            i18n.tr("table-new-hand"),
-                            true,
-                            cx,
-                            |this, cx| {
-                                this.deal();
-                                cx.notify();
-                            },
-                        ))
-                        .when(!h.decisions.is_empty(), |d| {
-                            d.child(self.button(
-                                "review_hand",
-                                i18n.tr("table-review-hand"),
-                                false,
-                                cx,
-                                |_, cx| cx.emit(TableEvent::ReviewHand),
-                            ))
-                        }),
                 );
+            div()
+                .flex()
+                .flex_wrap()
+                .gap(px(th.spacing.sm))
+                .child(self.button(
+                    "new_hand",
+                    i18n.tr("table-new-hand"),
+                    true,
+                    cx,
+                    |this, cx| {
+                        this.deal(cx);
+                        cx.notify();
+                    },
+                ))
+                .when(!h.decisions.is_empty(), |d| {
+                    d.child(self.button(
+                        "review_hand",
+                        i18n.tr("table-review-hand"),
+                        false,
+                        cx,
+                        |_, cx| cx.emit(TableEvent::ReviewHand),
+                    ))
+                })
+        } else if let Some(b) = self.busy_line() {
+            b
+        } else {
+            self.actions_bar(&h.state, &h.hero_actions(&t.preflop), cx)
+        };
+        Parts {
+            table: felt::table_scaled(&self.ui, p, &h.state, h.hero, over, scale),
+            actions,
+            panel,
         }
-        let actions = h.hero_actions(&t.preflop);
-        div()
-            .flex()
-            .gap(px(th.spacing.xl))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(th.spacing.lg))
-                    .child(felt::table(&self.ui, p, &h.state, h.hero, over))
-                    .child(self.actions_bar(&h.state, &actions, cx)),
-            )
-            .child(panel)
     }
 
-    /// The drill's bucket as one line.
-    pub fn bucket_label(ui: &Ui, b: &LeakBucket) -> String {
-        let i18n = &ui.i18n;
-        let mut parts = vec![felt::spot_label(ui, &b.spot)];
-        if b.street != Street::Preflop {
-            parts.push(i18n.tr(&format!("street-{}", street_id(b.street))));
-        }
-        parts.push(i18n.tr(&format!("node-type-{}", b.node_type.id())));
-        if let Some(keys) = b.texture.as_deref().and_then(texture_label_keys) {
-            parts.push(keys.map(|k| i18n.tr(&k)).join(", "));
-        }
-        parts.join(" · ")
-    }
-}
-
-impl Render for TableScreen {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    /// Mode and spot pickers.
+    fn controls(&self, trainers: &Trainers, cx: &mut Context<Self>) -> Div {
         let (p, th) = (self.palette, self.ui.theme.clone());
         let ui = self.ui.clone();
         let i18n = &ui.i18n;
-        let trainers = match &self.trainers {
-            Ok(t) => t.clone(),
-            Err(e) => {
-                return div()
-                    .text_color(p.text_muted)
-                    .child(i18n.tr_args("table-chart-error", &[("error", e.clone().into())]));
-            }
-        };
         let mut modes = div()
             .flex()
+            .flex_wrap()
             .gap(px(th.spacing.sm))
             .child(self.chip(
                 "mode_spot",
@@ -548,10 +643,6 @@ impl Render for TableScreen {
                 ));
             }
         }
-        let body = match self.mode {
-            Mode::Hand => self.hand_view(&trainers, cx),
-            _ => self.question_view(&trainers, cx),
-        };
         let title: SharedString = match self.mode {
             Mode::Postflop => i18n.tr("table-subtitle-postflop"),
             Mode::Hand => i18n.tr("table-subtitle-hand"),
@@ -568,7 +659,7 @@ impl Render for TableScreen {
         div()
             .flex()
             .flex_col()
-            .gap(px(th.spacing.lg))
+            .gap(px(th.spacing.sm))
             .child(
                 div()
                     .text_size(px(th.text_size.sm))
@@ -594,6 +685,137 @@ impl Render for TableScreen {
                         .children(pf_chips),
                 )
             })
-            .child(body)
+    }
+
+    /// A panel's box on the grid.
+    fn place(r: Rect) -> Div {
+        div()
+            .absolute()
+            .left(px(r.x))
+            .top(px(r.y))
+            .w(px(r.w))
+            .h(px(r.h))
+    }
+
+    /// The drill's bucket as one line.
+    pub fn bucket_label(ui: &Ui, b: &LeakBucket) -> String {
+        let i18n = &ui.i18n;
+        let mut parts = vec![felt::spot_label(ui, &b.spot)];
+        if b.street != Street::Preflop {
+            parts.push(i18n.tr(&format!("street-{}", street_id(b.street))));
+        }
+        parts.push(i18n.tr(&format!("node-type-{}", b.node_type.id())));
+        if let Some(keys) = b.texture.as_deref().and_then(texture_label_keys) {
+            parts.push(keys.map(|k| i18n.tr(&k)).join(", "));
+        }
+        parts.join(" · ")
+    }
+}
+
+impl Render for TableScreen {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let (p, th) = (self.palette, self.ui.theme.clone());
+        let ui = self.ui.clone();
+        let trainers = match &self.trainers {
+            Ok(t) => t.clone(),
+            Err(e) => {
+                return div()
+                    .text_color(p.text_muted)
+                    .child(
+                        ui.i18n
+                            .tr_args("table-chart-error", &[("error", e.clone().into())]),
+                    )
+                    .into_any_element();
+            }
+        };
+        // Cells from the space the shell leaves us (spec §15.3).
+        let vp = window.viewport_size();
+        let w = f32::from(vp.width) - crate::shell::NAV_WIDTH - 2. * th.spacing.xxl;
+        let h = f32::from(vp.height) - 2. * th.spacing.xxl - TITLE_ROOM;
+        let layout = self.layout.clone();
+        let cell = layout.cell_size(w, h, MIN_CELL);
+        let rect = |id| layout.rect(id, cell);
+        let scale = rect(PanelId::Table).map_or(1., |r| felt::fit_scale(r.w, r.h));
+        let parts = match self.mode {
+            Mode::Hand => self.hand_parts(&trainers, scale, cx),
+            _ => self.question_parts(&trainers, scale, cx),
+        };
+        let controls = self.controls(&trainers, cx);
+        let mut grid = div()
+            .relative()
+            .flex_none()
+            .w(px(cell * f32::from(layout.grid.cols)))
+            .h(px(cell * f32::from(layout.grid.rows)));
+        let mut parts = Some(parts);
+        let mut controls = Some(controls);
+        for id in PanelId::ALL {
+            let Some(r) = rect(id) else { continue };
+            let el: AnyElement = match id {
+                PanelId::Controls => match controls.take() {
+                    Some(c) => Self::place(r).child(c).into_any_element(),
+                    None => continue,
+                },
+                PanelId::Table => {
+                    let table = parts
+                        .as_mut()
+                        .map(|p| std::mem::replace(&mut p.table, div()));
+                    Self::place(r)
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .children(table)
+                        .into_any_element()
+                }
+                PanelId::Actions => {
+                    let actions = parts
+                        .as_mut()
+                        .map(|p| std::mem::replace(&mut p.actions, div()));
+                    Self::place(r)
+                        .flex()
+                        .items_start()
+                        .justify_center()
+                        .pt(px(th.spacing.sm))
+                        .children(actions)
+                        .into_any_element()
+                }
+                PanelId::Explanation => {
+                    let panel = parts.take().map(|p| p.panel);
+                    Self::place(r)
+                        .child(
+                            div()
+                                .id("explanation")
+                                .size_full()
+                                .overflow_y_scroll()
+                                .p(px(th.spacing.lg))
+                                .rounded(px(th.radii.lg))
+                                .bg(p.surface)
+                                .border_1()
+                                .border_color(p.border)
+                                .children(panel),
+                        )
+                        .into_any_element()
+                }
+            };
+            grid = grid.child(el);
+        }
+        grid.into_any_element()
+    }
+}
+
+/// What the table, actions and explanation panels show.
+struct Parts {
+    table: Div,
+    actions: Div,
+    panel: Div,
+}
+
+impl Parts {
+    /// Only a message (no spot): shown on the felt's panel.
+    fn message(text: Div) -> Parts {
+        Parts {
+            table: text,
+            actions: div(),
+            panel: div(),
+        }
     }
 }

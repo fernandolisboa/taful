@@ -313,6 +313,16 @@ impl App {
         Ok(t)
     }
 
+    /// Remembers `dir` as the library folder (settings) and reloads.
+    pub fn set_library_folder(&mut self, dir: PathBuf) -> Result<Arc<Trainers>> {
+        self.store.set_setting(
+            crate::keys::LIBRARY_DIR,
+            &serde_json::json!(dir.to_string_lossy()),
+        )?;
+        self.set_library_dir(dir);
+        self.trainers()
+    }
+
     /// Use the library in `dir` (tests, or a folder picked in settings).
     pub fn set_library_dir(&mut self, dir: PathBuf) {
         self.library_dir = Some(dir);

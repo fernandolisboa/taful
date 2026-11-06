@@ -154,11 +154,7 @@ impl Shell {
                     "{street} · {}",
                     felt::action_short(&ui, d.actions[d.chosen])
                 ))
-                .child(
-                    div()
-                        .text_color(p.accent)
-                        .child(ui.i18n.tr(&felt::grade_key(d.grade))),
-                )
+                .child(felt::grade_label(&ui, &p, d.grade))
         });
         let mut panel = felt::panel(&ui, &p)
             .child(title(self.summary_line(&h.summary), &ui))
@@ -207,10 +203,7 @@ impl Shell {
         let list = self.hand_review.list.iter().enumerate().map(|(i, s)| {
             let id = s.id.clone();
             let open = s.id == h.summary.id;
-            let worst = s
-                .worst
-                .map(|g| ui.i18n.tr(&felt::grade_key(g)))
-                .unwrap_or_default();
+            let worst = s.worst.map(|g| felt::grade_label(&ui, &p, g));
             div()
                 .id(("hr_hand", i))
                 .flex()
@@ -231,15 +224,11 @@ impl Shell {
                 }))
                 .child(self.summary_line(s))
                 .child(
-                    div()
-                        .flex()
-                        .gap(px(t.spacing.md))
-                        .child(div().text_color(p.accent).child(worst))
-                        .child(
-                            div()
-                                .text_color(p.text_muted)
-                                .child(fmt::datetime(s.played_at, loc)),
-                        ),
+                    div().flex().gap(px(t.spacing.md)).children(worst).child(
+                        div()
+                            .text_color(p.text_muted)
+                            .child(fmt::datetime(s.played_at, loc)),
+                    ),
                 )
         });
         div()

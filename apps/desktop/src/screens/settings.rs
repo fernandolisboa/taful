@@ -1,5 +1,6 @@
-//! Settings (spec §15.1 item 8): language, review retention, backups,
-//! grading thresholds (read-only). Layout, theme and library arrive later.
+//! Settings (spec §15.1 item 8): language, theme and table layout (M6),
+//! review retention, backups, the strategy library folder, and the grading
+//! thresholds (read-only).
 
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -7,6 +8,8 @@ use std::rc::Rc;
 use gpui::{AnyElement, Context, PathPromptOptions, Window, div, prelude::*, px};
 use taful_app::fmt;
 use taful_app::i18n::Locale;
+use taful_app::layout::Layout;
+use taful_app::theme::BUILTIN_THEMES;
 
 use crate::Ui;
 use crate::shell::Shell;
@@ -25,7 +28,216 @@ impl Shell {
         if let Err(e) = self.app.set_locale(locale) {
             eprintln!("taful: saving the locale failed: {e}");
         }
-        self.set_ui(Rc::new(Ui::new(locale)), window, cx);
+        let theme = self.ui.theme.clone();
+        self.set_ui(Rc::new(Ui::new(locale, theme)), window, cx);
+    }
+
+    fn set_theme(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        match self.app.set_theme(id) {
+            Ok(theme) => {
+                let locale = self.ui.i18n.locale();
+                self.set_ui(Rc::new(Ui::new(locale, theme)), window, cx);
+            }
+            Err(e) => eprintln!("taful: saving the theme failed: {e}"),
+        }
+    }
+
+    /// Hands the active layout to the table screen.
+    fn apply_layout(&mut self, r: taful_app::Result<()>, cx: &mut Context<Self>) {
+        if let Err(e) = r {
+            eprintln!("taful: saving the layout failed: {e}");
+        }
+        let (_, layout) = self.app.active_layout();
+        self.table.update(cx, |t, cx| {
+            t.set_layout(layout);
+            cx.notify();
+        });
+    }
+
+    fn pick_library_dir(&mut self, cx: &mut Context<Self>) {
+        let rx = cx.prompt_for_paths(PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: false,
+            prompt: None,
+        });
+        cx.spawn(async move |this, cx| {
+            if let Ok(Ok(Some(paths))) = rx.await
+                && let Some(dir) = paths.into_iter().next()
+            {
+                this.update(cx, |s, cx| {
+                    let r = s.app.set_library_folder(dir.clone());
+                    if let Ok(t) = &r {
+                        let t = t.clone();
+                        s.table
+                            .update(cx, |table, cx| table.set_trainers(Ok(t), cx));
+                    }
+                    s.report(r, |_| Some(dir.display().to_string()));
+                    cx.notify();
+                })
+                .ok();
+            }
+        })
+        .detach();
+    }
+
+    /// Theme and layout pickers (spec §15.3, §15.4).
+    fn appearance_card(&mut self, cx: &mut Context<Self>) -> gpui::Div {
+        let (ui, p) = (self.ui.clone(), self.palette);
+        let t = &ui.theme;
+        let theme_chips: Vec<_> = BUILTIN_THEMES
+            .iter()
+            .enumerate()
+            .map(|(i, (id, _))| {
+                let id = *id;
+                chip(
+                    ("theme", i),
+                    ui.i18n.tr(&format!("theme-{id}")),
+                    t.name == id,
+                    &ui,
+                    &p,
+                )
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.set_theme(id, window, cx);
+                    cx.notify();
+                }))
+            })
+            .collect();
+        let (active, layout) = self.app.active_layout();
+        let choices = self.app.layout_choices().unwrap_or_default();
+        let user_layouts = choices.iter().filter(|c| !c.builtin).count();
+        let layout_chips: Vec<_> = choices
+            .into_iter()
+            .enumerate()
+            .map(|(i, c)| {
+                let label = if c.builtin {
+                    ui.i18n.tr(&format!("layout-{}", c.name))
+                } else {
+                    c.name.clone()
+                };
+                let key = c.key.clone();
+                chip(("layout", i), label, c.key == active, &ui, &p).on_click(cx.listener(
+                    move |this, _, _, cx| {
+                        let r = this.app.set_layout(&key).map(|_| ());
+                        this.apply_layout(r, cx);
+                        cx.notify();
+                    },
+                ))
+            })
+            .collect();
+        let active_is_user = active.starts_with("user:");
+        let copy_name = ui.i18n.tr_args(
+            "settings-layout-copy-name",
+            &[("n", (user_layouts + 1).into())],
+        );
+        let mut buttons = div()
+            .flex()
+            .flex_wrap()
+            .gap(px(t.spacing.sm))
+            .child(
+                button(
+                    "layout_save",
+                    ui.i18n.tr("settings-layout-save"),
+                    false,
+                    &ui,
+                    &p,
+                )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    let r = this.app.save_layout_copy(&copy_name).map(|_| ());
+                    this.apply_layout(r, cx);
+                    cx.notify();
+                })),
+            )
+            .child(
+                button(
+                    "layout_reset",
+                    ui.i18n.tr("settings-layout-reset"),
+                    false,
+                    &ui,
+                    &p,
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    let r = this.app.reset_layout();
+                    this.apply_layout(r, cx);
+                    cx.notify();
+                })),
+            );
+        if active_is_user {
+            let key = active.clone();
+            buttons = buttons.child(
+                button(
+                    "layout_delete",
+                    ui.i18n.tr("settings-layout-delete"),
+                    false,
+                    &ui,
+                    &p,
+                )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    let r = this.app.delete_layout(&key);
+                    this.apply_layout(r, cx);
+                    cx.notify();
+                })),
+            );
+        }
+        card(&ui, &p)
+            .child(title(ui.i18n.tr("settings-appearance"), &ui))
+            .child(muted(ui.i18n.tr("settings-theme"), &ui, &p))
+            .child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .gap(px(t.spacing.sm))
+                    .children(theme_chips),
+            )
+            .child(muted(ui.i18n.tr("settings-layout"), &ui, &p))
+            .child(muted(ui.i18n.tr("settings-layout-body"), &ui, &p))
+            .child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .gap(px(t.spacing.sm))
+                    .children(layout_chips),
+            )
+            .child(layout_preview(&layout, &ui, &p))
+            .child(buttons)
+    }
+
+    /// Where the postflop library is read from, and whether it is there.
+    fn library_card(&mut self, cx: &mut Context<Self>) -> gpui::Div {
+        let (ui, p) = (self.ui.clone(), self.palette);
+        let t = &ui.theme;
+        let mut c = card(&ui, &p)
+            .child(title(ui.i18n.tr("settings-library"), &ui))
+            .child(muted(ui.i18n.tr("settings-library-body"), &ui, &p));
+        if let Ok(tr) = self.app.trainers() {
+            c = c
+                .child(div().child(ui.i18n.tr_args(
+                    "settings-library-folder",
+                    &[("path", tr.library_dir.display().to_string().into())],
+                )))
+                .child(muted(
+                    match tr.post() {
+                        Some(pf) => ui
+                            .i18n
+                            .tr_args("settings-library-ok", &[("count", pf.spots().len().into())]),
+                        None => ui.i18n.tr("settings-library-missing"),
+                    },
+                    &ui,
+                    &p,
+                ));
+        }
+        c.child(
+            div().flex().gap(px(t.spacing.sm)).child(
+                button(
+                    "library_dir",
+                    ui.i18n.tr("settings-library-change"),
+                    false,
+                    &ui,
+                    &p,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.pick_library_dir(cx))),
+            ),
+        )
     }
 
     fn report<T>(&mut self, r: taful_app::Result<T>, path: impl Fn(&T) -> Option<String>) {
@@ -267,7 +479,9 @@ impl Shell {
                                             // Strings may follow the imported locale
                                             // (before the report, which `set_ui` clears).
                                             let loc = this.app.locale();
-                                            this.set_ui(Rc::new(Ui::new(loc)), window, cx);
+                                            let theme = this.app.theme();
+                                            this.set_ui(Rc::new(Ui::new(loc, theme)), window, cx);
+                                            this.apply_layout(Ok(()), cx);
                                             this.report(r, |_| Some(f.display().to_string()));
                                         }
                                         cx.notify();
@@ -312,15 +526,52 @@ impl Shell {
                 &[("values", list(&th.rel_pot_pct).into())],
             )));
 
+        let appearance = self.appearance_card(cx);
+        let library = self.library_card(cx);
         div()
             .flex()
             .flex_col()
             .gap(px(t.spacing.lg))
             .child(language)
+            .child(appearance)
             .child(retention_card)
             .child(backups)
+            .child(library)
             .child(grading)
             .child(muted(ui.i18n.tr("settings-later"), &ui, &p))
             .into_any_element()
     }
+}
+
+/// A small map of a layout's panels.
+fn layout_preview(layout: &Layout, ui: &Ui, p: &crate::theme::Palette) -> gpui::Div {
+    const CELL: f32 = 4.;
+    let t = &ui.theme;
+    let mut map = div()
+        .relative()
+        .flex_none()
+        .w(px(CELL * f32::from(layout.grid.cols)))
+        .h(px(CELL * f32::from(layout.grid.rows)))
+        .rounded(px(t.radii.sm))
+        .bg(p.background)
+        .border_1()
+        .border_color(p.border);
+    for panel in layout.panels.iter().filter(|q| q.visible) {
+        let fill = if panel.id == "table" {
+            p.felt
+        } else {
+            p.surface_raised
+        };
+        map = map.child(
+            div()
+                .absolute()
+                .left(px(CELL * f32::from(panel.x) + 1.))
+                .top(px(CELL * f32::from(panel.y) + 1.))
+                .w(px(CELL * f32::from(panel.w) - 2.))
+                .h(px(CELL * f32::from(panel.h) - 2.))
+                .rounded(px(t.radii.sm))
+                .bg(fill),
+        );
+    }
+    map
 }

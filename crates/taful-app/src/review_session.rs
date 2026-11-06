@@ -9,6 +9,8 @@
 //! template waits (stays due, not shown) while the postflop library is not
 //! installed.
 
+use std::sync::Arc;
+
 use taful_content::quiz::{Answer, RenderedQuestion};
 use taful_core::calc::ExerciseKind;
 use taful_core::srs::Rating;
@@ -19,7 +21,7 @@ use crate::i18n::Locale;
 use crate::preflop::{Action, GradedDecision};
 use crate::review::ItemKind;
 use crate::template::SpotTemplate;
-use crate::training::{DrillSpot, TemplateError};
+use crate::training::{DrillSpot, TemplateError, Trainers};
 use crate::{App, Error, Result};
 
 /// The next thing to review.
@@ -42,6 +44,41 @@ pub enum ReviewPrompt {
         template: SpotTemplate,
         spot: Box<DrillSpot>,
     },
+}
+
+/// One step of [`App::next_review_step`].
+#[derive(Debug)]
+pub enum ReviewStep {
+    /// Show this.
+    Ready(ReviewPrompt),
+    /// Deal a spot template, then call [`App::finish_review_deal`].
+    Deal(TemplateDeal),
+    /// Nothing due that can be shown now.
+    Empty,
+}
+
+/// A spot-template deal for a review. Owns everything it needs, so it can
+/// run on any thread; river templates solve the river (spec §7.7).
+#[derive(Debug)]
+pub struct TemplateDeal {
+    pub item_id: String,
+    pub template: SpotTemplate,
+    trainers: Arc<Trainers>,
+    seeds: [u64; TEMPLATE_TRIES],
+}
+
+impl TemplateDeal {
+    /// Tries a few seeds; `Unavailable` if none dealt.
+    pub fn run(&self) -> std::result::Result<DrillSpot, TemplateError> {
+        let mut dealt = Err(TemplateError::Unavailable);
+        for &seed in &self.seeds {
+            dealt = self.trainers.spot_for_template(&self.template, seed);
+            if !matches!(dealt, Err(TemplateError::Unavailable)) {
+                break;
+            }
+        }
+        dealt
+    }
 }
 
 /// Item kinds the review session presents.
@@ -95,11 +132,38 @@ impl App {
     }
 
     /// The earliest due item this build can present, or `None` when the
-    /// queue is clear for now.
+    /// queue is clear for now. Deals spot templates on the calling thread;
+    /// the desktop uses [`App::next_review_step`] to deal in the background.
     pub fn next_review(&mut self, locale: Locale) -> Result<Option<ReviewPrompt>> {
+        let mut skip = Vec::new();
+        loop {
+            match self.next_review_step(locale, &skip)? {
+                ReviewStep::Ready(p) => return Ok(Some(p)),
+                ReviewStep::Empty => return Ok(None),
+                ReviewStep::Deal(deal) => {
+                    let outcome = deal.run();
+                    let id = deal.item_id.clone();
+                    if let Some(p) = self.finish_review_deal(deal, outcome)? {
+                        return Ok(Some(p));
+                    }
+                    skip.push(id);
+                }
+            }
+        }
+    }
+
+    /// One step towards the next review: a prompt that is ready, a spot
+    /// template deal to run (it can solve rivers, so the UI runs
+    /// [`TemplateDeal::run`] off its thread and passes the result to
+    /// [`App::finish_review_deal`]), or an empty queue. Items in `skip`
+    /// (deals that came up empty this time) are passed over.
+    pub fn next_review_step(&mut self, locale: Locale, skip: &[String]) -> Result<ReviewStep> {
         // Bounded: invalid items found on the way are deleted, so a later
         // call moves past them.
         for item in self.presentable_due(SCAN)? {
+            if skip.contains(&item.id) {
+                continue;
+            }
             match ItemKind::parse(&item.kind) {
                 Some(ItemKind::CalcExercise) => {
                     let Some((kind, band)) = item.key.split_once('/') else {
@@ -115,14 +179,14 @@ impl App {
                         self.store.delete_review_item(&item.id)?;
                         continue;
                     };
-                    return Ok(Some(ReviewPrompt::Calc {
+                    return Ok(ReviewStep::Ready(ReviewPrompt::Calc {
                         item_id: item.id,
                         round,
                     }));
                 }
                 Some(ItemKind::LessonQuiz) => match self.quiz_question(&item.key, locale)? {
                     Some((lesson_id, lesson_title, question)) => {
-                        return Ok(Some(ReviewPrompt::Quiz {
+                        return Ok(ReviewStep::Ready(ReviewPrompt::Quiz {
                             item_id: item.id,
                             lesson_id,
                             lesson_title,
@@ -141,33 +205,42 @@ impl App {
                     };
                     let trainers = self.trainers()?;
                     // A few fresh seeds: a deal can miss by bad luck.
-                    let mut dealt = Err(TemplateError::Unavailable);
-                    for _ in 0..TEMPLATE_TRIES {
-                        dealt = trainers.spot_for_template(&template, self.next_seed());
-                        if !matches!(dealt, Err(TemplateError::Unavailable)) {
-                            break;
-                        }
-                    }
-                    match dealt {
-                        Ok(spot) => {
-                            return Ok(Some(ReviewPrompt::Spot {
-                                item_id: item.id,
-                                template,
-                                spot: Box::new(spot),
-                            }));
-                        }
-                        // Other configuration, chart or library rebuilt.
-                        Err(TemplateError::Gone) => {
-                            self.store.delete_review_item(&item.id)?;
-                            continue;
-                        }
-                        Err(TemplateError::Unavailable) => continue,
-                    }
+                    let seeds = std::array::from_fn(|_| self.next_seed());
+                    return Ok(ReviewStep::Deal(TemplateDeal {
+                        item_id: item.id,
+                        template,
+                        trainers,
+                        seeds,
+                    }));
                 }
                 None => continue,
             }
         }
-        Ok(None)
+        Ok(ReviewStep::Empty)
+    }
+
+    /// Takes the result of a [`TemplateDeal`]: the prompt, or `None` when
+    /// the deal came up empty (the item stays due) or the template is gone
+    /// (the item is retired). On `None`, ask [`App::next_review_step`] again
+    /// with the item in `skip`.
+    pub fn finish_review_deal(
+        &mut self,
+        deal: TemplateDeal,
+        outcome: std::result::Result<DrillSpot, TemplateError>,
+    ) -> Result<Option<ReviewPrompt>> {
+        match outcome {
+            Ok(spot) => Ok(Some(ReviewPrompt::Spot {
+                item_id: deal.item_id,
+                template: deal.template,
+                spot: Box::new(spot),
+            })),
+            // Other configuration, chart or library rebuilt.
+            Err(TemplateError::Gone) => {
+                self.store.delete_review_item(&deal.item_id)?;
+                Ok(None)
+            }
+            Err(TemplateError::Unavailable) => Ok(None),
+        }
     }
 
     /// `(lesson id, lesson title, question)` for a quiz item key.

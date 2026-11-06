@@ -64,7 +64,7 @@ cargo run --release -p taful-library-build -- summary library/v1/*/preflop.tafl 
 
 About 5 minutes on 4 vCPU (the 169×169 equity table is cached in `library/cache/`, which is git-ignored). A test fails if the committed chart was built from a different manifest. Model and format details: spec §6 and §7.5.
 
-The desktop table screen opens directly with `TAFUL_SCREEN=table` (any `nav-<id>` works).
+The desktop table screen opens directly with `TAFUL_SCREEN=table` (any `nav-<id>` works). `TAFUL_THEME=<id>` and `TAFUL_LAYOUT=<preset>` override the saved theme and layout (screenshots).
 
 ## Postflop library (M4)
 
@@ -100,6 +100,9 @@ cargo run --release -p taful-library-build -- postflop tools/library-build/manif
 - **Data dir:** `TAFUL_DATA_DIR`, else `%APPDATA%\Taful`, else `$XDG_DATA_HOME/taful`, else `~/.local/share/taful`. One `taful.sqlite` plus `backups/` (the folder can be changed in settings).
 - **Schema changes:** add `crates/taful-store/src/migrations/NNNN_*.sql` and list it in `schema::MIGRATIONS`. Never edit a shipped migration. `schema_rules` checks the D9 columns and `migrates_from_every_past_version` runs every prefix.
 - **A new lesson:** write it in both locales with the same front matter, add it to `content/skill-tree.toml`, give it a quiz (or a drill unlock once spot templates exist), add any glossary terms to both `glossary.ftl`, then run `content-check --bless` and review the snapshot diff.
+- **A new theme:** add `content/themes/<id>.json` (schema 2, every token), list it in `taful_app::theme::BUILTIN_THEMES`, and add `theme-<id>` to both `settings.ftl`. Tests check AA contrast for every text pair (including the grade colors), no red, and distinct grade colors. A new token bumps `theme::SCHEMA_VERSION` and adds a step to `Theme::from_json` that fills it for older files.
+- **A new layout preset:** add `content/layouts/<id>.json` (48 × 27 grid, all four panels), list it in `taful_app::layout::BUILTIN_LAYOUTS`, and add `layout-<id>` to both `settings.ftl`. A new panel id goes in `layout::PanelId` and gets a place in every preset; older saved layouts pick it up from the default preset.
+- **Slow work in the UI:** anything that can solve a river or read a library file runs on `cx.background_executor()`; see `TableScreen::run` and `Shell::review_step`. A type that crosses that boundary is added to the `thread_safety` test in `taful-app`.
 - **A new placeholder function:** add it to `FUNCTIONS` and `eval` in `crates/taful-content/src/expr.rs`; it must be a pure call into `taful-core`.
 
 ## Running the desktop on Linux (unsupported, for screenshots)

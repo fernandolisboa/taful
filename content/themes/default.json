@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "name": "default",
   "colors": {
     "background": "#0d161b",
@@ -28,9 +28,31 @@
     "chip_5": "#c4621c",
     "chip_25": "#1e7a52",
     "chip_100": "#1b2630",
-    "chip_500": "#6b4fa0"
+    "chip_500": "#6b4fa0",
+    "grade_best": "#46c9a6",
+    "grade_correct": "#9fcd6a",
+    "grade_inaccuracy": "#e8cf5a",
+    "grade_mistake": "#ee8a42",
+    "grade_blunder": "#b994f2"
   },
-  "spacing": { "xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24, "xxl": 32 },
-  "radii": { "sm": 4, "md": 6, "lg": 10, "pill": 999 },
-  "text_size": { "sm": 12, "md": 14, "lg": 18, "xl": 24 }
+  "spacing": {
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "xxl": 32
+  },
+  "radii": {
+    "sm": 4,
+    "md": 6,
+    "lg": 10,
+    "pill": 999
+  },
+  "text_size": {
+    "sm": 12,
+    "md": 14,
+    "lg": 18,
+    "xl": 24
+  }
 }
