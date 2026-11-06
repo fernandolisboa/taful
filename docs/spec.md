@@ -285,7 +285,7 @@ chance   turn cards: per turn card, offset of the turn subtree (truncated at riv
 ### 7.8 Best response (D8)
 
 - `taful-solver::best_response(tree, locked_strategy) -> per-combo EVs` for river subtrees (on demand). Flop/turn best-response EVs per profile are precomputed by the build tool (D8 amendment). Partial locks are not supported.
-- **As built (M4):** `river::best_response(spot, solution, responder, opp_strategy)`; the solver's exploitability uses the same evaluation. Per-profile flop/turn best responses wait for the bot profiles (after the first slice).
+- **As built (M4):** `river::best_response(spot, solution, responder, opp_strategy)`; the solver's exploitability uses the same evaluation. Per-profile flop/turn best responses come with #27. Preflop best responses per profile are built with the chart (§9, #25).
 
 ---
 
@@ -315,12 +315,18 @@ pub fn grade(ev_loss_bb: f64, pot_bb: f64, chosen_freq: f32, tolerance_bb: f64, 
 
 ```toml
 id = "calling-station"
-[preflop]   vpip_mult = 1.8  pfr_mult = 0.6  threebet_mult = 0.4
+[preflop]   vpip_mult = 1.8  pfr_mult = 1.3  threebet_mult = 0.4
 [postflop]  fold_to_cbet = -0.25  fold_to_raise = -0.20  bluff_value_shift = -0.3  aggression = -0.4
 [sizing]    prefer = "small"
 ```
 
 - Grading vs a profiled bot uses best-response EVs against that profile (§7.8). Profiles are deterministic under a seed.
+- **As built (#25, preflop spot mode):**
+  - **Profiles:** `content/bots/{nit,calling-station,maniac,tag}.toml`, type `taful_core::profile::Profile`; content checks parse and validate them (multipliers in (0, 5], postflop shifts in −1..=1, id = file name, `bot-profile-<id>` and `-about` messages in both locales). The id `reference` is reserved for the reference bot. Postflop and sizing fields are validated but unused until #27.
+  - **Preflop transform** (`Profile::preflop_strategy`), a pure function of one node: the node's actions, the reference strategy and EVs per class and the reference range at the node. (1) The non-fold share of the range is scaled by `pfr_mult` at an unopened node (no limps in the tree, so opening is the only way in; a station's limps become loose opens) and by `vpip_mult` facing a raise; widening adds the folding part of the next-best hands first (reference EV of the best non-fold action over folding), narrowing drops the worst continuing hands first. (2) Facing a raise, the re-raise share (3-bet, squeeze, 4-bet and up) is scaled by `threebet_mult` within the continuing hands, moving call ↔ raise by reference EV of raising over calling. (3) Rows are renormalized. Only the boundary hand of each shift gets a new mix; the reference's own mixing is kept elsewhere. No RNG: `ProfiledBot` samples it with the hand's seeded RNG, and the build tool and the app compute the same strategy from the same chart data (a test compares them on every node).
+  - **Best responses (D12):** the preflop manifest lists the profiles (`[profiles]`, not part of the reference chart's hash, so the reference chart and the postflop ranges built from it do not move). After the solve, the build tool locks each profile at every node of every other seat (chart data for nodes in the chart, the solver's for pruned ones) and runs one best-response pass per seat, which takes about a second per profile. Output: `library/v1/<config key>/preflop-<id>.tafl`, same container and the same nodes as the reference chart, with the profile's strategy as the strategy rows, each actor's best-response EVs against the profile at every other seat as the EV rows, `line = "profile:<id>"` and a hash over the manifest and every profile file. The responder's own reach follows the reference (it only enters the multiway renormalization). About 1.3–1.9 MB per profile, embedded in the app.
+  - **Grading against a profile:** EV loss on hero's best-response EVs against the profile; only EV counts (the 10% frequency rule is for the mixing reference, a best response does not mix), with the spot's solver tolerance. The payload keeps the reference frequencies and adds `VsProfile`: reference EVs, the GTO line (best reference EV), the exploitative line (best EV against the profile) and their EV gap against the profile.
+  - **Spot mode:** opponent picker in the controls panel (reference by default) for preflop spots. Decisions against a profile are not stored, reviewed or counted in leaks until those are keyed by profile (#26); the controls say so.
 
 ---
 

@@ -1,0 +1,18 @@
+# Plays too many hands and raises too much (spec §9). Multipliers scale the
+# share of the range that takes an action group; 1 = the reference.
+id = "maniac"
+
+[preflop]
+vpip_mult = 1.6
+pfr_mult = 1.8
+threebet_mult = 2.5
+
+# Postflop and sizing come with the postflop profiles (#27).
+[postflop]
+fold_to_cbet = -0.2
+fold_to_raise = -0.15
+bluff_value_shift = -0.4
+aggression = 0.5
+
+[sizing]
+prefer = "large"

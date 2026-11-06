@@ -1,0 +1,21 @@
+# Calls too much and rarely raises (spec §9). Multipliers scale the share of
+# the range that takes an action group; 1 = the reference strategy. The tree
+# has no limps, so a station's loose limps show up as loose opens
+# (pfr_mult > 1); its passivity shows facing raises: it continues wide
+# (vpip_mult) and rarely re-raises (threebet_mult).
+id = "calling-station"
+
+[preflop]
+vpip_mult = 1.8
+pfr_mult = 1.3
+threebet_mult = 0.4
+
+# Postflop and sizing come with the postflop profiles (#27).
+[postflop]
+fold_to_cbet = -0.25
+fold_to_raise = -0.20
+bluff_value_shift = -0.3
+aggression = -0.4
+
+[sizing]
+prefer = "small"

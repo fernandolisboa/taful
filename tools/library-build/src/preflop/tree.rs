@@ -42,6 +42,12 @@ pub struct Decision {
     pub reach_cache: [f32; N],
     pub value: f32,
     pub value_weight: f32,
+    /// A bot profile's strategy at this node, `[action][class]` (empty until
+    /// a profile is locked; spec §9).
+    pub locked: Vec<f32>,
+    /// The actor's best-response EV against the locked profile at every
+    /// other seat, `[action][class]` in chips.
+    pub br_ev: Vec<f32>,
 }
 
 pub enum Outcome {
@@ -286,6 +292,8 @@ impl Builder<'_> {
                     reach_cache: [0.0; N],
                     value: 0.0,
                     value_weight: 0.0,
+                    locked: Vec::new(),
+                    br_ev: Vec::new(),
                 }))
             }
             _ => self.terminal(s),

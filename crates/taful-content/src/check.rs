@@ -296,6 +296,22 @@ pub fn check_library(lib: &Library, content: &Files, i18n: &Files) -> Vec<Findin
             ));
         }
     }
+    // ---- bot profiles (spec §9) ------------------------------------------------------
+    for id in lib.profiles.keys() {
+        for loc in LOCALES {
+            for key in [
+                format!("bot-profile-{id}"),
+                format!("bot-profile-{id}-about"),
+            ] {
+                if !has(loc, &key) {
+                    f.push(Finding::new(
+                        &format!("bots/{id}.toml"),
+                        format!("profile `{id}` has no `{key}` message in i18n/{loc}"),
+                    ));
+                }
+            }
+        }
+    }
     let mut track_ids = BTreeSet::new();
     for t in &lib.tree.tracks {
         if !track_ids.insert(t.id.as_str()) {

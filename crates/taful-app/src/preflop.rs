@@ -17,6 +17,9 @@ use taful_core::range::HandClass;
 use taful_solver::format::FormatError;
 use taful_solver::preflop::{NodeId, PreflopChart};
 
+pub use crate::bots::{Bot, ProfiledBot, ReferenceBot};
+pub use taful_core::profile::Profile;
+
 /// Domain types the UI needs to draw a table (the UI talks only to
 /// `taful-app`, spec §4).
 pub use taful_core::action::Action;
@@ -30,6 +33,36 @@ pub use taful_core::position::{Position, Seat};
 const BUILTIN_CHART: &[u8] = include_bytes!(
     "../../../library/v1/c1c6782d353382947a3bbcf1493b6a17155b2e63a7218bf8f54cc38be59cf37f/preflop.tafl"
 );
+
+/// Best responses against each bot profile (spec §9, D12), built with the
+/// chart (`preflop-<id>.tafl`). A test checks that this list matches
+/// `content/bots/`.
+const BUILTIN_PROFILE_CHARTS: &[(&str, &[u8])] = &[
+    (
+        "calling-station",
+        include_bytes!(
+            "../../../library/v1/c1c6782d353382947a3bbcf1493b6a17155b2e63a7218bf8f54cc38be59cf37f/preflop-calling-station.tafl"
+        ),
+    ),
+    (
+        "maniac",
+        include_bytes!(
+            "../../../library/v1/c1c6782d353382947a3bbcf1493b6a17155b2e63a7218bf8f54cc38be59cf37f/preflop-maniac.tafl"
+        ),
+    ),
+    (
+        "nit",
+        include_bytes!(
+            "../../../library/v1/c1c6782d353382947a3bbcf1493b6a17155b2e63a7218bf8f54cc38be59cf37f/preflop-nit.tafl"
+        ),
+    ),
+    (
+        "tag",
+        include_bytes!(
+            "../../../library/v1/c1c6782d353382947a3bbcf1493b6a17155b2e63a7218bf8f54cc38be59cf37f/preflop-tag.tafl"
+        ),
+    ),
+];
 
 /// Grading thresholds shipped with the app (spec §8).
 const GRADING_TOML: &str = include_str!("../../../config/grading.toml");
@@ -147,6 +180,27 @@ pub struct GradedDecision {
     pub tolerance_bb: f64,
     pub grade: Grade,
     pub thresholds_version: u32,
+    /// Graded against a bot profile instead of the reference (spec §8, D8):
+    /// `hand_evs` are then hero's best-response EVs against the profile, and
+    /// this holds the reference EVs and both lines.
+    pub vs_profile: Option<VsProfile>,
+}
+
+/// The exploitative side of a decision graded against a profile (spec §8
+/// explanation payload: the GTO line, the exploitative line, their EV gap).
+#[derive(Debug, Clone, PartialEq)]
+pub struct VsProfile {
+    /// Profile id (`content/bots/<id>.toml`).
+    pub profile: String,
+    /// Reference (GTO) EV of each action for hero's hand, bb.
+    pub reference_evs: Vec<f32>,
+    /// The GTO line: best action by reference EV.
+    pub gto: usize,
+    /// The exploitative line: best action by EV against the profile.
+    pub exploit: usize,
+    /// EV against the profile of the exploitative line minus that of the
+    /// GTO line, bb (≥ 0).
+    pub ev_gap_bb: f64,
 }
 
 impl GradedDecision {
@@ -168,6 +222,8 @@ pub enum PreflopError {
     NotHeroTurn,
     /// The node holds no data for the hand (cannot happen with class rows).
     NoData,
+    /// No best-response chart for this profile id.
+    UnknownProfile(String),
 }
 
 impl std::fmt::Display for PreflopError {
@@ -178,6 +234,7 @@ impl std::fmt::Display for PreflopError {
             PreflopError::NotInTree(a) => write!(f, "action {a} is not in the tree"),
             PreflopError::NotHeroTurn => f.write_str("not hero's turn"),
             PreflopError::NoData => f.write_str("no chart data for this hand"),
+            PreflopError::UnknownProfile(id) => write!(f, "unknown bot profile `{id}`"),
         }
     }
 }
@@ -190,6 +247,15 @@ impl From<EngineError> for PreflopError {
     }
 }
 
+/// A bot profile with its best-response chart (spec §9): the profile's
+/// strategy and hero's best-response EVs against it, on the reference
+/// chart's nodes.
+#[derive(Debug, Clone)]
+pub struct ProfileChart {
+    pub bot: ProfiledBot,
+    pub chart: Arc<PreflopChart>,
+}
+
 /// Chart + thresholds: grading and lookups shared by both modes.
 #[derive(Debug, Clone)]
 pub struct PreflopTrainer {
@@ -197,15 +263,69 @@ pub struct PreflopTrainer {
     thresholds: Thresholds,
     /// Spot nodes by kind with their weights (how often the line happens).
     spots: Vec<(SpotKind, NodeId, f64)>,
+    /// Profiles hero can face, by id.
+    profiles: Vec<ProfileChart>,
 }
 
 impl PreflopTrainer {
-    /// The built-in chart with the shipped thresholds.
+    /// The built-in chart with the shipped thresholds and the shipped
+    /// profiles (`content/bots/`) with their best-response charts.
     pub fn builtin() -> Result<PreflopTrainer, PreflopError> {
         let chart = PreflopChart::decode(BUILTIN_CHART).map_err(PreflopError::Chart)?;
         let thresholds =
             Thresholds::from_toml(GRADING_TOML).expect("shipped thresholds are valid (tested)");
-        Ok(PreflopTrainer::new(chart, thresholds))
+        let mut t = PreflopTrainer::new(chart, thresholds);
+        let (lib, _) = crate::content::library();
+        for (id, bytes) in BUILTIN_PROFILE_CHARTS {
+            let profile = lib
+                .profiles
+                .get(*id)
+                .ok_or_else(|| PreflopError::UnknownProfile((*id).into()))?
+                .clone();
+            let br = PreflopChart::decode(bytes).map_err(PreflopError::Chart)?;
+            t.add_profile(profile, br)?;
+        }
+        Ok(t)
+    }
+
+    /// Adds a profile with its best-response chart, which must sit on this
+    /// chart's nodes (same tree, same pruning).
+    pub fn add_profile(&mut self, profile: Profile, br: PreflopChart) -> Result<(), PreflopError> {
+        let bad = |m: String| PreflopError::Chart(FormatError::Corrupt(m));
+        let c = &self.chart;
+        if br.len() != c.len() || br.config() != c.config() {
+            return Err(bad(format!(
+                "profile `{}`: chart does not match the reference",
+                profile.id
+            )));
+        }
+        for id in 0..c.len() {
+            let (a, b) = (c.node(id), br.node(id));
+            if a.player != b.player || a.actions != b.actions {
+                return Err(bad(format!(
+                    "profile `{}`: node {id} differs from the reference",
+                    profile.id
+                )));
+            }
+        }
+        self.profiles.retain(|p| p.bot.profile().id != profile.id);
+        self.profiles.push(ProfileChart {
+            bot: ProfiledBot::new(profile),
+            chart: Arc::new(br),
+        });
+        self.profiles
+            .sort_by(|a, b| a.bot.profile().id.cmp(&b.bot.profile().id));
+        Ok(())
+    }
+
+    /// Profiles hero can face, sorted by id.
+    pub fn profiles(&self) -> &[ProfileChart] {
+        &self.profiles
+    }
+
+    /// The profile with `id`, if loaded.
+    pub fn profile(&self, id: &str) -> Option<&ProfileChart> {
+        self.profiles.iter().find(|p| p.bot.profile().id == id)
     }
 
     pub fn new(chart: PreflopChart, thresholds: Thresholds) -> PreflopTrainer {
@@ -235,6 +355,7 @@ impl PreflopTrainer {
             chart: Arc::new(chart),
             thresholds,
             spots,
+            profiles: Vec::new(),
         }
     }
 
@@ -256,21 +377,67 @@ impl PreflopTrainer {
             .collect()
     }
 
-    /// Grade hero taking `actions[chosen]` at `node` with `hand`.
+    /// Grade hero taking `actions[chosen]` at `node` with `hand`, against
+    /// the reference.
     pub fn grade(
         &self,
         node: NodeId,
         hand: Hand,
         chosen: usize,
     ) -> Result<GradedDecision, PreflopError> {
+        self.grade_vs(node, hand, chosen, None)
+    }
+
+    /// Grade hero's decision against `opponent`: `None` is the reference
+    /// (GTO) bot, `Some(id)` a bot profile (spec §8, D8). Against a profile
+    /// the EV loss is measured on hero's best-response EVs against it, and
+    /// only EV counts: a frequent GTO action that loses EV against the
+    /// profile is not `Best` (the 10% frequency rule applies to the
+    /// reference, which mixes; the best response does not). The tolerance is
+    /// the spot's solver tolerance either way.
+    pub fn grade_vs(
+        &self,
+        node: NodeId,
+        hand: Hand,
+        chosen: usize,
+        opponent: Option<&str>,
+    ) -> Result<GradedDecision, PreflopError> {
         let c = &self.chart;
         let n = c.node(node);
         let freqs = c.strategy(node, hand).ok_or(PreflopError::NoData)?;
-        let evs = c.ev(node, hand).ok_or(PreflopError::NoData)?;
+        let reference_evs = c.ev(node, hand).ok_or(PreflopError::NoData)?;
+        let argmax = |v: &[f32]| {
+            (0..v.len())
+                .max_by(|&a, &b| v[a].total_cmp(&v[b]))
+                .unwrap_or(0)
+        };
+        let (evs, vs_profile) = match opponent {
+            None => (reference_evs, None),
+            Some(id) => {
+                let p = self
+                    .profile(id)
+                    .ok_or_else(|| PreflopError::UnknownProfile(id.into()))?;
+                let evs = p.chart.ev(node, hand).ok_or(PreflopError::NoData)?;
+                let (gto, exploit) = (argmax(&reference_evs), argmax(&evs));
+                let vs = VsProfile {
+                    profile: id.into(),
+                    gto,
+                    exploit,
+                    ev_gap_bb: f64::from(evs[exploit] - evs[gto]).max(0.0),
+                    reference_evs,
+                };
+                (evs, Some(vs))
+            }
+        };
         let best_ev = evs.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         let ev_loss = f64::from(best_ev - evs[chosen]).max(0.0);
         let pot_bb = c.pot_bb(node);
         let tolerance_bb = f64::from(n.exploitability_pct) / 100.0 * pot_bb;
+        let graded_freq = if vs_profile.is_some() {
+            0.0
+        } else {
+            freqs[chosen]
+        };
         let range = c.acting_range(node);
         let range_freqs = (0..n.actions.len())
             .map(|a| {
@@ -286,13 +453,7 @@ impl PreflopTrainer {
             hand,
             actions: n.actions.iter().map(|a| a.action).collect(),
             chosen,
-            grade: grade(
-                ev_loss,
-                pot_bb,
-                freqs[chosen],
-                tolerance_bb,
-                &self.thresholds,
-            ),
+            grade: grade(ev_loss, pot_bb, graded_freq, tolerance_bb, &self.thresholds),
             hand_freqs: freqs,
             hand_evs: evs,
             range_freqs,
@@ -300,6 +461,7 @@ impl PreflopTrainer {
             ev_loss_bb: ev_loss,
             tolerance_bb,
             thresholds_version: self.thresholds.version,
+            vs_profile,
         })
     }
 
@@ -380,6 +542,7 @@ impl PreflopTrainer {
             hero,
             hand,
             state,
+            opponent: None,
         })
     }
 
@@ -403,9 +566,18 @@ pub struct Spot {
     pub hand: Hand,
     /// Table state at hero's decision.
     pub state: GameState,
+    /// Who the other seats are: `None` = the reference bot, `Some(id)` a
+    /// bot profile (spec §9; the spot-mode picker).
+    pub opponent: Option<String>,
 }
 
 impl Spot {
+    /// The same spot against `opponent` (`None` = reference).
+    pub fn against(mut self, opponent: Option<&str>) -> Spot {
+        self.opponent = opponent.map(str::to_owned);
+        self
+    }
+
     /// Grade hero's answer.
     pub fn answer(
         &self,
@@ -417,7 +589,7 @@ impl Spot {
             .node(self.node)
             .action_index(action)
             .ok_or(PreflopError::NotInTree(action))?;
-        trainer.grade(self.node, self.hand, chosen)
+        trainer.grade_vs(self.node, self.hand, chosen, self.opponent.as_deref())
     }
 }
 
@@ -449,6 +621,26 @@ mod tests {
             for g in Grade::ALL {
                 assert!(i18n.has(&format!("table-grade-{}", g.id())), "{g:?}");
             }
+            let t = trainer();
+            let ids = t.profiles().iter().map(|p| p.bot.profile().id.clone());
+            for id in std::iter::once(taful_core::profile::REFERENCE.to_string()).chain(ids) {
+                assert!(i18n.has(&format!("bot-profile-{id}")), "{id}");
+                assert!(i18n.has(&format!("bot-profile-{id}-about")), "{id}");
+            }
+        }
+    }
+
+    #[test]
+    fn every_shipped_profile_has_a_best_response_chart() {
+        let (lib, _) = crate::content::library();
+        let shipped: Vec<&str> = lib.profiles.keys().map(String::as_str).collect();
+        let charts: Vec<&str> = BUILTIN_PROFILE_CHARTS.iter().map(|(id, _)| *id).collect();
+        assert_eq!(shipped, charts);
+        let t = trainer();
+        for (id, bytes) in BUILTIN_PROFILE_CHARTS {
+            let br = PreflopChart::decode(bytes).unwrap();
+            assert_eq!(br.file().header.line, format!("profile:{id}"));
+            assert!(t.profile(id).is_some());
         }
     }
 
@@ -531,5 +723,55 @@ mod tests {
             s.answer(&t, Action::Raise(123)),
             Err(PreflopError::NotInTree(Action::Raise(123)))
         );
+    }
+}
+
+#[cfg(test)]
+mod demo {
+    use super::*;
+
+    /// #25 demo: against a calling station the big blind 3-bets KTs for
+    /// value over a BTN open. The reference flats it; against the station
+    /// the 3-bet is Best and the payload shows the GTO line next to it.
+    #[test]
+    fn value_three_bet_against_a_calling_station() {
+        let t = PreflopTrainer::builtin().unwrap();
+        let node = t
+            .node_at(&"UTG:f,HJ:f,CO:f,BTN:r250,SB:f".parse().unwrap())
+            .unwrap();
+        assert_eq!(
+            SpotKind::classify(&t.chart().line(node), Position::Bb),
+            SpotKind::VsOpen
+        );
+        let n = t.chart().node(node);
+        let call = n.action_index(Action::Call).unwrap();
+        let raise = n
+            .actions
+            .iter()
+            .position(|a| matches!(a.action, Action::Raise(_)))
+            .unwrap();
+        let hand: Hand = "KcTc".parse().unwrap();
+        let three_bet = t
+            .grade_vs(node, hand, raise, Some("calling-station"))
+            .unwrap();
+        assert_eq!(three_bet.grade, Grade::Best, "{three_bet:?}");
+        let vs = three_bet.vs_profile.as_ref().unwrap();
+        assert_eq!((vs.gto, vs.exploit), (call, raise));
+        assert!(vs.ev_gap_bb > 0.1, "{vs:?}");
+        assert!(three_bet.hand_freqs[call] > 0.9);
+        // The GTO flat loses EV against the station; against the reference
+        // it is the right play and the 3-bet is not.
+        let flat = t
+            .grade_vs(node, hand, call, Some("calling-station"))
+            .unwrap();
+        assert!(flat.grade > Grade::Best, "{flat:?}");
+        assert_eq!(t.grade(node, hand, call).unwrap().grade, Grade::Best);
+        assert!(t.grade(node, hand, raise).unwrap().grade > Grade::Best);
+        // And the station's bluff-catching flaw: JTs, a GTO 3-bet bluff, is
+        // a flat against it.
+        let jt: Hand = "JcTc".parse().unwrap();
+        let g = t.grade_vs(node, jt, call, Some("calling-station")).unwrap();
+        assert_eq!(g.grade, Grade::Best);
+        assert_eq!(g.vs_profile.unwrap().gto, raise);
     }
 }

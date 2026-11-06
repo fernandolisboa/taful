@@ -604,6 +604,7 @@ pub(crate) fn grade_walk(
         ev_loss_bb: ev_loss,
         tolerance_bb: node.tolerance_bb,
         thresholds_version: thresholds.version,
+        vs_profile: None,
     })
 }
 

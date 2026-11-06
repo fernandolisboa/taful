@@ -61,6 +61,8 @@ pub struct TableScreen {
     trainers: Result<Arc<Trainers>, String>,
     mode: Mode,
     kind: SpotKind,
+    /// Spot mode's opponent: `None` = the reference bot, else a profile id.
+    opponent: Option<String>,
     /// Seeds for spots and hands; bumped for every new deal.
     seed: u64,
     /// Postflop configuration filter (`None` = all).
@@ -147,6 +149,7 @@ impl TableScreen {
             trainers,
             mode: Mode::Spot,
             kind: SpotKind::Rfi,
+            opponent: None,
             seed,
             postflop_spot: None,
             drill: None,
@@ -167,6 +170,14 @@ impl TableScreen {
             Ok("hand") => s.mode = Mode::Hand,
             _ => {}
         }
+        // Dev overrides (screenshots): TAFUL_TABLE_KIND=<spot kind id>,
+        // TAFUL_TABLE_OPPONENT=<profile id>.
+        if let Ok(k) = std::env::var("TAFUL_TABLE_KIND")
+            && let Some(kind) = SpotKind::ALL.into_iter().find(|x| x.id() == k)
+        {
+            s.kind = kind;
+        }
+        s.opponent = std::env::var("TAFUL_TABLE_OPPONENT").ok();
         if let Ok(seed) = std::env::var("TAFUL_TABLE_SEED").map(|v| v.parse::<u64>()) {
             s.seed = seed.unwrap_or(s.seed);
         }
@@ -194,11 +205,12 @@ impl TableScreen {
             Mode::Spot => {
                 self.busy = None;
                 self._job = None;
+                let opponent = self.opponent.as_deref();
                 self.question = t
                     .preflop
                     .spot(self.kind, seed)
                     .ok()
-                    .map(|s| DrillSpot::Preflop(Box::new(s)));
+                    .map(|s| DrillSpot::Preflop(Box::new(s.against(opponent))));
             }
             Mode::Postflop => {
                 self.question = None;
@@ -297,6 +309,13 @@ impl TableScreen {
             self.deal(cx);
             cx.notify();
         }
+    }
+
+    fn set_opponent(&mut self, opponent: Option<String>, cx: &mut Context<Self>) {
+        self.opponent = opponent;
+        self.mode = Mode::Spot;
+        self.deal(cx);
+        cx.notify();
     }
 
     fn set_kind(&mut self, kind: SpotKind, cx: &mut Context<Self>) {
@@ -405,6 +424,33 @@ impl TableScreen {
             .child(text)
     }
 
+    /// The prompt before hero answers; against a profile, who the bot is
+    /// and that these decisions are practice only for now (#26).
+    fn prompt(&self, q: &DrillSpot) -> Div {
+        let (th, i18n) = (&self.ui.theme, &self.ui.i18n);
+        let opponent = match q {
+            DrillSpot::Preflop(s) => s.opponent.as_deref(),
+            DrillSpot::Postflop(_) => None,
+        };
+        let mut d = div()
+            .flex()
+            .flex_col()
+            .gap(px(th.spacing.md))
+            .child(self.message(i18n.tr("table-spot-prompt")));
+        if let Some(id) = opponent {
+            d = d
+                .child(self.message(i18n.tr_args(
+                    "table-vs-profile-prompt",
+                    &[
+                        ("profile", i18n.tr(&format!("bot-profile-{id}")).into()),
+                        ("about", i18n.tr(&format!("bot-profile-{id}-about")).into()),
+                    ],
+                )))
+                .child(self.message(i18n.tr("table-opponent-practice")));
+        }
+        d
+    }
+
     /// The busy line while background work runs.
     fn busy_line(&self) -> Option<Div> {
         let key = match self.busy? {
@@ -462,7 +508,7 @@ impl TableScreen {
                 )),
             ),
             None => (
-                self.message(i18n.tr("table-spot-prompt")),
+                self.prompt(q),
                 self.actions_bar(q.state(), &q.actions(t), cx),
             ),
         };
@@ -643,6 +689,39 @@ impl TableScreen {
                 cx,
                 |this, cx| this.start_edit(cx),
             ));
+        }
+        // Opponent picker (spec §9, D8): reference first, then each profile.
+        let mut opponents = vec![self.chip(
+            "opp_reference",
+            i18n.tr("bot-profile-reference"),
+            self.opponent.is_none(),
+            cx,
+            |this, cx| this.set_opponent(None, cx),
+        )];
+        for (i, p) in trainers.preflop.profiles().iter().enumerate() {
+            let id = p.bot.profile().id.clone();
+            let selected = self.opponent.as_deref() == Some(id.as_str());
+            let label = i18n.tr(&format!("bot-profile-{id}"));
+            opponents.push(self.chip(("opp", i), label, selected, cx, move |this, cx| {
+                this.set_opponent(Some(id.clone()), cx)
+            }));
+        }
+        if self.mode == Mode::Spot {
+            modes = modes.child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap(px(th.spacing.sm))
+                    .ml(px(th.spacing.lg))
+                    .child(
+                        div()
+                            .text_size(px(th.text_size.sm))
+                            .text_color(p.text_muted)
+                            .child(i18n.tr("table-opponent")),
+                    )
+                    .children(opponents),
+            );
         }
         let kinds: Vec<_> = trainers
             .preflop

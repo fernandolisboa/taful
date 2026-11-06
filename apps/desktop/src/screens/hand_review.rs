@@ -179,6 +179,7 @@ impl Shell {
                     hand_freqs: &d.hand_freqs,
                     hand_evs: &d.hand_evs,
                     range_freqs: &d.range_freqs,
+                    vs_profile: None,
                 },
             ));
         }

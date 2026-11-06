@@ -1,0 +1,19 @@
+# Tight-aggressive regular: close to the reference, a bit tighter and a bit
+# more aggressive (spec §9). Multipliers scale the share of the range that
+# takes an action group; 1 = the reference.
+id = "tag"
+
+[preflop]
+vpip_mult = 0.85
+pfr_mult = 0.95
+threebet_mult = 1.2
+
+# Postflop and sizing come with the postflop profiles (#27).
+[postflop]
+fold_to_cbet = 0.05
+fold_to_raise = 0.1
+bluff_value_shift = 0.1
+aggression = 0.15
+
+[sizing]
+prefer = "reference"

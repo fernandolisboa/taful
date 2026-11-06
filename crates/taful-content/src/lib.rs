@@ -302,4 +302,46 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn bot_profiles_are_checked() {
+        let profile = |id: &str, vpip: &str| {
+            format!(
+                "id = \"{id}\"\n[preflop]\nvpip_mult = {vpip}\npfr_mult = 1.0\nthreebet_mult = 1.0\n\
+                 [postflop]\nfold_to_cbet = 0.0\nfold_to_raise = 0.0\nbluff_value_shift = 0.0\naggression = 0.0\n\
+                 [sizing]\nprefer = \"reference\"\n"
+            )
+        };
+        let names = "bot-profile-nit = Nit\nbot-profile-nit-about = Tight\n";
+        let mut i18n = I18N.to_vec();
+        i18n.push(("en-US/table.ftl", names));
+        i18n.push(("pt-BR/table.ftl", names));
+        let with = |path: &'static str, text: String| {
+            let mut c = with_snapshots(valid());
+            c.push((path, text));
+            c
+        };
+        assert_eq!(
+            run(&with("bots/nit.toml", profile("nit", "0.6")), &i18n),
+            Vec::<String>::new()
+        );
+        let cases = [
+            (with("bots/nit.toml", profile("nit", "0.0")), "vpip_mult"),
+            (
+                with("bots/nit.toml", profile("tag", "0.6")),
+                "does not match the file name",
+            ),
+            (
+                with("bots/tag.toml", profile("tag", "0.6")),
+                "no `bot-profile-tag` message in i18n/en-US",
+            ),
+        ];
+        for (content, expect) in cases {
+            let f = run(&content, &i18n);
+            assert!(
+                f.iter().any(|m| m.contains(expect)),
+                "expected `{expect}` in {f:#?}"
+            );
+        }
+    }
 }

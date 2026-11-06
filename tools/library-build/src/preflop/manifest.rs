@@ -1,8 +1,11 @@
 //! Preflop build manifest (spec §6, §7.3): game, sizing, tree limits,
 //! realization model and solver settings, in one TOML file.
 
+use std::path::Path;
+
 use serde::{Deserialize, Serialize};
 use taful_core::config::{BB_CHIPS, Chips, GameConfig};
+use taful_core::profile::Profile;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -12,6 +15,20 @@ pub struct Manifest {
     pub tree: TreeLimits,
     pub realization: Realization,
     pub solve: Solve,
+    /// Bot profiles to compute best responses against (spec §9, D8, D12).
+    /// Not part of the reference chart's hash: adding a profile leaves the
+    /// reference chart (and the postflop ranges built from it) unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profiles: Option<Profiles>,
+}
+
+/// Where the profiles live and which to build.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Profiles {
+    /// Folder of `<id>.toml` profiles, relative to the manifest file.
+    pub dir: String,
+    pub ids: Vec<String>,
 }
 
 /// The game: a uniform-stack cash table (other formats come with their own
@@ -148,10 +165,53 @@ impl Manifest {
         ((bb * BB_CHIPS as f64 / step).round() * step).round() as Chips
     }
 
-    /// BLAKE3 of the canonical TOML, stored in every output file.
+    /// BLAKE3 of the canonical TOML without the profile list, stored in
+    /// the reference chart.
     pub fn hash(&self) -> [u8; 32] {
-        let canon = toml::to_string(self).expect("manifest serializes");
+        let reference = Manifest {
+            profiles: None,
+            ..self.clone()
+        };
+        let canon = toml::to_string(&reference).expect("manifest serializes");
         *blake3::hash(canon.as_bytes()).as_bytes()
+    }
+
+    /// BLAKE3 of the canonical TOML and every profile's canonical TOML,
+    /// stored in each profile's best-response chart: editing a profile
+    /// changes it.
+    pub fn profile_hash(&self, profiles: &[Profile]) -> [u8; 32] {
+        let mut h = blake3::Hasher::new();
+        h.update(
+            toml::to_string(self)
+                .expect("manifest serializes")
+                .as_bytes(),
+        );
+        for p in profiles {
+            h.update(b"\n");
+            h.update(p.to_toml().as_bytes());
+        }
+        *h.finalize().as_bytes()
+    }
+
+    /// Loads the listed profiles from `<manifest dir>/<profiles.dir>/<id>.toml`.
+    pub fn load_profiles(&self, manifest_dir: &Path) -> Result<Vec<Profile>, String> {
+        let Some(set) = &self.profiles else {
+            return Ok(Vec::new());
+        };
+        set.ids
+            .iter()
+            .map(|id| {
+                let path = manifest_dir.join(&set.dir).join(format!("{id}.toml"));
+                let text = std::fs::read_to_string(&path)
+                    .map_err(|e| format!("{}: {e}", path.display()))?;
+                let p =
+                    Profile::from_toml(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+                if &p.id != id {
+                    return Err(format!("{}: id `{}` is not `{id}`", path.display(), p.id));
+                }
+                Ok(p)
+            })
+            .collect()
     }
 
     /// One-line description of the sizing tree for the file header.
@@ -188,5 +248,17 @@ mod tests {
         assert_eq!(m.round_chips(2.5), 250);
         assert_eq!(m.round_chips(9.375), 950);
         assert_eq!(m.hash(), m.clone().hash());
+        // The profile list does not move the reference chart's hash.
+        let no_profiles = Manifest {
+            profiles: None,
+            ..m.clone()
+        };
+        assert_eq!(m.hash(), no_profiles.hash());
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("manifests");
+        let profiles = m.load_profiles(&dir).unwrap();
+        assert_eq!(profiles.len(), 4);
+        let mut edited = profiles.clone();
+        edited[0].preflop.vpip_mult += 0.1;
+        assert_ne!(m.profile_hash(&profiles), m.profile_hash(&edited));
     }
 }

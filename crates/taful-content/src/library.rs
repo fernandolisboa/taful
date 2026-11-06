@@ -10,6 +10,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use taful_core::profile::Profile;
+
 use crate::Finding;
 use crate::lesson::Lesson;
 use crate::quiz::Quiz;
@@ -128,6 +130,8 @@ pub struct Library {
     pub lessons: BTreeMap<String, BTreeMap<String, Lesson>>,
     /// Quiz id → quiz.
     pub quizzes: BTreeMap<String, Quiz>,
+    /// Bot profile id → profile (`bots/<id>.toml`, spec §9).
+    pub profiles: BTreeMap<String, Profile>,
 }
 
 impl Library {
@@ -174,6 +178,21 @@ impl Library {
                         ));
                     }
                     lib.quizzes.insert(stem.to_owned(), q);
+                }
+                Err(e) => findings.push(Finding::new(&path, e)),
+            }
+        }
+        for (stem, text) in files.in_dir("bots", ".toml") {
+            let path = format!("bots/{stem}.toml");
+            match Profile::from_toml(text) {
+                Ok(p) => {
+                    if p.id != stem {
+                        findings.push(Finding::new(
+                            &path,
+                            format!("id `{}` does not match the file name", p.id),
+                        ));
+                    }
+                    lib.profiles.insert(stem.to_owned(), p);
                 }
                 Err(e) => findings.push(Finding::new(&path, e)),
             }
