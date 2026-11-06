@@ -65,3 +65,20 @@ table-postflop-missing = A biblioteca pós-flop ainda não está neste computado
 table-postflop-error = Não deu para carregar a biblioteca pós-flop: { $error }
 table-busy-dealing = Distribuindo…
 table-busy-acting = Os outros jogadores estão agindo…
+
+## Modo de edição de layout (#22)
+
+layout-edit-start = Editar layout
+layout-edit-title = Editando o layout
+layout-edit-hint = Arraste um painel pelo cabeçalho; ele se encaixa na grade ao soltar (segure Alt para posicionar livremente). Arraste o canto para redimensionar.
+layout-edit-save = Salvar como cópia
+layout-edit-cancel = Cancelar
+layout-edit-refused-overlap = Não cabe aí: cobriria o painel { $panel }.
+layout-edit-refused-grid = Não cabe aí: os painéis ficam dentro da grade.
+layout-edit-refused-empty = Um painel não pode ficar vazio.
+layout-edit-refused-invalid = Essa mudança quebraria o layout.
+layout-edit-save-failed = Não foi possível salvar o layout. Suas alterações continuam aqui.
+layout-panel-controls = Controles
+layout-panel-table = Mesa
+layout-panel-actions = Ações
+layout-panel-explanation = Explicação

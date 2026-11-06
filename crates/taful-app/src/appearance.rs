@@ -11,6 +11,7 @@
 use serde_json::json;
 
 use crate::layout::{BUILTIN_LAYOUTS, DEFAULT_LAYOUT, Layout};
+use crate::layout_edit::LayoutEditor;
 use crate::theme::{BUILTIN_THEMES, DEFAULT_THEME, SCHEMA_VERSION, Theme};
 use crate::{App, Error, Result, keys};
 
@@ -317,7 +318,46 @@ impl App {
 
     /// Saves a copy of the active layout under `name` and makes it active.
     pub fn save_layout_copy(&self, name: &str) -> Result<LayoutChoice> {
-        let (_, mut layout) = self.active_layout();
+        let (_, layout) = self.active_layout();
+        self.insert_layout_copy(layout, name)
+    }
+
+    /// Starts editing the active layout (layout edit mode, #22).
+    pub fn edit_layout(&self) -> LayoutEditor {
+        LayoutEditor::new(self.active_layout().1)
+    }
+
+    /// Saves an edited layout as a new user copy named `name` and makes it
+    /// active; built-in presets are never written. The draft goes through
+    /// the same parse-and-migrate step as a saved copy on load, and is
+    /// refused (nothing stored) if it breaks a rule.
+    /// Returns the new choice and the layout as stored.
+    pub fn save_edited_layout(&self, draft: &Layout, name: &str) -> Result<(LayoutChoice, Layout)> {
+        let mut layout = Layout::from_json(&draft.to_json()).map_err(Error::Layout)?;
+        let choice = self.insert_layout_copy(layout.clone(), name)?;
+        layout.name = choice.name.clone();
+        Ok((choice, layout))
+    }
+
+    /// The first free name for a new copy, from a localized pattern
+    /// (`name(n)`), counting on from the number of saved copies so a deleted
+    /// copy's name is not handed out twice.
+    pub fn new_layout_copy_name(&self, name: impl Fn(usize) -> String) -> String {
+        let taken: Vec<String> = self
+            .layout_choices()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|c| !c.builtin)
+            .map(|c| c.name)
+            .collect();
+        let mut n = taken.len() + 1;
+        while taken.contains(&name(n)) {
+            n += 1;
+        }
+        name(n)
+    }
+
+    fn insert_layout_copy(&self, mut layout: Layout, name: &str) -> Result<LayoutChoice> {
         let name = name.trim();
         if name.is_empty() {
             return Err(Error::NotFound("layout name".into()));
@@ -582,6 +622,20 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn copy_names_are_not_reused() {
+        let (app, _) = app_at(1);
+        let name = |n: usize| format!("Mine {n}");
+        let one = app
+            .save_layout_copy(&app.new_layout_copy_name(name))
+            .unwrap();
+        app.save_layout_copy(&app.new_layout_copy_name(name))
+            .unwrap();
+        app.delete_layout(&one.key).unwrap();
+        // One copy left ("Mine 2"): the next is "Mine 3", not "Mine 2".
+        assert_eq!(app.new_layout_copy_name(name), "Mine 3");
     }
 
     #[test]

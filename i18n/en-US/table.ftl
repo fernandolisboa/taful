@@ -65,3 +65,20 @@ table-postflop-missing = The postflop library is not on this computer yet. It is
 table-postflop-error = Could not load the postflop library: { $error }
 table-busy-dealing = Dealing…
 table-busy-acting = The other players are acting…
+
+## Layout edit mode (#22)
+
+layout-edit-start = Edit layout
+layout-edit-title = Editing the layout
+layout-edit-hint = Drag a panel by its header; it snaps to the grid when you let go (hold Alt to place it freely). Drag the corner to resize.
+layout-edit-save = Save as a copy
+layout-edit-cancel = Cancel
+layout-edit-refused-overlap = It can't go there: it would cover the { $panel } panel.
+layout-edit-refused-grid = It can't go there: panels stay inside the grid.
+layout-edit-refused-empty = A panel can't be empty.
+layout-edit-refused-invalid = That change would break the layout.
+layout-edit-save-failed = Could not save the layout. Your changes are still here.
+layout-panel-controls = Controls
+layout-panel-table = Table
+layout-panel-actions = Actions
+layout-panel-explanation = Explanation

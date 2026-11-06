@@ -1,6 +1,6 @@
 //! Settings (spec §15.1 item 8): language, theme (M6) and the theme editor
-//! (#23, in `theme_editor.rs`), table layout (M6),
-//! review retention, backups, the strategy library folder, and the grading
+//! (#23, in `theme_editor.rs`), table layout (M6), review retention and
+//! the FSRS optimizer, backups, the strategy library folder, and the grading
 //! thresholds (read-only).
 
 use std::path::PathBuf;
@@ -24,6 +24,13 @@ pub struct SettingsView {
     pub pending_import: Option<PathBuf>,
     /// The theme editor, while open.
     pub theme_editor: Option<ThemeEditor>,
+    /// The FSRS optimizer is running in the background.
+    pub optimizing: bool,
+    /// Result of the last optimizer action.
+    pub optimizer_message: Option<String>,
+    /// Bumped when the database is replaced, so a fit of the old review log
+    /// is dropped instead of applied.
+    pub optimizer_generation: u64,
 }
 
 impl Shell {
@@ -108,6 +115,140 @@ impl Shell {
         .detach();
     }
 
+    /// Fits the FSRS parameters on the background executor (spec §13).
+    fn optimize(&mut self, cx: &mut Context<Self>) {
+        if self.settings.optimizing {
+            return;
+        }
+        let job = match self.app.optimize_job() {
+            Ok(job) => job,
+            Err(e) => {
+                self.settings.optimizer_message = Some(self.failed(&e));
+                return;
+            }
+        };
+        self.settings.optimizing = true;
+        self.settings.optimizer_message = None;
+        let generation = self.settings.optimizer_generation;
+        let task = cx.background_executor().spawn(async move { job.run() });
+        cx.spawn(async move |this, cx| {
+            let fitted = task.await;
+            this.update(cx, |s, cx| {
+                if s.settings.optimizer_generation != generation {
+                    return;
+                }
+                s.settings.optimizing = false;
+                let r = fitted.and_then(|p| s.app.apply_parameters(&p));
+                s.settings.optimizer_message = Some(match r {
+                    Ok(()) => s.ui.i18n.tr("settings-optimizer-done"),
+                    Err(taful_app::Error::NothingToFit) => {
+                        s.ui.i18n.tr("settings-optimizer-nothing")
+                    }
+                    Err(e) => s.failed(&e),
+                });
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn failed(&self, e: &taful_app::Error) -> String {
+        self.ui
+            .i18n
+            .tr_args("settings-failed", &[("error", e.to_string().into())])
+    }
+
+    /// Review count, optimize and reset (spec §13).
+    fn optimizer_card(&mut self, cx: &mut Context<Self>) -> gpui::Div {
+        let (ui, p) = (self.ui.clone(), self.palette);
+        let t = &ui.theme;
+        let loc = ui.i18n.locale();
+        let status = match self.app.optimizer_status() {
+            Ok(s) => s,
+            Err(e) => {
+                return card(&ui, &p)
+                    .child(title(ui.i18n.tr("settings-optimizer"), &ui))
+                    .child(muted(self.failed(&e), &ui, &p));
+            }
+        };
+        let count = |n: u32| fmt::number(f64::from(n), 0, loc);
+        let available = status.available();
+        let running = self.settings.optimizing;
+        let mut c = card(&ui, &p)
+            .child(title(ui.i18n.tr("settings-optimizer"), &ui))
+            .child(muted(ui.i18n.tr("settings-optimizer-body"), &ui, &p))
+            .child(div().child(ui.i18n.tr_args(
+                "settings-optimizer-count",
+                &[("count", count(status.reviews).into())],
+            )))
+            .child(muted(
+                ui.i18n.tr(if status.custom {
+                    "settings-optimizer-custom"
+                } else {
+                    "settings-optimizer-default"
+                }),
+                &ui,
+                &p,
+            ));
+        if !available {
+            c = c.child(muted(
+                ui.i18n.tr_args(
+                    "settings-optimizer-locked",
+                    &[
+                        ("need", count(status.min_reviews).into()),
+                        ("left", count(status.min_reviews - status.reviews).into()),
+                    ],
+                ),
+                &ui,
+                &p,
+            ));
+        }
+        let run_label = ui.i18n.tr(if running {
+            "settings-optimizer-running"
+        } else {
+            "settings-optimizer-run"
+        });
+        let mut buttons = div().flex().flex_wrap().gap(px(t.spacing.sm)).child(
+            button("opt_run", run_label, available, &ui, &p)
+                .when(!available || running, |b| b.opacity(0.4).cursor_default())
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    if available {
+                        this.optimize(cx);
+                    }
+                })),
+        );
+        if status.custom {
+            buttons = buttons.child(
+                button(
+                    "opt_reset",
+                    ui.i18n.tr("settings-optimizer-reset"),
+                    false,
+                    &ui,
+                    &p,
+                )
+                .when(running, |b| b.opacity(0.4).cursor_default())
+                .on_click(cx.listener(|this, _, _, cx| {
+                    if this.settings.optimizing {
+                        return;
+                    }
+                    let r = this.app.reset_parameters();
+                    this.settings.optimizer_message = Some(match r {
+                        Ok(()) => this.ui.i18n.tr("settings-optimizer-reset-done"),
+                        Err(e) => this.failed(&e),
+                    });
+                    cx.notify();
+                })),
+            );
+        }
+        c = c.child(buttons);
+        if let Some(m) = &self.settings.optimizer_message {
+            c = c.child(muted(m.clone(), &ui, &p));
+        }
+        c
+    }
+
     /// Theme and layout pickers (spec §15.3, §15.4).
     fn appearance_card(&mut self, cx: &mut Context<Self>) -> gpui::Div {
         let (ui, p) = (self.ui.clone(), self.palette);
@@ -169,7 +310,6 @@ impl Shell {
         }
         let (active, layout) = self.app.active_layout();
         let choices = self.app.layout_choices().unwrap_or_default();
-        let user_layouts = choices.iter().filter(|c| !c.builtin).count();
         let layout_chips: Vec<_> = choices
             .into_iter()
             .enumerate()
@@ -190,10 +330,10 @@ impl Shell {
             })
             .collect();
         let active_is_user = active.starts_with("user:");
-        let copy_name = ui.i18n.tr_args(
-            "settings-layout-copy-name",
-            &[("n", (user_layouts + 1).into())],
-        );
+        let copy_name = self.app.new_layout_copy_name(|n| {
+            ui.i18n
+                .tr_args("settings-layout-copy-name", &[("n", n.into())])
+        });
         let mut buttons = div()
             .flex()
             .flex_wrap()
@@ -544,6 +684,9 @@ impl Shell {
                                 .on_click(cx.listener(
                                     |this, _, window, cx| {
                                         if let Some(f) = this.settings.pending_import.take() {
+                                            // A running fit read the old log.
+                                            this.settings.optimizer_generation += 1;
+                                            this.settings.optimizing = false;
                                             let r = this.app.import_from(&f);
                                             // The edited theme may not exist in the import.
                                             this.settings.theme_editor = None;
@@ -599,6 +742,7 @@ impl Shell {
 
         let appearance = self.appearance_card(cx);
         let theme_editor = self.theme_editor_card(cx);
+        let optimizer = self.optimizer_card(cx);
         let library = self.library_card(cx);
         div()
             .flex()
@@ -608,6 +752,7 @@ impl Shell {
             .child(appearance)
             .children(theme_editor)
             .child(retention_card)
+            .child(optimizer)
             .child(backups)
             .child(library)
             .child(grading)
@@ -638,8 +783,8 @@ fn layout_preview(layout: &Layout, ui: &Ui, p: &crate::theme::Palette) -> gpui::
         map = map.child(
             div()
                 .absolute()
-                .left(px(CELL * f32::from(panel.x) + 1.))
-                .top(px(CELL * f32::from(panel.y) + 1.))
+                .left(px(CELL * panel.x + 1.))
+                .top(px(CELL * panel.y + 1.))
                 .w(px(CELL * f32::from(panel.w) - 2.))
                 .h(px(CELL * f32::from(panel.h) - 2.))
                 .rounded(px(t.radii.sm))
