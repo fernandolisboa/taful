@@ -1,0 +1,48 @@
+id = "turn-play-quiz"
+version = 1
+lesson = "turn-play"
+pass = 0.75
+
+[[questions]]
+id = "stronger"
+kind = "choice"
+prompt = { en-US = "After the flop call, the caller's range on the turn is…", pt-BR = "Depois do call no flop, o range de quem pagou no turn é…" }
+choices = [
+    { en-US = "Narrower and stronger", pt-BR = "Mais estreito e mais forte" },
+    { en-US = "Wider", pt-BR = "Mais largo" },
+    { en-US = "Unchanged", pt-BR = "Igual" },
+]
+answer = 0
+
+[[questions]]
+id = "good-card"
+kind = "choice"
+prompt = { en-US = "Which turn is good to barrel as the preflop raiser on 9-6-3?", pt-BR = "Qual turn é bom para barrel como quem deu raise antes do flop em 9-6-3?" }
+choices = [
+    { en-US = "A card that completes the obvious straight", pt-BR = "Uma carta que completa a sequência óbvia" },
+    { en-US = "The third card of the flush draw you do not hold", pt-BR = "A terceira carta do flush que você não tem" },
+    { en-US = "An ace", pt-BR = "Um ás" },
+]
+answer = 2
+
+[[questions]]
+id = "delayed"
+kind = "choice"
+prompt = { en-US = "Checking back the flop and betting the turn is a…", pt-BR = "Dar check no flop e apostar no turn é um…" }
+choices = [
+    { en-US = "Delayed c-bet", pt-BR = "C-bet atrasado" },
+    { en-US = "Donk bet", pt-BR = "Donk bet" },
+    { en-US = "Check-raise", pt-BR = "Check-raise" },
+]
+answer = 0
+
+[[questions]]
+id = "give-up"
+kind = "choice"
+prompt = { en-US = "With no equity and no blockers on the turn you should usually…", pt-BR = "Sem equity e sem blockers no turn você normalmente deve…" }
+choices = [
+    { en-US = "Give up", pt-BR = "Desistir" },
+    { en-US = "Bet big", pt-BR = "Apostar grande" },
+    { en-US = "Go all-in", pt-BR = "Ir all-in" },
+]
+answer = 0

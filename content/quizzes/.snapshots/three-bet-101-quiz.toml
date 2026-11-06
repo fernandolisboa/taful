@@ -1,0 +1,8 @@
+# Rendered placeholder values, pinned (spec §12.3). Regenerate with
+# `cargo run -p taful-content-check -- --bless`; review the diff.
+
+[en-US]
+"calc: mul(a=2.5, b=3) | bb(1)" = "7.5 bb"
+
+[pt-BR]
+"calc: mul(a=2.5, b=3) | bb(1)" = "7,5 bb"

@@ -1,0 +1,37 @@
+id = "squeeze-101-quiz"
+version = 1
+lesson = "squeeze-101"
+pass = 0.75
+
+[[questions]]
+id = "what"
+kind = "choice"
+prompt = { en-US = "A squeeze is…", pt-BR = "Um squeeze é…" }
+choices = [
+    { en-US = "A 4-bet", pt-BR = "Um 4-bet" },
+    { en-US = "A limp-raise", pt-BR = "Um limp-raise" },
+    { en-US = "A 3-bet after an open and a call", pt-BR = "Um 3-bet depois de um open e um call" },
+]
+answer = 2
+
+[[questions]]
+id = "size"
+kind = "choice"
+prompt = { en-US = "Why is a squeeze bigger than a normal 3-bet?", pt-BR = "Por que um squeeze é maior que um 3-bet normal?" }
+choices = [
+    { en-US = "More dead money and two ranges to play against", pt-BR = "Mais dinheiro morto e dois ranges para enfrentar" },
+    { en-US = "To scare the dealer", pt-BR = "Para assustar o dealer" },
+    { en-US = "It is not bigger", pt-BR = "Não é maior" },
+]
+answer = 0
+
+[[questions]]
+id = "caller"
+kind = "choice"
+prompt = { en-US = "The cold caller's range is usually…", pt-BR = "O range de quem deu cold call normalmente é…" }
+choices = [
+    { en-US = "Full of AA and KK", pt-BR = "Cheio de AA e KK" },
+    { en-US = "Capped: few premium hands", pt-BR = "Limitado: poucas mãos premium" },
+    { en-US = "Only bluffs", pt-BR = "Só blefes" },
+]
+answer = 1

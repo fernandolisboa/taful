@@ -1,0 +1,48 @@
+id = "cbet-101-quiz"
+version = 1
+lesson = "cbet-101"
+pass = 0.75
+
+[[questions]]
+id = "k72"
+kind = "choice"
+prompt = { en-US = "BTN vs BB, flop K-7-2 rainbow. The button should c-bet…", pt-BR = "BTN contra BB, flop K-7-2 rainbow. O botão deve dar c-bet…" }
+choices = [
+    { en-US = "Rarely, big", pt-BR = "Raramente, grande" },
+    { en-US = "Very often, small", pt-BR = "Com muita frequência, pequeno" },
+    { en-US = "Never", pt-BR = "Nunca" },
+]
+answer = 1
+
+[[questions]]
+id = "765"
+kind = "choice"
+prompt = { en-US = "On 7-6-5, the preflop raiser c-bets…", pt-BR = "Em 7-6-5, quem deu raise antes do flop dá c-bet…" }
+choices = [
+    { en-US = "Every hand", pt-BR = "Com todas as mãos" },
+    { en-US = "Always all-in", pt-BR = "Sempre all-in" },
+    { en-US = "Much less often", pt-BR = "Com bem menos frequência" },
+]
+answer = 2
+
+[[questions]]
+id = "oop"
+kind = "choice"
+prompt = { en-US = "Out of position, c-bet frequency is usually…", pt-BR = "Fora de posição, a frequência de c-bet normalmente é…" }
+choices = [
+    { en-US = "Lower than in position", pt-BR = "Menor do que em posição" },
+    { en-US = "Higher than in position", pt-BR = "Maior do que em posição" },
+    { en-US = "The same", pt-BR = "A mesma" },
+]
+answer = 0
+
+[[questions]]
+id = "medium"
+kind = "choice"
+prompt = { en-US = "When betting less often, medium hands usually…", pt-BR = "Quando se aposta menos, as mãos médias normalmente…" }
+choices = [
+    { en-US = "Bet big", pt-BR = "Apostam grande" },
+    { en-US = "Check and call", pt-BR = "Dão check e pagam" },
+    { en-US = "Fold", pt-BR = "Foldam" },
+]
+answer = 1

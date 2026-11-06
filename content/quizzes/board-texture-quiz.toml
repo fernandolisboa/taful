@@ -1,0 +1,48 @@
+id = "board-texture-quiz"
+version = 1
+lesson = "board-texture"
+pass = 0.75
+
+[[questions]]
+id = "low"
+kind = "choice"
+prompt = { en-US = "Which flops favor the big blind defender?", pt-BR = "Quais flops favorecem o big blind que defendeu?" }
+choices = [
+    { en-US = "Ace-high dry boards", pt-BR = "Mesas secas com ás" },
+    { en-US = "King-high rainbow boards", pt-BR = "Mesas rainbow com rei" },
+    { en-US = "Low, connected boards", pt-BR = "Mesas baixas e conectadas" },
+]
+answer = 2
+
+[[questions]]
+id = "mono"
+kind = "choice"
+prompt = { en-US = "A monotone flop has…", pt-BR = "Um flop monotone tem…" }
+choices = [
+    { en-US = "Three cards of one suit", pt-BR = "Três cartas do mesmo naipe" },
+    { en-US = "Three suits", pt-BR = "Três naipes" },
+    { en-US = "A pair", pt-BR = "Um par" },
+]
+answer = 0
+
+[[questions]]
+id = "dry-size"
+kind = "choice"
+prompt = { en-US = "On dry boards, bets tend to be…", pt-BR = "Em mesas secas, as apostas tendem a ser…" }
+choices = [
+    { en-US = "Big", pt-BR = "Grandes" },
+    { en-US = "Small", pt-BR = "Pequenas" },
+    { en-US = "All-in", pt-BR = "All-in" },
+]
+answer = 1
+
+[[questions]]
+id = "paired"
+kind = "choice"
+prompt = { en-US = "On 7-7-2, who usually bets small and often?", pt-BR = "Em 7-7-2, quem normalmente aposta pequeno e com frequência?" }
+choices = [
+    { en-US = "The big blind", pt-BR = "O big blind" },
+    { en-US = "Nobody bets", pt-BR = "Ninguém aposta" },
+    { en-US = "The preflop raiser", pt-BR = "Quem deu raise antes do flop" },
+]
+answer = 2

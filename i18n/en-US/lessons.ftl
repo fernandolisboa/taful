@@ -4,6 +4,9 @@
 
 track-foundations = Foundations
 track-poker-math = Poker math
+track-preflop = Preflop
+track-postflop = Postflop
+track-game-plan = Game plan
 
 ## Skill tree
 

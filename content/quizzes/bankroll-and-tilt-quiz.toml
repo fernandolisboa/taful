@@ -1,0 +1,37 @@
+id = "bankroll-and-tilt-quiz"
+version = 1
+lesson = "bankroll-and-tilt"
+pass = 0.75
+
+[[questions]]
+id = "variance"
+kind = "choice"
+prompt = { en-US = "Ten losing sessions in a row prove…", pt-BR = "Dez sessões perdedoras seguidas provam…" }
+choices = [
+    { en-US = "That you are a losing player", pt-BR = "Que você é um jogador perdedor" },
+    { en-US = "Very little", pt-BR = "Muito pouco" },
+    { en-US = "That the game is rigged", pt-BR = "Que o jogo é manipulado" },
+]
+answer = 1
+
+[[questions]]
+id = "tilt"
+kind = "choice"
+prompt = { en-US = "Which is a sign of tilt?", pt-BR = "Qual destes é um sinal de tilt?" }
+choices = [
+    { en-US = "Folding a weak hand", pt-BR = "Foldar uma mão fraca" },
+    { en-US = "Calling to see if they had it", pt-BR = "Pagar para ver se ele tinha" },
+    { en-US = "Taking a break", pt-BR = "Fazer uma pausa" },
+]
+answer = 1
+
+[[questions]]
+id = "judge"
+kind = "choice"
+prompt = { en-US = "After a big loss, judge the hand by…", pt-BR = "Depois de uma perda grande, julgue a mão pela…" }
+choices = [
+    { en-US = "Whether you won", pt-BR = "Se você ganhou" },
+    { en-US = "How you felt", pt-BR = "Como você se sentiu" },
+    { en-US = "The EV of your decisions", pt-BR = "EV das suas decisões" },
+]
+answer = 2

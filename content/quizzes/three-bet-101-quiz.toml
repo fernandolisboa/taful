@@ -1,0 +1,44 @@
+id = "three-bet-101-quiz"
+version = 1
+lesson = "three-bet-101"
+pass = 0.75
+
+[[questions]]
+id = "a5s"
+kind = "choice"
+prompt = { en-US = "Why is A5s a classic bluff 3-bet?", pt-BR = "Por que A5s é um 3-bet de blefe clássico?" }
+choices = [
+    { en-US = "It is a strong value hand", pt-BR = "É uma mão forte de valor" },
+    { en-US = "It never makes a straight", pt-BR = "Nunca faz sequência" },
+    { en-US = "It blocks AA and AK and plays well when called", pt-BR = "Bloqueia AA e AK e joga bem quando pago" },
+]
+answer = 2
+
+[[questions]]
+id = "polar"
+kind = "choice"
+prompt = { en-US = "A polarized 3-bet range contains…", pt-BR = "Um range de 3-bet polarizado tem…" }
+choices = [
+    { en-US = "Strong hands and bluffs, with medium hands calling", pt-BR = "Mãos fortes e blefes, com as médias pagando" },
+    { en-US = "Only the best hands", pt-BR = "Só as melhores mãos" },
+    { en-US = "Only bluffs", pt-BR = "Só blefes" },
+]
+answer = 0
+
+[[questions]]
+id = "ip-size"
+kind = "numeric"
+prompt = { en-US = "The CO opens to 2.5 bb. You 3-bet from the button at 3×. To how many bb?", pt-BR = "O CO abre para 2,5 bb. Você dá 3-bet do botão com 3×. Para quantos bb?" }
+answer = "{{ calc: mul(a=2.5, b=3) | bb(1) }}"
+tolerance = 0.1
+
+[[questions]]
+id = "linear-when"
+kind = "choice"
+prompt = { en-US = "When is a more linear 3-bet range used?", pt-BR = "Quando se usa um range de 3-bet mais linear?" }
+choices = [
+    { en-US = "When you have position", pt-BR = "Quando você tem posição" },
+    { en-US = "Never", pt-BR = "Nunca" },
+    { en-US = "When calling is bad, like from the small blind", pt-BR = "Quando pagar é ruim, como no small blind" },
+]
+answer = 2

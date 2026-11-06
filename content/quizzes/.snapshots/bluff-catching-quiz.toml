@@ -1,0 +1,8 @@
+# Rendered placeholder values, pinned (spec §12.3). Regenerate with
+# `cargo run -p taful-content-check -- --bless`; review the diff.
+
+[en-US]
+"calc: pot_odds(pot=1, bet=1) | pct(1)" = "33.3%"
+
+[pt-BR]
+"calc: pot_odds(pot=1, bet=1) | pct(1)" = "33,3%"

@@ -1,0 +1,33 @@
+id = "bluff-catching-quiz"
+version = 1
+lesson = "bluff-catching"
+pass = 0.75
+
+[[questions]]
+id = "price"
+kind = "numeric"
+prompt = { en-US = "Facing a pot-size river bet, how often must a bluff-catcher win (in %)?", pt-BR = "Contra uma aposta do tamanho do pote no river, quantas vezes um bluff-catcher precisa ganhar (em %)?" }
+answer = "{{ calc: pot_odds(pot=1, bet=1) | pct(1) }}"
+tolerance = 1.0
+
+[[questions]]
+id = "what"
+kind = "choice"
+prompt = { en-US = "A bluff-catcher…", pt-BR = "Um bluff-catcher…" }
+choices = [
+    { en-US = "Beats value bets", pt-BR = "Ganha das apostas de valor" },
+    { en-US = "Is the nuts", pt-BR = "É o nuts" },
+    { en-US = "Beats only bluffs", pt-BR = "Só ganha de blefes" },
+]
+answer = 2
+
+[[questions]]
+id = "pick"
+kind = "choice"
+prompt = { en-US = "Which bluff-catcher is the better call?", pt-BR = "Qual bluff-catcher é o melhor call?" }
+choices = [
+    { en-US = "One that blocks the missed draws", pt-BR = "Um que bloqueia os projetos que não fecharam" },
+    { en-US = "One that blocks value bets and not bluffs", pt-BR = "Um que bloqueia apostas de valor e não blefes" },
+    { en-US = "They are all the same", pt-BR = "Todos são iguais" },
+]
+answer = 1

@@ -1,0 +1,48 @@
+id = "opening-ranges-quiz"
+version = 1
+lesson = "opening-ranges"
+pass = 0.75
+
+[[questions]]
+id = "widest"
+kind = "choice"
+prompt = { en-US = "Which seat opens the widest when it folds to it, in Taful's chart?", pt-BR = "Qual posição abre mais largo quando todos foldam até ela, no chart do Taful?" }
+choices = [
+    { en-US = "UTG", pt-BR = "UTG" },
+    { en-US = "HJ", pt-BR = "HJ" },
+    { en-US = "SB", pt-BR = "SB" },
+]
+answer = 2
+
+[[questions]]
+id = "utg"
+kind = "choice"
+prompt = { en-US = "About how often does UTG open?", pt-BR = "Mais ou menos com que frequência o UTG abre?" }
+choices = [
+    { en-US = "About 17%", pt-BR = "Cerca de 17%" },
+    { en-US = "About 40%", pt-BR = "Cerca de 40%" },
+    { en-US = "About 5%", pt-BR = "Cerca de 5%" },
+]
+answer = 0
+
+[[questions]]
+id = "why"
+kind = "choice"
+prompt = { en-US = "Why does UTG open tighter than the button?", pt-BR = "Por que o UTG abre mais fechado que o botão?" }
+choices = [
+    { en-US = "The blinds are bigger", pt-BR = "Os blinds são maiores" },
+    { en-US = "UTG has fewer chips", pt-BR = "O UTG tem menos fichas" },
+    { en-US = "More players are left to act behind", pt-BR = "Há mais jogadores para agir depois" },
+]
+answer = 2
+
+[[questions]]
+id = "limp"
+kind = "choice"
+prompt = { en-US = "Why does the reference strategy not limp?", pt-BR = "Por que a estratégia de referência não dá limp?" }
+choices = [
+    { en-US = "Limping is against the rules", pt-BR = "Dar limp é contra as regras" },
+    { en-US = "Limping costs more", pt-BR = "Dar limp custa mais" },
+    { en-US = "A raise can win the blinds now and takes the initiative", pt-BR = "Um raise pode ganhar os blinds na hora e toma a iniciativa" },
+]
+answer = 2

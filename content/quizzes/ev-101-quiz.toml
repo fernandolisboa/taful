@@ -1,0 +1,44 @@
+id = "ev-101-quiz"
+version = 1
+lesson = "ev-101"
+pass = 0.75
+
+[[questions]]
+id = "call-ev"
+kind = "numeric"
+prompt = { en-US = "Pot 10 bb, the bet is 5 bb, you have 40% equity and no more betting follows. EV of calling, in bb?", pt-BR = "Pote de 10 bb, aposta de 5 bb, você tem 40% de equity e não há mais apostas. EV do call, em bb?" }
+answer = "{{ calc: call_ev(equity=0.4, pot=10, bet=5) | bb(2) }}"
+tolerance = 0.1
+
+[[questions]]
+id = "fold-ev"
+kind = "choice"
+prompt = { en-US = "What is the EV of folding, from this point on?", pt-BR = "Qual é o EV de foldar, daqui em diante?" }
+choices = [
+    { en-US = "Zero", pt-BR = "Zero" },
+    { en-US = "Minus what you already put in", pt-BR = "Menos o que você já colocou" },
+    { en-US = "Minus the pot", pt-BR = "Menos o pote" },
+]
+answer = 0
+
+[[questions]]
+id = "result"
+kind = "choice"
+prompt = { en-US = "You call with +EV and lose the hand. The call was…", pt-BR = "Você paga com EV positivo e perde a mão. O call foi…" }
+choices = [
+    { en-US = "A mistake", pt-BR = "Um erro" },
+    { en-US = "Still right", pt-BR = "Certo mesmo assim" },
+    { en-US = "Right only if you win next time", pt-BR = "Certo só se ganhar da próxima vez" },
+]
+answer = 1
+
+[[questions]]
+id = "negative"
+kind = "choice"
+prompt = { en-US = "Your call has EV −1.2 bb. Compared with folding it…", pt-BR = "Seu call tem EV de −1,2 bb. Comparado com foldar, ele…" }
+choices = [
+    { en-US = "Wins 1.2 bb on average", pt-BR = "Ganha 1,2 bb em média" },
+    { en-US = "Loses 1.2 bb on average", pt-BR = "Perde 1,2 bb em média" },
+    { en-US = "Is the same", pt-BR = "É igual" },
+]
+answer = 1

@@ -16,4 +16,48 @@ lessons = [
     "mdf-101",
     "alpha-101",
     "spr-101",
+    "ev-101",
+    "implied-odds-101",
+    "fold-equity-101",
+]
+
+[[tracks]]
+id = "preflop"
+lessons = [
+    "ranges-101",
+    "opening-ranges",
+    "facing-an-open",
+    "three-bet-101",
+    "facing-a-3bet",
+    "four-bet-pots",
+    "blind-defense",
+    "small-blind-play",
+    "squeeze-101",
+]
+
+[[tracks]]
+id = "postflop"
+lessons = [
+    "board-texture",
+    "range-advantage",
+    "cbet-101",
+    "bet-sizing",
+    "facing-cbet",
+    "check-raise-101",
+    "out-of-position",
+    "turn-play",
+    "river-value",
+    "river-bluffing",
+    "bluff-catching",
+    "pot-control",
+]
+
+[[tracks]]
+id = "game-plan"
+lessons = [
+    "gto-vs-exploit",
+    "hand-reading",
+    "multiway-pots",
+    "study-loop",
+    "bankroll-and-tilt",
 ]

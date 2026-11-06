@@ -1,0 +1,40 @@
+id = "bet-sizing-quiz"
+version = 1
+lesson = "bet-sizing"
+pass = 0.75
+
+[[questions]]
+id = "third"
+kind = "numeric"
+prompt = { en-US = "Facing a third-pot bet, what equity does the caller need (in %)?", pt-BR = "Contra uma aposta de um terço do pote, quanta equity quem paga precisa (em %)?" }
+answer = "{{ calc: pot_odds(pot=3, bet=1) | pct(1) }}"
+tolerance = 1.0
+
+[[questions]]
+id = "alpha-pot"
+kind = "numeric"
+prompt = { en-US = "A pot-size bluff needs how many folds (in %)?", pt-BR = "Um blefe do tamanho do pote precisa de quantos folds (em %)?" }
+answer = "{{ calc: alpha(pot=1, bet=1) | pct(1) }}"
+tolerance = 1.0
+
+[[questions]]
+id = "big"
+kind = "choice"
+prompt = { en-US = "Big bets fit which kind of range?", pt-BR = "Apostas grandes combinam com qual tipo de range?" }
+choices = [
+    { en-US = "Polarized", pt-BR = "Polarizado" },
+    { en-US = "Linear", pt-BR = "Linear" },
+    { en-US = "Any range", pt-BR = "Qualquer range" },
+]
+answer = 0
+
+[[questions]]
+id = "medium"
+kind = "choice"
+prompt = { en-US = "Why can medium hands not bet big?", pt-BR = "Por que mãos médias não podem apostar grande?" }
+choices = [
+    { en-US = "It is against the rules", pt-BR = "É contra as regras" },
+    { en-US = "They always win", pt-BR = "Elas sempre ganham" },
+    { en-US = "Only better hands call", pt-BR = "Só mãos melhores pagam" },
+]
+answer = 2

@@ -1,0 +1,12 @@
+# Rendered placeholder values, pinned (spec §12.3). Regenerate with
+# `cargo run -p taful-content-check -- --bless`; review the diff.
+
+[en-US]
+"calc: call_ev(equity=0.196, pot=10, bet=5) | bb(2)" = "-1.08 bb"
+"calc: div(a=1.08, b=0.196) | bb(1)" = "5.5 bb"
+"calc: hit_probability(outs=9, cards=1) | pct(1)" = "19.6%"
+
+[pt-BR]
+"calc: call_ev(equity=0.196, pot=10, bet=5) | bb(2)" = "-1,08 bb"
+"calc: div(a=1.08, b=0.196) | bb(1)" = "5,5 bb"
+"calc: hit_probability(outs=9, cards=1) | pct(1)" = "19,6%"

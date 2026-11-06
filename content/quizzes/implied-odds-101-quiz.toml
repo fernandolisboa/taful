@@ -1,0 +1,48 @@
+id = "implied-odds-101-quiz"
+version = 1
+lesson = "implied-odds-101"
+pass = 0.75
+
+[[questions]]
+id = "what"
+kind = "choice"
+prompt = { en-US = "Implied odds add to pot odds…", pt-BR = "As odds implícitas somam às pot odds…" }
+choices = [
+    { en-US = "The chips you already put in", pt-BR = "As fichas que você já colocou" },
+    { en-US = "The rake", pt-BR = "O rake" },
+    { en-US = "Chips you expect to win on later streets when you hit", pt-BR = "As fichas que você espera ganhar nas próximas rodadas quando acerta" },
+]
+answer = 2
+
+[[questions]]
+id = "deep"
+kind = "choice"
+prompt = { en-US = "Implied odds are better when stacks are…", pt-BR = "As odds implícitas são melhores quando os stacks são…" }
+choices = [
+    { en-US = "Short", pt-BR = "Curtos" },
+    { en-US = "Deep", pt-BR = "Fundos" },
+    { en-US = "It does not matter", pt-BR = "Tanto faz" },
+]
+answer = 1
+
+[[questions]]
+id = "nut"
+kind = "choice"
+prompt = { en-US = "Which draw has better implied odds?", pt-BR = "Qual projeto tem odds implícitas melhores?" }
+choices = [
+    { en-US = "A draw to a low flush", pt-BR = "Um projeto de flush baixo" },
+    { en-US = "Both the same", pt-BR = "Os dois iguais" },
+    { en-US = "A draw to the nut flush", pt-BR = "Um projeto de flush nuts" },
+]
+answer = 2
+
+[[questions]]
+id = "reverse"
+kind = "choice"
+prompt = { en-US = "Weak top pair that wins small pots and loses big ones has…", pt-BR = "Um top pair fraco que ganha potes pequenos e perde grandes tem…" }
+choices = [
+    { en-US = "Reverse implied odds", pt-BR = "Odds implícitas reversas" },
+    { en-US = "Great implied odds", pt-BR = "Ótimas odds implícitas" },
+    { en-US = "Fold equity", pt-BR = "Fold equity" },
+]
+answer = 0

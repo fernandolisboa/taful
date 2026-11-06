@@ -1,0 +1,37 @@
+id = "pot-control-quiz"
+version = 1
+lesson = "pot-control"
+pass = 0.75
+
+[[questions]]
+id = "goal"
+kind = "choice"
+prompt = { en-US = "With a medium hand the goal is…", pt-BR = "Com uma mão média o objetivo é…" }
+choices = [
+    { en-US = "Reach showdown cheaply when behind", pt-BR = "Chegar ao showdown barato quando estiver atrás" },
+    { en-US = "Get all-in", pt-BR = "Ir all-in" },
+    { en-US = "Fold to any bet", pt-BR = "Foldar para qualquer aposta" },
+]
+answer = 0
+
+[[questions]]
+id = "spr"
+kind = "choice"
+prompt = { en-US = "With a low SPR, top pair becomes…", pt-BR = "Com SPR baixo, top pair vira…" }
+choices = [
+    { en-US = "Strong enough to get the stacks in", pt-BR = "Forte o bastante para ir all-in" },
+    { en-US = "A bluff", pt-BR = "Um blefe" },
+    { en-US = "A fold", pt-BR = "Um fold" },
+]
+answer = 0
+
+[[questions]]
+id = "balance"
+kind = "choice"
+prompt = { en-US = "If you always check medium hands and never strong ones…", pt-BR = "Se você sempre dá check com mãos médias e nunca com as fortes…" }
+choices = [
+    { en-US = "Opponents attack your checks", pt-BR = "Os adversários atacam os seus checks" },
+    { en-US = "Nothing happens", pt-BR = "Nada acontece" },
+    { en-US = "You win more", pt-BR = "Você ganha mais" },
+]
+answer = 0
