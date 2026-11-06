@@ -68,10 +68,13 @@ pub struct Source<'a> {
     pub id: &'a str,
 }
 
-/// FSRS with the user's desired retention.
+/// FSRS with the user's desired retention and parameters (the defaults, or
+/// the user's optimized ones, see [`crate::optimizer`]).
 pub struct Scheduler {
     fsrs: FSRS,
     retention: f32,
+    /// The optimized parameters in use, `None` for the defaults.
+    parameters: Option<Vec<f32>>,
 }
 
 impl Scheduler {
@@ -79,7 +82,23 @@ impl Scheduler {
         Scheduler {
             fsrs: FSRS::default(),
             retention: retention.clamp(RETENTION_RANGE.0, RETENTION_RANGE.1) as f32,
+            parameters: None,
         }
+    }
+
+    /// A scheduler with custom FSRS parameters; fails if FSRS rejects them.
+    pub fn with_parameters(retention: f64, parameters: &[f32]) -> Result<Scheduler, Error> {
+        let fsrs = FSRS::new(parameters).map_err(|e| Error::Scheduler(e.to_string()))?;
+        Ok(Scheduler {
+            fsrs,
+            parameters: Some(parameters.to_vec()),
+            ..Scheduler::new(retention)
+        })
+    }
+
+    /// Whether this scheduler runs on `parameters`.
+    pub fn uses_parameters(&self, parameters: &[f32]) -> bool {
+        self.parameters.as_deref() == Some(parameters)
     }
 
     pub fn retention(&self) -> f64 {

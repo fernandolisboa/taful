@@ -17,6 +17,8 @@ use crate::{Result, content};
 pub mod keys {
     pub const LOCALE: &str = "locale";
     pub const RETENTION: &str = "srs.desired_retention";
+    /// Optimized FSRS parameters (JSON array); unset means the defaults.
+    pub const FSRS_PARAMETERS: &str = "srs.parameters";
     pub const BACKUP_DIR: &str = "backup.dir";
     pub const BACKUP_LAST_AT: &str = "backup.last_at";
     pub const BACKUP_USE_MS: &str = "backup.use_ms";
@@ -127,7 +129,7 @@ impl App {
             policy: BackupPolicy::default(),
             seed,
         };
-        app.scheduler = Scheduler::new(app.retention());
+        app.scheduler = app.make_scheduler();
         // The folder picked in settings, unless the dev override is set.
         if std::env::var_os("TAFUL_LIBRARY_DIR").is_none_or(|v| v.is_empty()) {
             app.library_dir = app.setting_str(keys::LIBRARY_DIR).map(PathBuf::from);
@@ -206,7 +208,7 @@ impl App {
     pub fn set_retention(&mut self, r: f64) -> Result<f64> {
         let r = (r.clamp(RETENTION_RANGE.0, RETENTION_RANGE.1) * 100.0).round() / 100.0;
         self.store.set_setting(keys::RETENTION, &json!(r))?;
-        self.scheduler = Scheduler::new(r);
+        self.scheduler = self.make_scheduler();
         Ok(r)
     }
 
@@ -306,7 +308,7 @@ impl App {
         });
         let _ = std::fs::remove_file(&copy);
         result?;
-        self.scheduler = Scheduler::new(self.retention());
+        self.scheduler = self.make_scheduler();
         Ok(())
     }
 

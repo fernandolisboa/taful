@@ -339,6 +339,15 @@ pub struct ReviewRecord<'a> {
     pub source_id: Option<&'a str>,
 }
 
+/// One row of the review log, as the FSRS optimizer reads it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LoggedReview {
+    pub item_id: String,
+    pub reviewed_at: Millis,
+    /// `again`, `hard`, `good` or `easy`.
+    pub rating: String,
+}
+
 const ITEM_COLS: &str = "id, kind, item_key, content_version, stability, difficulty, due, \
                          last_review, reps, lapses";
 
@@ -531,6 +540,24 @@ impl Store {
             |r| r.get(0),
         )?;
         Ok((items, reviews))
+    }
+
+    /// The whole review log, grouped by item and in time order within an
+    /// item (FSRS optimizer, spec §13). Reviews of soft-deleted items are
+    /// included: they are still the user's memory history.
+    pub fn review_history(&self) -> Result<Vec<LoggedReview>> {
+        let mut stmt = self.conn().prepare(
+            "SELECT item_id, reviewed_at, rating FROM review_log
+             WHERE deleted_at IS NULL ORDER BY item_id, reviewed_at, id",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(LoggedReview {
+                item_id: r.get(0)?,
+                reviewed_at: r.get(1)?,
+                rating: r.get(2)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
     /// Soft-deletes an item (its log is kept).
@@ -900,6 +927,43 @@ mod tests {
     fn store() -> (Store, std::sync::Arc<std::sync::atomic::AtomicI64>) {
         let (clock, t) = test_clock(1_000);
         (Store::open_in_memory(clock).unwrap(), t)
+    }
+
+    #[test]
+    fn review_history_is_grouped_by_item_in_time_order() {
+        let (s, t) = store();
+        let a = s.ensure_review_item("calc_exercise", "a", None, 0).unwrap();
+        let b = s.ensure_review_item("calc_exercise", "b", None, 0).unwrap();
+        let rec = |at: Millis, rating: &'static str| ReviewRecord {
+            stability: 1.0,
+            difficulty: 5.0,
+            due: at + 1,
+            reviewed_at: at,
+            rating,
+            elapsed_days: 0.0,
+            lapse: false,
+            content_version: None,
+            source_kind: None,
+            source_id: None,
+        };
+        // Logged out of order across items.
+        s.record_review(&b.id, &rec(300, "good")).unwrap();
+        s.record_review(&a.id, &rec(100, "again")).unwrap();
+        s.record_review(&a.id, &rec(200, "easy")).unwrap();
+        t.store(5_000, std::sync::atomic::Ordering::SeqCst);
+        s.delete_review_item(&b.id).unwrap();
+        let log = s.review_history().unwrap();
+        let got: Vec<_> = log
+            .iter()
+            .map(|r| (r.item_id.as_str(), r.reviewed_at, r.rating.as_str()))
+            .collect();
+        let mut want = vec![
+            (a.id.as_str(), 100, "again"),
+            (a.id.as_str(), 200, "easy"),
+            (b.id.as_str(), 300, "good"),
+        ];
+        want.sort_by(|x, y| (x.0, x.1).cmp(&(y.0, y.1)));
+        assert_eq!(got, want, "a deleted item's reviews stay in the log");
     }
 
     #[test]

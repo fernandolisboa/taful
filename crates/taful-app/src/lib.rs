@@ -7,7 +7,7 @@
 //! - [`i18n`] and [`theme`]: localized strings and design tokens (M0).
 //! - [`App`]: the services over the store and the embedded content (M2):
 //!   settings, backups, the calc trainer, lessons and quizzes, and the FSRS
-//!   review queue.
+//!   review queue, and the FSRS parameter [`optimizer`].
 //! - [`preflop`]: the preflop spot mode and full hands over the solver library
 //!   (M3).
 //! - [`layout`] and [`appearance`]: table-screen layout presets, saved
@@ -22,6 +22,7 @@ pub mod i18n;
 pub mod layout;
 pub mod lessons;
 pub mod model;
+pub mod optimizer;
 pub mod postflop;
 pub mod preflop;
 pub mod review;
@@ -43,6 +44,11 @@ pub const PRODUCT_NAME: &str = "Taful";
 pub enum Error {
     Store(taful_store::StoreError),
     Scheduler(String),
+    /// The FSRS optimizer needs more reviews in the log.
+    NotEnoughReviews {
+        have: u32,
+        need: u32,
+    },
     /// A lesson, quiz or question id that does not exist.
     NotFound(String),
     /// Content failed to render (a bug: content is checked in CI).
@@ -55,6 +61,9 @@ impl std::fmt::Display for Error {
         match self {
             Error::Store(e) => write!(f, "{e}"),
             Error::Scheduler(e) => write!(f, "scheduler: {e}"),
+            Error::NotEnoughReviews { have, need } => {
+                write!(f, "optimizer: {have} reviews logged, {need} needed")
+            }
             Error::NotFound(what) => write!(f, "not found: {what}"),
             Error::Content(errs) => write!(f, "content: {}", errs.join("; ")),
             Error::Io(e) => write!(f, "io: {e}"),
