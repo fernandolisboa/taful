@@ -410,6 +410,13 @@ impl App {
         // review queue and leaks until those are keyed by profile (#26):
         // stored now they would count as reference mistakes.
         if d.vs_profile.is_some() {
+            // Reviews deal reference spots; answering one against a
+            // profile would leave the item due while looking graded.
+            if review_item.is_some() {
+                return Err(Error::NotFound(
+                    "a review answered against a bot profile".into(),
+                ));
+            }
             return Ok(());
         }
         // The decision and its review land together, or neither does: a
@@ -642,6 +649,7 @@ mod tests {
         let t = a.trainers().unwrap();
         let pre = &t.preflop;
         let mut checked = 0;
+        let mut station_ctx = None;
         for seed in 0..40 {
             let spot = pre.spot(SpotKind::VsOpen, seed).unwrap();
             let station =
@@ -662,7 +670,7 @@ mod tests {
                 let best = d.hand_evs.iter().copied().fold(f32::MIN, f32::max);
                 assert!((d.ev_loss_bb - f64::from(best - d.hand_evs[i])).abs() < 1e-9);
                 assert_eq!(vs.exploit, d.best());
-                assert_eq!(vs.gto, r.best());
+                assert_eq!(vs.gto, crate::preflop::argmax(&r.hand_freqs));
                 assert!(
                     (vs.ev_gap_bb - f64::from(d.hand_evs[vs.exploit] - d.hand_evs[vs.gto])).abs()
                         < 1e-9
@@ -670,6 +678,7 @@ mod tests {
                 // Not stored until decisions are keyed by profile (#26).
                 let ctx = station.context(&t);
                 a.record_spot_decision(&d, &ctx, None).unwrap();
+                station_ctx = Some((ctx.clone(), d.clone()));
                 assert!(
                     a.store
                         .review_item(ItemKind::SpotTemplate.id(), &ctx.template.key())
@@ -688,6 +697,16 @@ mod tests {
             assert_eq!(t.answer(&station, exploit).unwrap().grade, Grade::Best);
         }
         assert!(checked > 40);
+        // A due review cannot be answered against a profile.
+        let ctx = station_ctx.unwrap();
+        let item = a
+            .store
+            .ensure_review_item("spot_template", &ctx.0.template.key(), None, 0)
+            .unwrap();
+        assert!(
+            a.record_spot_decision(&ctx.1, &ctx.0, Some(&item.id))
+                .is_err()
+        );
         assert!(a.leaks().unwrap().is_empty());
         assert!(
             pre.spot(SpotKind::VsOpen, 0)

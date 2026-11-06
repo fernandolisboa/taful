@@ -83,7 +83,7 @@ layout-panel-table = Mesa
 layout-panel-actions = Ações
 layout-panel-explanation = Explicação
 
-## Perfis de oponente (spec §9). Nomes e descrições de uma linha.
+## Opponent profiles (spec §9). Names and one-line descriptions.
 table-opponent = Oponente
 bot-profile-reference = Referência (GTO)
 bot-profile-reference-about = Joga a estratégia de referência.

@@ -14,7 +14,10 @@
 //!
 //! 1. *Entering the pot.* The share of the range that does not fold is scaled
 //!    by `pfr_mult` at an unopened node (the tree has no limps, so opening is
-//!    the only way in) and by `vpip_mult` facing a raise. Widening adds the
+//!    the only way in) and by `vpip_mult` at every node facing a raise
+//!    (cold calls, defending the blinds, and also continuing against a
+//!    3-bet or 4-bet: a station folds too little to aggression at every
+//!    level, a nit too much). Widening adds the
 //!    folding part of the next-best hands first, by reference EV of the best
 //!    non-fold action over folding; narrowing drops the worst continuing
 //!    hands first. Only the boundary hand ends up mixed by the transform;

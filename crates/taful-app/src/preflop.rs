@@ -194,7 +194,7 @@ pub struct VsProfile {
     pub profile: String,
     /// Reference (GTO) EV of each action for hero's hand, bb.
     pub reference_evs: Vec<f32>,
-    /// The GTO line: best action by reference EV.
+    /// The GTO line: the reference's most frequent action for hero's hand.
     pub gto: usize,
     /// The exploitative line: best action by EV against the profile.
     pub exploit: usize,
@@ -206,10 +206,15 @@ pub struct VsProfile {
 impl GradedDecision {
     /// Index of the best action by EV for hero's hand.
     pub fn best(&self) -> usize {
-        (0..self.hand_evs.len())
-            .max_by(|&a, &b| self.hand_evs[a].total_cmp(&self.hand_evs[b]))
-            .unwrap_or(0)
+        argmax(&self.hand_evs)
     }
+}
+
+/// Index of the largest value (the last one on ties; 0 if empty).
+pub fn argmax(v: &[f32]) -> usize {
+    (0..v.len())
+        .max_by(|&a, &b| v[a].total_cmp(&v[b]))
+        .unwrap_or(0)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -275,15 +280,30 @@ impl PreflopTrainer {
         let thresholds =
             Thresholds::from_toml(GRADING_TOML).expect("shipped thresholds are valid (tested)");
         let mut t = PreflopTrainer::new(chart, thresholds);
-        let (lib, _) = crate::content::library();
+        // Only the bot files: no need to parse the whole content tree. A
+        // profile that fails to load is left out (content checks catch it
+        // in CI) rather than taking the reference trainer down with it.
+        let bots = taful_content::Files::from_pairs(
+            crate::content::CONTENT_FILES
+                .iter()
+                .copied()
+                .filter(|(path, _)| path.starts_with("bots/")),
+        );
+        let (profiles, findings) = taful_content::library::load_profiles(&bots);
+        for f in &findings {
+            eprintln!("taful: bot profile: {f}");
+        }
         for (id, bytes) in BUILTIN_PROFILE_CHARTS {
-            let profile = lib
-                .profiles
-                .get(*id)
-                .ok_or_else(|| PreflopError::UnknownProfile((*id).into()))?
-                .clone();
-            let br = PreflopChart::decode(bytes).map_err(PreflopError::Chart)?;
-            t.add_profile(profile, br)?;
+            let Some(profile) = profiles.get(*id) else {
+                eprintln!("taful: bot profile `{id}` missing");
+                continue;
+            };
+            let added = PreflopChart::decode(bytes)
+                .map_err(PreflopError::Chart)
+                .and_then(|br| t.add_profile(profile.clone(), br));
+            if let Err(e) = added {
+                eprintln!("taful: bot profile `{id}`: {e}");
+            }
         }
         Ok(t)
     }
@@ -406,11 +426,6 @@ impl PreflopTrainer {
         let n = c.node(node);
         let freqs = c.strategy(node, hand).ok_or(PreflopError::NoData)?;
         let reference_evs = c.ev(node, hand).ok_or(PreflopError::NoData)?;
-        let argmax = |v: &[f32]| {
-            (0..v.len())
-                .max_by(|&a, &b| v[a].total_cmp(&v[b]))
-                .unwrap_or(0)
-        };
         let (evs, vs_profile) = match opponent {
             None => (reference_evs, None),
             Some(id) => {
@@ -418,7 +433,17 @@ impl PreflopTrainer {
                     .profile(id)
                     .ok_or_else(|| PreflopError::UnknownProfile(id.into()))?;
                 let evs = p.chart.ev(node, hand).ok_or(PreflopError::NoData)?;
-                let (gto, exploit) = (argmax(&reference_evs), argmax(&evs));
+                // The GTO line is what the reference plays most with this
+                // hand (ties by reference EV), not its EV argmax: at mixed
+                // nodes the EVs are near-equal by construction.
+                let gto = (0..freqs.len())
+                    .max_by(|&a, &b| {
+                        freqs[a]
+                            .total_cmp(&freqs[b])
+                            .then(reference_evs[a].total_cmp(&reference_evs[b]))
+                    })
+                    .unwrap_or(0);
+                let exploit = argmax(&evs);
                 let vs = VsProfile {
                     profile: id.into(),
                     gto,
@@ -632,7 +657,8 @@ mod tests {
 
     #[test]
     fn every_shipped_profile_has_a_best_response_chart() {
-        let (lib, _) = crate::content::library();
+        let (lib, findings) = crate::content::library();
+        assert!(findings.is_empty(), "{findings:?}");
         let shipped: Vec<&str> = lib.profiles.keys().map(String::as_str).collect();
         let charts: Vec<&str> = BUILTIN_PROFILE_CHARTS.iter().map(|(id, _)| *id).collect();
         assert_eq!(shipped, charts);

@@ -177,7 +177,11 @@ impl TableScreen {
         {
             s.kind = kind;
         }
-        s.opponent = std::env::var("TAFUL_TABLE_OPPONENT").ok();
+        s.opponent = std::env::var("TAFUL_TABLE_OPPONENT").ok().filter(|id| {
+            s.trainers
+                .as_ref()
+                .is_ok_and(|t| t.preflop.profile(id).is_some())
+        });
         if let Ok(seed) = std::env::var("TAFUL_TABLE_SEED").map(|v| v.parse::<u64>()) {
             s.seed = seed.unwrap_or(s.seed);
         }
