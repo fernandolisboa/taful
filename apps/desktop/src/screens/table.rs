@@ -238,15 +238,22 @@ impl TableScreen {
     fn finish(&mut self, done: Done, cx: &mut Context<Self>) {
         match done {
             Done::Question(q) => self.question = q,
-            Done::Hand(h) => self.hand = h,
-            Done::Acted(Ok(h)) => {
-                if h.end.is_some() && !self.hand_sent {
-                    self.hand_sent = true;
-                    cx.emit(TableEvent::HandOver(Box::new(h.clone())));
-                }
+            // The bots can end a hand before hero ever acts (a walk in the
+            // big blind), so a fresh deal is checked as well.
+            Done::Hand(Some(h)) | Done::Acted(Ok(h)) => {
+                self.send_if_over(&h, cx);
                 self.hand = Some(h);
             }
+            Done::Hand(None) => self.hand = None,
             Done::Acted(Err(e)) => eprintln!("taful: hand: {e}"),
+        }
+    }
+
+    /// Emits [`TableEvent::HandOver`] once per hand, when it has ended.
+    fn send_if_over(&mut self, h: &FullHand, cx: &mut Context<Self>) {
+        if h.end.is_some() && !self.hand_sent {
+            self.hand_sent = true;
+            cx.emit(TableEvent::HandOver(Box::new(h.clone())));
         }
     }
 

@@ -406,23 +406,27 @@ impl App {
         ctx: &SpotContext,
         review_item: Option<&str>,
     ) -> Result<()> {
-        let id = self.store_decision(None, d, ctx, None)?;
-        match review_item.and_then(|i| self.store.review_item_by_id(i).transpose()) {
-            Some(item) => {
-                self.scheduler.review_item(
-                    &self.store,
-                    &item?,
-                    Rating::from_grade(d.grade),
-                    None,
-                    Some(Source {
-                        kind: "decision",
-                        id: &id,
-                    }),
-                )?;
+        // The decision and its review land together, or neither does: a
+        // decision without its review would leave the item due forever.
+        self.store.atomic(|_| {
+            let id = self.store_decision(None, d, ctx, None)?;
+            match review_item.and_then(|i| self.store.review_item_by_id(i).transpose()) {
+                Some(item) => {
+                    self.scheduler.review_item(
+                        &self.store,
+                        &item?,
+                        Rating::from_grade(d.grade),
+                        None,
+                        Some(Source {
+                            kind: "decision",
+                            id: &id,
+                        }),
+                    )?;
+                }
+                None => self.review_decision(d, ctx, &id)?,
             }
-            None => self.review_decision(d, ctx, &id)?,
-        }
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Store a finished full hand with its decisions; feed the queue and
@@ -726,5 +730,56 @@ mod tests {
         assert_eq!(recent.len(), stored.min(RECENT_HANDS as usize));
         // Unsolved lines were counted as solve candidates.
         assert!(!a.store.solve_candidates(5).unwrap().is_empty());
+    }
+
+    #[test]
+    fn hands_over_before_hero_acts_are_stored() {
+        let mut a = app();
+        let t = a.trainers().unwrap();
+        // The bots end some deals on their own (a walk in the big blind).
+        let h = (0..2_000)
+            .map(|seed| FullHand::new(&t.preflop, t.post(), None, seed).unwrap())
+            .find(|h| h.end.is_some())
+            .expect("a hand that ends before hero acts");
+        assert!(h.decisions.is_empty());
+        let id = a.record_hand(&h).unwrap();
+        let r = a.hand_review(&id).unwrap();
+        assert!(r.decisions.is_empty());
+        assert_eq!(r.summary.hero_hand, Some(h.hero_hand()));
+        assert!(a.recent_hands().unwrap().iter().any(|s| s.id == id));
+    }
+
+    #[test]
+    fn a_failed_review_drops_its_spot_decision() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut a = App::open(dir.path()).unwrap();
+        let t = a.trainers().unwrap();
+        let tpl = SpotTemplate::parse(&format!("v1|{}|preflop||-|UTG", t.config_key())).unwrap();
+        let spot = t.spot_for_template(&tpl, 1).unwrap();
+        let d = t.answer(&spot, spot.actions(&t)[0]).unwrap();
+        let ctx = spot.context(&t);
+        let decisions = |a: &App| -> u32 {
+            a.store
+                .bucket_stats(1_000)
+                .unwrap()
+                .iter()
+                .map(|b| b.decisions)
+                .sum()
+        };
+        let item = a
+            .store
+            .ensure_review_item("spot_template", &ctx.template.key(), None, 0)
+            .unwrap();
+        // Make the review write fail after the decision is in.
+        let db = rusqlite::Connection::open(dir.path().join(crate::services::DB_FILE)).unwrap();
+        let trap = "CREATE TRIGGER trap BEFORE INSERT ON review_log
+                    BEGIN SELECT RAISE(ABORT, 'trap'); END;";
+        db.execute_batch(trap).unwrap();
+        assert!(a.record_spot_decision(&d, &ctx, Some(&item.id)).is_err());
+        assert_eq!(decisions(&a), 0, "rolled back with the review");
+
+        db.execute_batch("DROP TRIGGER trap").unwrap();
+        a.record_spot_decision(&d, &ctx, Some(&item.id)).unwrap();
+        assert_eq!(decisions(&a), 1);
     }
 }
