@@ -199,7 +199,9 @@ impl Layout {
     }
 
     /// Panels a layout from an older build does not have get the default
-    /// preset's position (spec §15.3), hidden if they would overlap.
+    /// preset's position (spec §15.3), hidden if they would overlap. A
+    /// required panel cannot be hidden, so it stays and the overlap makes
+    /// the layout invalid (the caller falls back to the default preset).
     fn add_missing_panels(&mut self) {
         let missing: Vec<PanelId> = PanelId::ALL
             .into_iter()
