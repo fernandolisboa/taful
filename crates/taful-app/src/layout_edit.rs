@@ -104,17 +104,30 @@ impl LayoutEditor {
     }
 
     /// Where `id` would land if resized to `w` × `h` cells (rounded to whole
-    /// cells), keeping its top-left corner.
+    /// cells), keeping its top-left corner. A size that reaches the grid's
+    /// edge but rounds past it (a panel at a fraction of a cell) is cut to
+    /// the whole cells that fit.
     pub fn landing_for_resize(&self, id: PanelId, w: f32, h: f32) -> Landing {
-        let cells = |v: f32| {
-            if v.is_finite() {
-                v.round().clamp(0., f32::from(u16::MAX)) as u16
-            } else {
-                0
+        let cells = |v: f32, at: f32, room: u16| {
+            if !v.is_finite() {
+                return 0;
             }
+            let room = f32::from(room) - at;
+            let mut n = v.round().clamp(0., f32::from(u16::MAX));
+            if v <= room && n > room {
+                n = room.floor().max(0.);
+            }
+            n as u16
         };
+        let grid = self.draft.grid;
         match self.draft.panel(id) {
-            Some(p) => self.check(id, p.x, p.y, cells(w), cells(h)),
+            Some(p) => self.check(
+                id,
+                p.x,
+                p.y,
+                cells(w, p.x, grid.cols),
+                cells(h, p.y, grid.rows),
+            ),
             None => self.missing(id),
         }
     }
@@ -164,6 +177,7 @@ impl LayoutEditor {
     /// load-time rules. The draft is valid, so any rule the candidate breaks
     /// comes from this panel.
     fn check(&self, id: PanelId, x: f32, y: f32, w: u16, h: u16) -> Landing {
+        let (x, y) = (quantize(x), quantize(y));
         let mut candidate = self.draft.clone();
         let refused = match candidate.panels.iter_mut().find(|p| p.id == id.id()) {
             None => Some(Refusal::NoSuchPanel),
@@ -288,6 +302,27 @@ mod tests {
     }
 
     #[test]
+    fn resizing_to_the_edge_from_a_fraction_of_a_cell() {
+        let (_, mut e) = editor();
+        e.resize_panel(PanelId::Explanation, 16., 22.).unwrap();
+        e.move_panel(PanelId::Explanation, 31.5, 5., false).unwrap();
+        // Dragged to the right edge: 16.5 cells of room round to 17, which
+        // would leave the grid, so 16 fit.
+        let l = e.landing_for_resize(PanelId::Explanation, 16.5, 22.);
+        assert_eq!((l.w, l.refused), (16, None));
+        // Past the edge is still refused.
+        assert_eq!(
+            e.resize_panel(PanelId::Explanation, 17., 22.),
+            Err(Refusal::LeavesGrid)
+        );
+        // A hand-built landing is kept on the position step.
+        let mut l = e.landing_for_move(PanelId::Explanation, 31.5, 5., false);
+        l.x = 31.56;
+        e.apply(&l).unwrap();
+        assert_eq!(e.draft().panel(PanelId::Explanation).unwrap().x, 31.5);
+    }
+
+    #[test]
     fn hidden_panels_are_not_edited() {
         let mut l = Layout::builtin_default();
         l.panels[3].visible = false;
@@ -325,7 +360,8 @@ mod tests {
             Err(Refusal::Overlaps(PanelId::Table))
         );
         let draft = e.draft().clone();
-        let saved = app.save_edited_layout(&draft, "Mine").unwrap();
+        let (saved, stored) = app.save_edited_layout(&draft, "Mine").unwrap();
+        assert_eq!(stored.panels, draft.panels);
         assert!(!saved.builtin);
         assert_eq!(app.active_layout().0, saved.key);
         drop(app);
@@ -364,7 +400,7 @@ mod tests {
         e.resize_panel(PanelId::Explanation, 16., 21.).unwrap();
         e.move_panel(PanelId::Explanation, 31.625, 5.125, false)
             .unwrap();
-        let saved = app.save_edited_layout(e.draft(), "Free").unwrap();
+        let (saved, _) = app.save_edited_layout(e.draft(), "Free").unwrap();
         let l = app.set_layout(&saved.key).unwrap();
         let p = l.panel(PanelId::Explanation).unwrap();
         assert_eq!((p.x, p.y), (31.625, 5.125));
@@ -400,7 +436,7 @@ mod tests {
             "the panel added later gets its default position"
         );
         e.resize_panel(PanelId::Explanation, 16., 22.).unwrap();
-        let saved = app.save_edited_layout(e.draft(), "old 2").unwrap();
+        let (saved, _) = app.save_edited_layout(e.draft(), "old 2").unwrap();
         let rows = app.store.layouts().unwrap();
         let row = rows.iter().find(|r| saved.key.ends_with(&r.id)).unwrap();
         assert_eq!(row.schema_version, crate::layout::SCHEMA_VERSION);

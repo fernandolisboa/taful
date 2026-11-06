@@ -71,9 +71,15 @@ impl TableScreen {
         cx.notify();
     }
 
+    /// Saves a copy; with nothing changed there is nothing to copy, so it
+    /// just leaves edit mode.
     fn save_edit(&mut self, cx: &mut Context<Self>) {
-        if let Some(e) = &self.editing {
-            cx.emit(TableEvent::SaveLayout(Box::new(e.editor.draft().clone())));
+        match &self.editing {
+            Some(e) if e.editor.changed() => {
+                cx.emit(TableEvent::SaveLayout(Box::new(e.editor.draft().clone())));
+            }
+            Some(_) => self.cancel_edit(cx),
+            None => {}
         }
     }
 
@@ -177,18 +183,29 @@ impl TableScreen {
     }
 
     fn on_drag_move(&mut self, ev: &MouseMoveEvent, cx: &mut Context<Self>) {
-        if let Some(d) = self.editing.as_mut().and_then(|e| e.drag.as_mut()) {
-            d.now = ev.position;
-            d.alt = ev.modifiers.alt;
-            cx.notify();
+        let Some(d) = self.editing.as_mut().and_then(|e| e.drag.as_mut()) else {
+            return;
+        };
+        d.now = ev.position;
+        d.alt = ev.modifiers.alt;
+        // The release was missed (a click quicker than a frame, or let go
+        // outside the window): drop where the button came up.
+        if ev.pressed_button != Some(MouseButton::Left) {
+            self.drop_dragged(ev.modifiers.alt);
         }
+        cx.notify();
     }
 
     fn on_drop(&mut self, ev: &MouseUpEvent, cx: &mut Context<Self>) {
+        self.drop_dragged(ev.modifiers.alt);
+        cx.notify();
+    }
+
+    fn drop_dragged(&mut self, alt: bool) {
         let Some(mut d) = self.editing.as_mut().and_then(|e| e.drag.take()) else {
             return;
         };
-        d.alt = ev.modifiers.alt;
+        d.alt = alt;
         let landing = match &self.editing {
             Some(e) => self.landing(e, &d),
             None => return,
@@ -196,7 +213,6 @@ impl TableScreen {
         if let Some(e) = &mut self.editing {
             e.refused = e.editor.apply(&landing).err();
         }
-        cx.notify();
     }
 
     /// The bar above the grid: hint or refusal, save and cancel.
