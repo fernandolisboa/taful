@@ -185,6 +185,10 @@ Since layout and theme are pure data, the editor is a UI over an existing model 
 - GPUI drag-and-drop is still validated early in spike §9.1, so the deferred editor carries no hidden technical risk.
 - No widget hard-codes a color: everything reads tokens, enforced by a lint/test that rejects literal colors outside theme files.
 
+### Theme editor validation (amended 2026-11-06)
+- The in-app theme editor runs the same checks as the built-in themes (WCAG AA for text and grade colors, no red, grade colors distinct) **live, as warnings only**: the user can save a theme that fails them.
+- Built-in themes keep failing CI on any violation; the relaxation applies only to user themes.
+
 ---
 
 ## D8 — Bots with profiles
@@ -210,6 +214,18 @@ Exploitative play is only teachable if the grade measures EV against the real op
 - Best responses need the full tree in memory (8–14GB for an SRP), so flop and turn best-response EVs per profile are computed **offline during the library build**, while each solved tree is still loaded, and stored next to the reference strategy. River best responses run on demand in the app, like river solves (< 0.1s).
 - **Budget:** each profile adds a few minutes of build time per flop and less storage than the reference strategy (EVs for hero's hands only), instead of a full extra solve. All profiles × all D2 spots are affordable, so there is no need to split pre-solved and on-demand profiles.
 - **Avoid partial locks** (bot locked only at some nodes and re-optimizing elsewhere). Each would be a full re-solve (~35–60 min per SRP flop), which would multiply the D2 build time by the number of profiles.
+
+### Choosing profiled opponents (amended 2026-11-06)
+- **Spot mode:** the user picks the opponent's profile (reference or any profile) in the controls panel.
+- **Full-hand mode:** each bot seat can carry its own profile (for example two nits, one maniac, two TAGs); a single profile for every seat is the simple case.
+- Graded mistakes against a profile land in the FSRS queue and in leak detection **keyed by profile**, so the user sees whether they adjust to each opponent type.
+- Postflop is heads-up in every D2 configuration, so only the remaining opponent's profile matters there and its best responses come precomputed from the build. **Preflop at a mixed table** needs a best response against that seat combination, computed on demand by the own preflop solver (D12). Its cost is unmeasured; the mixed table ships as a separate step after the single-profile one, starting with that measurement.
+
+### Build sequencing (amended 2026-11-06)
+- **Per-profile best responses can only be computed inside the solve.** Library files are turn-truncated and pruned (spec §7.5), and a best response against an exploitative profile needs the full tree down to the river, including the lines the reference strategy rarely takes. A separate pass over stored `.tafl` files cannot produce them.
+- **Rule:** any per-flop output that needs the full solved tree (profile best responses today, anything similar later) is computed by the build tool during the solve. Profiles are calibrated on the first-slice library before the coverage run, because changing a profile afterwards means re-solving.
+- **Sequencing:** the first-slice library (245 solves, D2/D13) is finished without profiles, so the slice is playable against the reference bot. **Coverage growth toward all 1,755 flops (8,775 solves) is blocked** until the profiles exist and the build tool computes their best responses inline. That run then re-solves the 245 first-slice files as part of the full set, once.
+- **Why:** the 245 files cost ~1.5 days of build time and make the app usable weeks before the profiles exist; growing coverage first would have to be redone at full-coverage scale (~430–700 h).
 
 ---
 
@@ -359,3 +375,22 @@ Mapping a random flop to the "nearest" solved flop changes hero's real hand stre
 - The flop subset is a build-manifest parameter; adding flops is a build job, never a code change.
 - Build machine: the author's PC (Ryzen 9 9950X3D, 16 cores / 32 threads, 32GB), at low priority at night and on weekends; the build must be resumable and pausable. Benchmarked 2026-11-04 (spec §7.3): SRP medium ~4–7 min per flop, 3-bet pot large ~1.5 min. The first slice takes ~16 h; full coverage takes ~430–700 h, about 3–4 weeks 24/7 or 6–10 weeks of nights and weekends.
 - 32GB RAM fits one SRP solve at a time (up to ~14GB in 16-bit). Shipped size grows proportionally (to be measured with the compact format, spec §7.5).
+
+---
+
+## D14 — Desktop installer for personal use
+
+**Date:** 2026-11-06 · **Spec ref:** §19 Q3, Q5
+
+### Decision
+- Once the first slice is minimally usable (first-slice library finished and installed), CI produces a **simple Windows installer** so the author can install Taful himself.
+- **Unsigned**, no auto-update. SmartScreen warns on first run ("More info → Run anyway"); that is accepted for personal use.
+- The postflop library is **not** bundled: it stays in a folder the user picks in settings (`LocalDir`, spec §7.6).
+- A **full release** (code signing, auto-update, library downloaded from a host (Q5), INPI filing (D10)) happens only if the author decides to sell the app. It is tracked as a placeholder, not planned work.
+
+### Why
+The only user today is the author, on his own PC. Signing certificates, hosting and trademark filing cost money that is only worth spending if the app is sold.
+
+### Implications
+- The installer format must not require a signature to install (rules out MSIX); an MSI or a setup executable built in CI fits.
+- Q5 (library host) and the INPI filing stay deferred until a sell decision.
