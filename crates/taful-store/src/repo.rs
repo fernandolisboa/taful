@@ -1,6 +1,6 @@
 //! Repositories: typed reads and writes per table (spec §14.2).
 
-use rusqlite::{OptionalExtension, Row, params};
+use rusqlite::{OptionalExtension, Row, named_params, params};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -470,12 +470,17 @@ impl Store {
     ) -> Result<Vec<ReviewItem>> {
         let mut stmt = self.conn().prepare(&format!(
             "SELECT {ITEM_COLS} FROM review_items
-             WHERE deleted_at IS NULL AND due <= ?1 AND {} AND {HOLD_FILTER}
-             ORDER BY due, id LIMIT ?5",
+             WHERE deleted_at IS NULL AND due <= :now AND {} AND {HOLD_FILTER}
+             ORDER BY due, id LIMIT :limit",
             kind_filter(kinds)
         ))?;
         let (k, g, u) = Hold::params(hold);
-        let rows = stmt.query_map(params![now, k, g, u, limit], item_row)?;
+        let rows = stmt.query_map(
+            named_params! {
+                ":now": now, ":hold_kind": k, ":key_glob": g, ":unless_glob": u, ":limit": limit,
+            },
+            item_row,
+        )?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
@@ -496,10 +501,10 @@ impl Store {
         Ok(self.conn().query_row(
             &format!(
                 "SELECT count(*) FROM review_items
-                 WHERE deleted_at IS NULL AND due <= ?1 AND {} AND {HOLD_FILTER}",
+                 WHERE deleted_at IS NULL AND due <= :now AND {} AND {HOLD_FILTER}",
                 kind_filter(kinds)
             ),
-            params![now, k, g, u],
+            named_params! { ":now": now, ":hold_kind": k, ":key_glob": g, ":unless_glob": u },
             |r| r.get(0),
         )?)
     }
@@ -848,8 +853,6 @@ impl Store {
     }
 }
 
-/// `kind IN (...)` for a fixed set of kind ids (never user input; quoted
-/// defensively anyway), or `1` for all kinds.
 /// Review items to hold back from a due query: those of `kind` whose key
 /// matches the SQLite GLOB `key_glob` and not `unless_glob`.
 #[derive(Debug, Clone, Copy)]
@@ -859,18 +862,23 @@ pub struct Hold<'a> {
     pub unless_glob: &'a str,
 }
 
-impl Hold<'_> {
-    /// `?2`–`?4` of [`HOLD_FILTER`]; `None` holds nothing (NULL kind).
-    fn params(hold: Option<&Hold<'_>>) -> (Option<String>, String, String) {
-        hold.map_or((None, String::new(), String::new()), |h| {
-            (Some(h.kind.into()), h.key_glob.into(), h.unless_glob.into())
+impl<'a> Hold<'a> {
+    /// The values of [`HOLD_FILTER`]'s parameters; `None` holds nothing
+    /// (a NULL kind matches no row).
+    fn params(hold: Option<&Hold<'a>>) -> (Option<&'a str>, &'a str, &'a str) {
+        hold.map_or((None, "", ""), |h| {
+            (Some(h.kind), h.key_glob, h.unless_glob)
         })
     }
 }
 
-/// SQL for a [`Hold`] bound as `?2` (kind), `?3` and `?4` (globs).
-const HOLD_FILTER: &str = "NOT (kind IS ?2 AND item_key GLOB ?3 AND item_key NOT GLOB ?4)";
+/// SQL for a [`Hold`], bound by name: `:hold_kind`, `:key_glob`,
+/// `:unless_glob`.
+const HOLD_FILTER: &str =
+    "NOT (kind IS :hold_kind AND item_key GLOB :key_glob AND item_key NOT GLOB :unless_glob)";
 
+/// `kind IN (...)` for a fixed set of kind ids (never user input; quoted
+/// defensively anyway), or `1` for all kinds.
 fn kind_filter(kinds: &[&str]) -> String {
     if kinds.is_empty() {
         return "1".into();
