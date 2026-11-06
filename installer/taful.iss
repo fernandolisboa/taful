@@ -5,10 +5,15 @@
 ; The app keeps its data in %APPDATA%\Taful (database, backups, default
 ; library folder); the installer never writes, reads or deletes that folder.
 ;
-; Compile: ISCC /DAppVersion=<workspace version> /DSourceExe=<taful.exe> installer\taful.iss
+; Compile: ISCC /DAppVersion=<workspace version> installer\taful.iss
+; (optional: /DNumericVersion=<x.y.z without suffix> /DSourceExe=<taful.exe>)
+; Needs Inno Setup 6.3 or later (x64compatible).
 
 #ifndef AppVersion
   #error Pass /DAppVersion=<workspace version>
+#endif
+#ifndef NumericVersion
+  #define NumericVersion AppVersion
 #endif
 #ifndef SourceExe
   #define SourceExe "..\target\release\taful.exe"
@@ -24,9 +29,8 @@ AppName=Taful
 AppVersion={#AppVersion}
 AppVerName=Taful {#AppVersion}
 AppPublisher=Fernando Lisboa
-VersionInfoVersion={#AppVersion}
+VersionInfoVersion={#NumericVersion}
 DefaultDirName={autopf}\Taful
-DefaultGroupName=Taful
 DisableProgramGroupPage=yes
 DisableDirPage=yes
 PrivilegesRequired=lowest
@@ -40,8 +44,6 @@ WizardStyle=modern
 ; Pick the language from Windows; ask only when it is neither pt-BR nor English.
 ShowLanguageDialog=auto
 UninstallDisplayIcon={app}\taful.exe
-; Close a running Taful before replacing taful.exe on upgrade.
-CloseApplications=yes
 
 [Languages]
 Name: "ptbr"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"

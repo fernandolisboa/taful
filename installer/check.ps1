@@ -45,14 +45,14 @@ function Run([string]$file, [string[]]$arguments) {
 
 $silent = '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
 
-Run $Setup ($silent + '/CURRENTUSER', "/LOG=$PWD\install.log")
+Run $Setup ($silent + "/LOG=$PWD\install.log")
 if (-not (Test-Path $exe)) { throw "install: $exe missing" }
 if (-not (Test-Path $shortcut)) { throw "install: Start-menu shortcut $shortcut missing" }
 Write-Host "ok: installed to $appDir with Start-menu shortcut"
 Assert-DataIntact 'install'
 
 # Upgrade: run the installer over the existing install (same AppId).
-Run $Setup ($silent + '/CURRENTUSER', "/LOG=$PWD\upgrade.log")
+Run $Setup ($silent + "/LOG=$PWD\upgrade.log")
 if (-not (Test-Path $exe)) { throw "upgrade: $exe missing" }
 Assert-DataIntact 'upgrade'
 
