@@ -384,7 +384,8 @@ mod tests {
         let (mut app, _) = app_at(1_000);
         assert!(app.trainers().unwrap().post().is_none(), "no library");
         for i in 0..(SCAN + 20) {
-            let key = format!("v1|c1c6782d35338294|btn-bb-srp|BB:x,BTN:b{i}/|A-2t-u-1|BB");
+            let key =
+                format!("v2|c1c6782d35338294|btn-bb-srp|BB:x,BTN:b{i}/|A-2t-u-1|BB|reference");
             app.store
                 .ensure_review_item("spot_template", &key, None, 0)
                 .unwrap();
@@ -404,7 +405,7 @@ mod tests {
         // Preflop templates and unknown keys still count; the library
         // brings the postflop ones back.
         let pre = format!(
-            "v1|{}|preflop|UTG:f|-|HJ",
+            "v2|{}|preflop|UTG:f|-|HJ|reference",
             app.trainers().unwrap().config_key()
         );
         app.store
@@ -425,8 +426,11 @@ mod tests {
         let (mut app, t) = app_at(0);
         let trainers = app.trainers().unwrap();
         // Fold a hand UTG should open: a mistake, so the template gets an item.
-        let tpl =
-            SpotTemplate::parse(&format!("v1|{}|preflop||-|UTG", trainers.config_key())).unwrap();
+        let tpl = SpotTemplate::parse(&format!(
+            "v2|{}|preflop||-|UTG|reference",
+            trainers.config_key()
+        ))
+        .unwrap();
         let (d, ctx) = (0..200)
             .find_map(|seed| {
                 let spot = trainers.spot_for_template(&tpl, seed).unwrap();

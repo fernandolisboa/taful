@@ -428,8 +428,7 @@ impl TableScreen {
             .child(text)
     }
 
-    /// The prompt before hero answers; against a profile, who the bot is
-    /// and that these decisions are practice only for now (#26).
+    /// The prompt before hero answers; against a profile, who the bot is.
     fn prompt(&self, q: &DrillSpot) -> Div {
         let (th, i18n) = (&self.ui.theme, &self.ui.i18n);
         let opponent = match q {
@@ -442,15 +441,13 @@ impl TableScreen {
             .gap(px(th.spacing.md))
             .child(self.message(i18n.tr("table-spot-prompt")));
         if let Some(id) = opponent {
-            d = d
-                .child(self.message(i18n.tr_args(
-                    "table-vs-profile-prompt",
-                    &[
-                        ("profile", i18n.tr(&format!("bot-profile-{id}")).into()),
-                        ("about", i18n.tr(&format!("bot-profile-{id}-about")).into()),
-                    ],
-                )))
-                .child(self.message(i18n.tr("table-opponent-practice")));
+            d = d.child(self.message(i18n.tr_args(
+                "table-vs-profile-prompt",
+                &[
+                    ("profile", i18n.tr(&format!("bot-profile-{id}")).into()),
+                    ("about", i18n.tr(&format!("bot-profile-{id}-about")).into()),
+                ],
+            )));
         }
         d
     }
@@ -815,7 +812,7 @@ impl TableScreen {
             .h(px(r.h))
     }
 
-    /// The drill's bucket as one line.
+    /// The drill's bucket as one line, ending with who it was against.
     pub fn bucket_label(ui: &Ui, b: &LeakBucket) -> String {
         let i18n = &ui.i18n;
         let mut parts = vec![felt::spot_label(ui, &b.spot)];
@@ -826,6 +823,14 @@ impl TableScreen {
         if let Some(keys) = b.texture.as_deref().and_then(texture_label_keys) {
             parts.push(keys.map(|k| i18n.tr(&k)).join(", "));
         }
+        let opponent = taful_app::template::opponent_id(b.opponent.as_deref());
+        parts.push(i18n.tr_args(
+            "leak-vs-profile",
+            &[(
+                "profile",
+                i18n.tr(&format!("bot-profile-{opponent}")).into(),
+            )],
+        ));
         parts.join(" · ")
     }
 }

@@ -2,18 +2,21 @@
 //!
 //! A **spot template** is a spot with the board replaced by its board family
 //! (the flop's texture class): configuration + line + postflop history +
-//! texture class + hero position. It is the unit of spaced repetition: a
-//! graded decision below `Correct` creates or updates the review item of its
-//! template, and a review deals a fresh spot of the same template.
+//! texture class + hero position + opponent profile. It is the unit of
+//! spaced repetition: a graded decision below `Correct` creates or updates
+//! the review item of its template, and a review deals a fresh spot of the
+//! same template against the same opponent.
 //!
 //! A **leak bucket** is coarser: (configuration, street, node type, texture
-//! class). EV loss is aggregated per bucket to find leaks.
+//! class, opponent profile). EV loss is aggregated per bucket to find leaks,
+//! so the user sees whether they adjust to each opponent type (D8).
 
 use std::fmt;
 
 use taful_core::action::{Action, Line, Street};
 use taful_core::config::GameConfig;
 use taful_core::position::Position;
+use taful_core::profile::REFERENCE;
 
 use crate::preflop::SpotKind;
 
@@ -21,14 +24,26 @@ use crate::preflop::SpotKind;
 /// library configuration id, e.g. `btn-bb-srp`).
 pub const PREFLOP: &str = "preflop";
 
-/// Template key format version.
-const KEY_VERSION: &str = "v1";
+/// Template key format version. v2 (#26) added the opponent segment; the
+/// store's migration 0003 rewrote every v1 key as a reference key.
+const KEY_VERSION: &str = "v2";
 
 /// SQLite GLOBs over [`SpotTemplate::key`]: every key of this version, and
 /// its preflop keys. No field holds a `|` and only the spot field can be
 /// [`PREFLOP`], so a key matching the first and not the second is postflop.
-pub(crate) const KEY_GLOB: &str = "v1|*";
-pub(crate) const PREFLOP_KEY_GLOB: &str = "v1|*|preflop|*";
+pub(crate) const KEY_GLOB: &str = "v2|*";
+pub(crate) const PREFLOP_KEY_GLOB: &str = "v2|*|preflop|*";
+
+/// The stored id of an opponent: a bot profile id, or
+/// [`REFERENCE`] for the reference bot (`None`).
+pub fn opponent_id(opponent: Option<&str>) -> &str {
+    opponent.unwrap_or(REFERENCE)
+}
+
+/// The opponent an [`opponent_id`] names (`None` = the reference bot).
+pub fn parse_opponent(id: &str) -> Option<String> {
+    (id != REFERENCE).then(|| id.to_string())
+}
 
 /// What kind of decision a node is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -137,6 +152,9 @@ pub struct SpotTemplate {
     /// Texture class id of the flop (postflop only).
     pub texture: Option<String>,
     pub hero: Position,
+    /// Who the other seats are: `None` = the reference bot, `Some(id)` a
+    /// bot profile (D8 amendment, #26).
+    pub opponent: Option<String>,
 }
 
 impl SpotTemplate {
@@ -165,20 +183,21 @@ impl SpotTemplate {
                 .join("/")
         };
         format!(
-            "{KEY_VERSION}|{}|{}|{history}|{}|{}",
+            "{KEY_VERSION}|{}|{}|{history}|{}|{}|{}",
             self.config,
             self.spot,
             self.texture.as_deref().unwrap_or("-"),
-            self.hero
+            self.hero,
+            opponent_id(self.opponent.as_deref())
         )
     }
 
     pub fn parse(key: &str) -> Option<SpotTemplate> {
         let parts: Vec<&str> = key.split('|').collect();
-        let [v, config, spot, history, texture, hero] = parts[..] else {
+        let [v, config, spot, history, texture, hero, opponent] = parts[..] else {
             return None;
         };
-        if v != KEY_VERSION || config.is_empty() || spot.is_empty() {
+        if v != KEY_VERSION || config.is_empty() || spot.is_empty() || opponent.is_empty() {
             return None;
         }
         let hero: Position = hero.parse().ok()?;
@@ -207,6 +226,7 @@ impl SpotTemplate {
             postflop,
             texture,
             hero,
+            opponent: parse_opponent(opponent),
         })
     }
 }
@@ -233,6 +253,7 @@ impl SpotContext {
             street: self.street,
             node_type: self.node_type,
             texture: self.template.texture.clone(),
+            opponent: self.template.opponent.clone(),
         }
     }
 }
@@ -244,6 +265,8 @@ pub struct LeakBucket {
     pub street: Street,
     pub node_type: NodeType,
     pub texture: Option<String>,
+    /// `None` = the reference bot, `Some(id)` a bot profile.
+    pub opponent: Option<String>,
 }
 
 #[cfg(test)]
@@ -259,10 +282,24 @@ mod tests {
             postflop: vec![],
             texture: None,
             hero: Position::Co,
+            opponent: None,
         };
-        assert_eq!(pre.key(), "v1|c1c6782d35338294|preflop|UTG:f,HJ:r250|-|CO");
+        assert_eq!(
+            pre.key(),
+            "v2|c1c6782d35338294|preflop|UTG:f,HJ:r250|-|CO|reference"
+        );
         assert_eq!(SpotTemplate::parse(&pre.key()), Some(pre.clone()));
         assert_eq!(pre.street(), Street::Preflop);
+        let nit = SpotTemplate {
+            opponent: Some("nit".into()),
+            ..pre.clone()
+        };
+        assert_eq!(
+            nit.key(),
+            "v2|c1c6782d35338294|preflop|UTG:f,HJ:r250|-|CO|nit"
+        );
+        assert_eq!(SpotTemplate::parse(&nit.key()), Some(nit.clone()));
+        assert_ne!(nit.key(), pre.key());
 
         let post = SpotTemplate {
             config: "c1c6782d35338294".into(),
@@ -271,10 +308,11 @@ mod tests {
             postflop: vec!["BB:x,BTN:b180,BB:c".parse::<Line>().unwrap().0, vec![]],
             texture: Some("A-2t-u-1".into()),
             hero: Position::Bb,
+            opponent: None,
         };
         assert_eq!(
             post.key(),
-            "v1|c1c6782d35338294|btn-bb-srp|BB:x,BTN:b180,BB:c/|A-2t-u-1|BB"
+            "v2|c1c6782d35338294|btn-bb-srp|BB:x,BTN:b180,BB:c/|A-2t-u-1|BB|reference"
         );
         assert_eq!(SpotTemplate::parse(&post.key()), Some(post.clone()));
         assert_eq!(post.street(), Street::Turn);
@@ -292,9 +330,13 @@ mod tests {
 
         for bad in [
             "",
+            // v1 keys were migrated by the store (0003).
+            "v1|a|preflop||-|CO",
             "v2|a|preflop||-|CO",
-            "v1|a|btn|x|-|BB",
-            "v1|a|preflop||-|XX",
+            "v2|a|preflop||-|CO|",
+            "v3|a|preflop||-|CO|reference",
+            "v2|a|btn|x|-|BB|reference",
+            "v2|a|preflop||-|XX|reference",
         ] {
             assert_eq!(SpotTemplate::parse(bad), None, "{bad}");
         }
