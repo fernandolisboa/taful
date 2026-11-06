@@ -103,6 +103,34 @@ jobs:
           Get-Content stdout.log, stderr.log -ErrorAction SilentlyContinue
           if (-not $alive) { throw "taful.exe exited early (code $($app.ExitCode))" }
 
+      # Unsigned per-user installer (D14, issue #20). Version = workspace version.
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $version = (cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json).packages |
+            Where-Object name -eq 'taful-desktop' | Select-Object -ExpandProperty version
+          $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
+          $iscc = if ($iscc) { $iscc.Source } else { "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+            if ($LASTEXITCODE -ne 0) { throw "choco install innosetup failed" }
+          }
+          & $iscc "/DAppVersion=$version" installer\taful.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed ($LASTEXITCODE)" }
+          "INSTALLER=target\installer\taful-setup-$version.exe" >> $env:GITHUB_ENV
+          "INSTALLER_VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Install, upgrade, uninstall (data folder must survive)
+        shell: pwsh
+        run: ./installer/check.ps1 -Setup $env:INSTALLER
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: taful-setup-${{ env.INSTALLER_VERSION }}
+          path: ${{ env.INSTALLER }}
+          if-no-files-found: error
+
       - name: Upload app
         uses: actions/upload-artifact@v4
         with:
@@ -119,4 +147,6 @@ jobs:
             screenshot.png
             stdout.log
             stderr.log
+            install.log
+            upgrade.log
           if-no-files-found: ignore
