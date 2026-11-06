@@ -211,6 +211,12 @@ Exploitative play is only teachable if the grade measures EV against the real op
 - **Budget:** each profile adds a few minutes of build time per flop and less storage than the reference strategy (EVs for hero's hands only), instead of a full extra solve. All profiles × all D2 spots are affordable, so there is no need to split pre-solved and on-demand profiles.
 - **Avoid partial locks** (bot locked only at some nodes and re-optimizing elsewhere). Each would be a full re-solve (~35–60 min per SRP flop), which would multiply the D2 build time by the number of profiles.
 
+### Build sequencing (amended 2026-11-06)
+- **Per-profile best responses can only be computed inside the solve.** Library files are turn-truncated and pruned (spec §7.5), and a best response against an exploitative profile needs the full tree down to the river, including the lines the reference strategy rarely takes. A separate pass over stored `.tafl` files cannot produce them.
+- **Rule:** any per-flop output that needs the full solved tree (profile best responses today, anything similar later) is computed by the build tool during the solve. Profiles are calibrated on the first-slice library before the coverage run, because changing a profile afterwards means re-solving.
+- **Sequencing:** the first-slice library (245 solves, D2/D13) is finished without profiles, so the slice is playable against the reference bot. **Coverage growth toward all 1,755 flops (8,775 solves) is blocked** until the profiles exist and the build tool computes their best responses inline. That run then re-solves the 245 first-slice files as part of the full set, once.
+- **Why:** the 245 files cost ~1.5 days of build time and make the app usable weeks before the profiles exist; growing coverage first would have to be redone at full-coverage scale (~430–700 h).
+
 ---
 
 ## D9 — Cross-device sync
