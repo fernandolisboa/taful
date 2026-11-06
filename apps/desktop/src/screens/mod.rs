@@ -9,4 +9,5 @@ pub mod lesson;
 pub mod review;
 pub mod settings;
 pub mod table;
+pub mod theme_editor;
 pub mod tree;

@@ -37,7 +37,7 @@ settings-grading = Limites de avaliação
 settings-grading-body = Limites de perda de EV para correto / imprecisão / erro (só leitura, versão { $version }).
 settings-grading-abs = Em big blinds: { $values }
 settings-grading-rel = Em % do pote: { $values }
-settings-later = Editar temas e baixar a biblioteca vêm logo depois do primeiro recorte.
+settings-later = Baixar a biblioteca vem logo depois do primeiro recorte.
 
 settings-appearance = Aparência
 settings-theme = Tema

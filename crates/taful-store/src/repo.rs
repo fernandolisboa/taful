@@ -1297,3 +1297,130 @@ impl Store {
         Ok(())
     }
 }
+
+// ---- themes (spec §15.4, D7) ------------------------------------------------------------
+
+/// A user's theme (built-in themes are not stored).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThemeRow {
+    pub id: String,
+    pub name: String,
+    pub schema_version: u32,
+    pub json: String,
+}
+
+impl Store {
+    /// Saves a new theme; returns its id.
+    pub fn insert_theme(&self, name: &str, schema_version: u32, json: &str) -> Result<String> {
+        let id = new_id();
+        let now = self.now();
+        self.conn().execute(
+            "INSERT INTO themes (id, created_at, updated_at, name, schema_version, json)
+             VALUES (?1, ?2, ?2, ?3, ?4, ?5)",
+            params![id, now, name, schema_version, json],
+        )?;
+        Ok(id)
+    }
+
+    /// Replaces a theme's name and tokens. `false` if no live theme has `id`.
+    pub fn update_theme(
+        &self,
+        id: &str,
+        name: &str,
+        schema_version: u32,
+        json: &str,
+    ) -> Result<bool> {
+        let now = self.now();
+        let n = self.conn().execute(
+            "UPDATE themes SET name = ?1, schema_version = ?2, json = ?3, updated_at = ?4
+             WHERE id = ?5 AND deleted_at IS NULL",
+            params![name, schema_version, json, now, id],
+        )?;
+        Ok(n > 0)
+    }
+
+    /// User themes, oldest first.
+    pub fn themes(&self) -> Result<Vec<ThemeRow>> {
+        let mut st = self.conn().prepare(
+            "SELECT id, name, schema_version, json FROM themes
+             WHERE deleted_at IS NULL ORDER BY created_at, id",
+        )?;
+        let rows = st.query_map([], |r| {
+            Ok(ThemeRow {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                schema_version: r.get(2)?,
+                json: r.get(3)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// A live user theme by id.
+    pub fn theme(&self, id: &str) -> Result<Option<ThemeRow>> {
+        Ok(self
+            .conn()
+            .query_row(
+                "SELECT id, name, schema_version, json FROM themes
+                 WHERE id = ?1 AND deleted_at IS NULL",
+                params![id],
+                |r| {
+                    Ok(ThemeRow {
+                        id: r.get(0)?,
+                        name: r.get(1)?,
+                        schema_version: r.get(2)?,
+                        json: r.get(3)?,
+                    })
+                },
+            )
+            .optional()?)
+    }
+
+    /// Soft-deletes a user theme.
+    pub fn delete_theme(&self, id: &str) -> Result<()> {
+        let now = self.now();
+        self.conn().execute(
+            "UPDATE themes SET deleted_at = ?1, updated_at = ?1
+             WHERE id = ?2 AND deleted_at IS NULL",
+            params![now, id],
+        )?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod theme_tests {
+    use crate::{Store, test_clock};
+
+    fn store() -> (Store, std::sync::Arc<std::sync::atomic::AtomicI64>) {
+        let (clock, t) = test_clock(1_000);
+        (Store::open_in_memory(clock).unwrap(), t)
+    }
+
+    #[test]
+    fn themes_crud() {
+        let (s, t) = store();
+        assert!(s.themes().unwrap().is_empty());
+        let a = s.insert_theme("Mine", 2, "{\"a\":1}").unwrap();
+        t.store(5_000, std::sync::atomic::Ordering::SeqCst);
+        let b = s.insert_theme("Other", 2, "{}").unwrap();
+        let names: Vec<_> = s.themes().unwrap().into_iter().map(|r| r.name).collect();
+        assert_eq!(names, ["Mine", "Other"]);
+
+        assert!(s.update_theme(&a, "Renamed", 2, "{\"a\":2}").unwrap());
+        let row = s.theme(&a).unwrap().unwrap();
+        assert_eq!(
+            (row.name.as_str(), row.json.as_str()),
+            ("Renamed", "{\"a\":2}")
+        );
+        assert!(!s.update_theme("nope", "x", 2, "{}").unwrap());
+
+        s.delete_theme(&b).unwrap();
+        assert_eq!(s.theme(&b).unwrap(), None);
+        assert!(
+            !s.update_theme(&b, "x", 2, "{}").unwrap(),
+            "deleted rows stay deleted"
+        );
+        assert_eq!(s.themes().unwrap().len(), 1);
+    }
+}

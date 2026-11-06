@@ -17,6 +17,19 @@ pub fn rgba(c: Color) -> Rgba {
     }
 }
 
+/// A token color for an element whose token is chosen at run time (theme
+/// editor swatches and previews).
+pub fn token_color(c: Color) -> Rgba {
+    rgba(c)
+}
+
+/// Hue (degrees), saturation and lightness (0–1) of a token color, for
+/// the editor's steppers. Here because the color-literal lint flags any
+/// HSL call outside this module.
+pub fn hsl_of(c: Color) -> (f64, f64, f64) {
+    c.hsl()
+}
+
 /// Theme colors converted once, named like the tokens.
 #[derive(Clone, Copy)]
 pub struct Palette {

@@ -11,8 +11,8 @@
 //! - [`preflop`]: the preflop spot mode and full hands over the solver library
 //!   (M3).
 //! - [`layout`] and [`appearance`]: table-screen layout presets, saved
-//!   layouts and the theme choice (M6); [`layout_edit`]: the layout edit
-//!   mode (#22).
+//!   layouts and the theme choice (M6), and user themes from the theme
+//!   editor (#23); [`layout_edit`]: the layout edit mode (#22).
 
 pub mod appearance;
 pub mod calc_trainer;
@@ -58,6 +58,9 @@ pub enum Error {
     NotFound(String),
     /// Content failed to render (a bug: content is checked in CI).
     Content(Vec<String>),
+    /// A request the data does not allow, e.g. an empty name or editing a
+    /// built-in theme.
+    Invalid(String),
     Io(std::io::Error),
     /// A layout that breaks a rule (layout edit mode).
     Layout(layout::LayoutError),
@@ -74,6 +77,7 @@ impl std::fmt::Display for Error {
             Error::NothingToFit => write!(f, "optimizer: no review history to fit"),
             Error::NotFound(what) => write!(f, "not found: {what}"),
             Error::Content(errs) => write!(f, "content: {}", errs.join("; ")),
+            Error::Invalid(what) => write!(f, "invalid: {what}"),
             Error::Io(e) => write!(f, "io: {e}"),
             Error::Layout(e) => write!(f, "{e}"),
         }

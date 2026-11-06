@@ -1,5 +1,6 @@
-//! Settings (spec §15.1 item 8): language, theme and table layout (M6),
-//! review retention and the FSRS optimizer, backups, the strategy library folder, and the grading
+//! Settings (spec §15.1 item 8): language, theme (M6) and the theme editor
+//! (#23, in `theme_editor.rs`), table layout (M6), review retention and
+//! the FSRS optimizer, backups, the strategy library folder, and the grading
 //! thresholds (read-only).
 
 use std::path::PathBuf;
@@ -9,9 +10,9 @@ use gpui::{AnyElement, Context, PathPromptOptions, Window, div, prelude::*, px};
 use taful_app::fmt;
 use taful_app::i18n::Locale;
 use taful_app::layout::Layout;
-use taful_app::theme::BUILTIN_THEMES;
 
 use crate::Ui;
+use crate::screens::theme_editor::{Leave, ThemeEditor};
 use crate::shell::Shell;
 use crate::widgets::{button, card, chip, muted, title};
 
@@ -21,6 +22,8 @@ pub struct SettingsView {
     pub message: Option<String>,
     /// A file picked for import, waiting for confirmation.
     pub pending_import: Option<PathBuf>,
+    /// The theme editor, while open.
+    pub theme_editor: Option<ThemeEditor>,
     /// The FSRS optimizer is running in the background.
     pub optimizing: bool,
     /// Result of the last optimizer action.
@@ -37,16 +40,40 @@ impl Shell {
         }
         let theme = self.ui.theme.clone();
         self.set_ui(Rc::new(Ui::new(locale, theme)), window, cx);
+        // The editor's status line is in the old language.
+        if let Some(e) = &mut self.settings.theme_editor {
+            e.status = None;
+        }
     }
 
-    fn set_theme(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
-        match self.app.set_theme(id) {
-            Ok(theme) => {
-                let locale = self.ui.i18n.locale();
-                self.set_ui(Rc::new(Ui::new(locale, theme)), window, cx);
+    /// A theme chip was clicked. With the editor open: the edited theme's
+    /// own chip does nothing, and unsaved edits ask before they are dropped.
+    fn pick_theme(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(e) = &mut self.settings.theme_editor {
+            if e.key == key {
+                return;
             }
-            Err(e) => eprintln!("taful: saving the theme failed: {e}"),
+            if e.dirty() {
+                e.confirm_leave = Some(Leave::Switch(key.to_owned()));
+                return;
+            }
         }
+        self.set_theme(key, window, cx);
+    }
+
+    /// Makes a theme active; closes the editor (unsaved edits dropped).
+    pub(crate) fn set_theme(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.settings.theme_editor = None;
+        let theme = match self.app.set_theme(key) {
+            Ok(theme) => theme,
+            Err(e) => {
+                eprintln!("taful: saving the theme failed: {e}");
+                // Repaint with the stored theme, not a leftover draft.
+                self.app.theme()
+            }
+        };
+        let locale = self.ui.i18n.locale();
+        self.set_ui(Rc::new(Ui::new(locale, theme)), window, cx);
     }
 
     /// Hands the active layout to the table screen.
@@ -226,24 +253,61 @@ impl Shell {
     fn appearance_card(&mut self, cx: &mut Context<Self>) -> gpui::Div {
         let (ui, p) = (self.ui.clone(), self.palette);
         let t = &ui.theme;
-        let theme_chips: Vec<_> = BUILTIN_THEMES
-            .iter()
+        let active_theme = self.app.theme_key();
+        let theme_chips: Vec<_> = self
+            .app
+            .theme_choices()
+            .unwrap_or_default()
+            .into_iter()
             .enumerate()
-            .map(|(i, (id, _))| {
-                let id = *id;
-                chip(
-                    ("theme", i),
-                    ui.i18n.tr(&format!("theme-{id}")),
-                    t.name == id,
+            .map(|(i, c)| {
+                let label = if c.builtin {
+                    ui.i18n.tr(&format!("theme-{}", c.name))
+                } else {
+                    c.name.clone()
+                };
+                let key = c.key.clone();
+                chip(("theme", i), label, c.key == active_theme, &ui, &p).on_click(cx.listener(
+                    move |this, _, window, cx| {
+                        this.pick_theme(&key, window, cx);
+                        cx.notify();
+                    },
+                ))
+            })
+            .collect();
+        let editing = self.settings.theme_editor.is_some();
+        let mut theme_buttons = div().flex().flex_wrap().gap(px(t.spacing.sm));
+        if !editing {
+            theme_buttons = theme_buttons.child(
+                button(
+                    "theme_duplicate",
+                    ui.i18n.tr("settings-theme-duplicate"),
+                    false,
                     &ui,
                     &p,
                 )
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.set_theme(id, window, cx);
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.theme_duplicate(cx);
                     cx.notify();
-                }))
-            })
-            .collect();
+                })),
+            );
+            if taful_app::appearance::is_user_theme(&active_theme) {
+                let key = active_theme.clone();
+                theme_buttons = theme_buttons.child(
+                    button(
+                        "theme_edit",
+                        ui.i18n.tr("settings-theme-edit"),
+                        true,
+                        &ui,
+                        &p,
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.theme_edit_open(key.clone(), cx);
+                        cx.notify();
+                    })),
+                );
+            }
+        }
         let (active, layout) = self.app.active_layout();
         let choices = self.app.layout_choices().unwrap_or_default();
         let layout_chips: Vec<_> = choices
@@ -329,6 +393,7 @@ impl Shell {
                     .gap(px(t.spacing.sm))
                     .children(theme_chips),
             )
+            .child(theme_buttons)
             .child(muted(ui.i18n.tr("settings-layout"), &ui, &p))
             .child(muted(ui.i18n.tr("settings-layout-body"), &ui, &p))
             .child(
@@ -380,7 +445,11 @@ impl Shell {
         )
     }
 
-    fn report<T>(&mut self, r: taful_app::Result<T>, path: impl Fn(&T) -> Option<String>) {
+    pub(crate) fn report<T>(
+        &mut self,
+        r: taful_app::Result<T>,
+        path: impl Fn(&T) -> Option<String>,
+    ) {
         self.settings.message = Some(match r {
             Ok(v) => self.ui.i18n.tr_args(
                 "settings-done",
@@ -619,6 +688,8 @@ impl Shell {
                                             this.settings.optimizer_generation += 1;
                                             this.settings.optimizing = false;
                                             let r = this.app.import_from(&f);
+                                            // The edited theme may not exist in the import.
+                                            this.settings.theme_editor = None;
                                             // Strings may follow the imported locale
                                             // (before the report, which `set_ui` clears).
                                             let loc = this.app.locale();
@@ -670,6 +741,7 @@ impl Shell {
             )));
 
         let appearance = self.appearance_card(cx);
+        let theme_editor = self.theme_editor_card(cx);
         let optimizer = self.optimizer_card(cx);
         let library = self.library_card(cx);
         div()
@@ -678,6 +750,7 @@ impl Shell {
             .gap(px(t.spacing.lg))
             .child(language)
             .child(appearance)
+            .children(theme_editor)
             .child(retention_card)
             .child(optimizer)
             .child(backups)

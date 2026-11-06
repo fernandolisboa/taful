@@ -508,6 +508,7 @@ As in spike §9.1: oval rail + felt, seats on an ellipse, avatars, stacks, posit
 - A test scans `apps/desktop/src` and fails on color literals (`rgb(`, `rgba(`, `hsla(`, hex) outside the theme module.
 - WCAG AA contrast is checked for text tokens over their backgrounds in the same test.
 - In-app theme editor comes right after the first slice, on the same token model.
+- **As built (#23):** settings → Appearance → "Duplicate to edit" copies the active theme into a user theme (`themes` table, setting `theme` = `user:<id>`) and opens the editor: every color token (hex entry or hue/saturation/lightness steps) and every spacing, radius and text size, with a table preview. Each edit repaints the whole app; `Theme::warnings` runs live and saving with warnings is allowed. Rename, duplicate and delete; a deleted or broken active theme falls back to `default`.
 - **As built (M6):** token schema 2 adds `grade_best`, `grade_correct`, `grade_inaccuracy`, `grade_mistake`, `grade_blunder`; a schema 1 file gets them from the default theme. Default grades: best teal `#46c9a6`, correct green `#9fcd6a`, inaccuracy yellow `#e8cf5a`, mistake amber `#ee8a42`, blunder violet `#b994f2`. Tests: every grade color meets AA (4.5:1) on background, surface and surface_raised, no grade color is red, and any two grade colors are at least 60 apart in RGB. Built-in themes: `default` (petrol), `midnight` (deep blue felt) and `daylight` (light); each passes the same contrast and no-red tests. The choice is the `theme` setting; switching repaints at once.
 
 ### 15.5 i18n
