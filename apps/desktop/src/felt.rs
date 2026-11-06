@@ -3,9 +3,10 @@
 //! state and no listeners: plain elements from a table state.
 
 use gpui::{Div, FontWeight, div, prelude::*, px};
+use taful_app::fmt;
 use taful_app::i18n::Locale;
 use taful_app::model::Grade;
-use taful_app::preflop::{Action, BB_CHIPS, Card, Chips, GameState, Position, Seat, Suit};
+use taful_app::preflop::{Action, BB_CHIPS, Card, Chips, GameState, Position, Seat};
 
 use crate::Ui;
 use crate::theme::Palette;
@@ -82,18 +83,11 @@ fn card(ui: &Ui, p: &Palette, c: Option<Card>, s: f32) -> Div {
         .text_size(px(t.text_size.sm * s))
         .font_weight(FontWeight::BOLD);
     match c {
-        Some(c) => {
-            let suit = match c.suit() {
-                Suit::CLUBS => "♣",
-                Suit::DIAMONDS => "♦",
-                Suit::HEARTS => "♥",
-                _ => "♠",
-            };
-            base.bg(p.card_face)
-                .text_color(p.suit(c.suit()))
-                .child(c.rank().to_char().to_string())
-                .child(suit)
-        }
+        Some(c) => base
+            .bg(p.card_face)
+            .text_color(p.suit(c.suit()))
+            .child(c.rank().to_char().to_string())
+            .child(fmt::suit_symbol(c.suit()).to_string()),
         None => base.bg(p.card_back).border_1().border_color(p.rail_edge),
     }
 }
