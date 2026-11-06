@@ -25,26 +25,12 @@ pub fn number_trim(x: f64, max_decimals: u8, locale: Locale) -> String {
 }
 
 /// Card text with suit symbols: `AhKs` → `A♥ K♠`. Text that is not cards
-/// is returned unchanged.
+/// is returned unchanged. Delegates to [`taful_content::format::cards`].
 pub fn cards(s: &str) -> String {
-    let Ok(cs) = taful_core::cards::parse_cards(s) else {
-        return s.to_owned();
-    };
-    cs.iter()
-        .map(|c| {
-            let t = c.to_string();
-            let (rank, suit) = t.split_at(1);
-            let sym = match suit {
-                "s" => '♠',
-                "h" => '♥',
-                "d" => '♦',
-                _ => '♣',
-            };
-            format!("{rank}{sym}")
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+    taful_content::format::cards(s).unwrap_or_else(|_| s.to_owned())
 }
+
+pub use taful_content::format::suit_symbol;
 
 /// Range text with spaces after commas, for wrapping.
 pub fn range(s: &str) -> String {
