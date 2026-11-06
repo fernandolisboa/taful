@@ -5,7 +5,7 @@ Issues, specs and tickets for this repo live as GitHub issues in `fernandolisboa
 ## Tooling
 
 - **Local Claude Code / terminal:** use the `gh` CLI for every operation below.
-- **claude.ai cloud sessions:** `gh` there is limited to search. Use the GitHub MCP tools instead: `issue_write` (create/update, labels, close with `state_reason`), `issue_read` (body, comments, labels), `add_issue_comment`, `list_issues`, and `sub_issue_write` (link a ticket under its spec). Issue dependencies (blocked-by) go through the REST endpoint below when available; otherwise use the `Blocked by:` fallback line.
+- **claude.ai cloud sessions:** `gh` there is limited to search. Use the GitHub MCP tools instead: `issue_write` (create/update, labels, close with `state_reason`), `issue_read` (body, comments, labels), `add_issue_comment`, `list_issues`, and `sub_issue_write` (link a ticket under its spec). The MCP tools can't create labels or native dependencies; for those, call the REST API with plain `curl https://api.github.com/...` (the session's GitHub proxy authenticates it, no token needed), e.g. `POST /repos/fernandolisboa/taful/labels` and `POST /repos/fernandolisboa/taful/issues/<child>/dependencies/blocked_by` with `{"issue_id": <blocker database id>}`. Also keep a `Blocked by: #n` line in the body for readers.
 
 ## Conventions
 
