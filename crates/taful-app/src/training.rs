@@ -10,13 +10,15 @@ use std::sync::Arc;
 use serde_json::json;
 use taful_core::action::Street;
 use taful_core::grading::Grade;
+use taful_core::iso::Flop;
 use taful_core::srs::Rating;
 use taful_store::{DecisionContext, DecisionRow, HandRow, NewDecision, NewHand};
 
 use crate::hand::{FullHand, HandEnd, Replay};
 use crate::mixed::is_table_key;
 use crate::postflop::{
-    LocalDir, PostflopError, PostflopSpot, PostflopTrainer, SpotRequest, default_library_dir,
+    DealtFlop, LocalDir, PostflopError, PostflopSpot, PostflopTrainer, SpotRequest,
+    default_library_dir,
 };
 use crate::preflop::{
     Action, GameState, GradedDecision, Hand, PreflopError, PreflopTrainer, Seat, Spot, VsProfile,
@@ -409,8 +411,46 @@ impl App {
             ),
         };
         let t = Arc::new(Trainers::open(dir).map_err(|e| Error::NotFound(e.to_string()))?);
+        self.start_cycles(&t)?;
         self.trainers = Some(t.clone());
         Ok(t)
+    }
+
+    /// Deal postflop flops in cycles (#51), from where the store left off.
+    fn start_cycles(&self, t: &Trainers) -> Result<()> {
+        let Some(post) = t.post() else {
+            return Ok(());
+        };
+        let dealt = self
+            .store
+            .dealt_flops(&t.config_key())?
+            .into_iter()
+            .filter_map(|(spot, cycle, flop)| {
+                Some(DealtFlop {
+                    spot,
+                    cycle,
+                    flop: flop.parse::<Flop>().ok()?.canonical().0,
+                })
+            })
+            .collect::<Vec<_>>();
+        post.start_cycles(dealt);
+        Ok(())
+    }
+
+    /// Store the flops dealt since the last call (#51).
+    fn store_dealt(&self) -> Result<()> {
+        let Some(t) = &self.trainers else {
+            return Ok(());
+        };
+        let Some(post) = t.post() else {
+            return Ok(());
+        };
+        let key = t.config_key();
+        for d in post.take_dealt() {
+            self.store
+                .note_dealt_flop(&key, &d.spot, d.cycle, &d.flop.to_string())?;
+        }
+        Ok(())
     }
 
     /// Loads the library in `dir` and, if it opens, remembers the folder
@@ -428,6 +468,7 @@ impl App {
             &serde_json::json!(dir.to_string_lossy()),
         )?;
         let t = Arc::new(t);
+        self.start_cycles(&t)?;
         self.library_dir = Some(dir);
         self.trainers = Some(t.clone());
         Ok(t)
@@ -546,7 +587,7 @@ impl App {
                 }
                 None => self.review_decision(d, ctx, &id)?,
             }
-            Ok(())
+            self.store_dealt()
         })
     }
 
@@ -599,6 +640,7 @@ impl App {
         let reason = h.end.as_ref().map_or("unfinished".into(), HandEnd::id);
         self.store
             .finish_hand(&id, &reason, h.total_ev_loss_bb(), h.hero_net_bb())?;
+        self.store_dealt()?;
         Ok(id)
     }
 
@@ -1212,6 +1254,36 @@ mod tests {
     }
 
     #[test]
+    fn dealt_flops_are_stored_and_survive_a_reload() {
+        let mut a = app();
+        let t = a.trainers().unwrap();
+        let spot = DrillSpot::Postflop(Box::new(t.post().unwrap().spot(None, 3).unwrap()));
+        let DrillSpot::Postflop(s) = &spot else {
+            unreachable!()
+        };
+        let flop = Flop::new([s.board[0], s.board[1], s.board[2]])
+            .unwrap()
+            .canonical()
+            .0;
+        let acts = spot.actions(&t);
+        let d = t.answer(&spot, acts[0]).unwrap();
+        a.record_spot_decision(&d, &spot.context(&t), None).unwrap();
+        assert_eq!(
+            a.store.dealt_flops(&t.config_key()).unwrap(),
+            vec![("btn-sb-3bp".into(), 0, flop.to_string())]
+        );
+        // A fresh load continues the cycle: the other flop comes next.
+        a.set_library_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/postflop"));
+        let t = a.trainers().unwrap();
+        let next = t.post().unwrap().spot(None, 3).unwrap();
+        let other = Flop::new([next.board[0], next.board[1], next.board[2]])
+            .unwrap()
+            .canonical()
+            .0;
+        assert_ne!(other, flop);
+    }
+
+    #[test]
     fn river_buckets_and_templates_deal_solved_rivers() {
         let a = app();
         let mut a = a;
@@ -1373,6 +1445,9 @@ mod tests {
                 }
                 h
             };
+            // Same seed and same flop cycle (#51): the same hand.
+            let reset = || t.post().unwrap().start_cycles([]);
+            reset();
             let h = play();
             if h.decisions.is_empty() {
                 continue;
@@ -1388,6 +1463,7 @@ mod tests {
             postflop += usize::from(reached);
             // Same seed, same hero answers: the same hand, decision for
             // decision.
+            reset();
             let again = play();
             assert_eq!(again.state, h.state);
             assert_eq!(again.end, h.end);

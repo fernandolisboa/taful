@@ -507,6 +507,7 @@ impl FullHand {
             self.leave(LeftReason::OffTree);
             return Ok(());
         };
+        post.note_dealt(&cfg.id, flop);
         let mut walk = post.walk(cfg, file, flop)?;
         let n = self.state.players().len();
         let pos = walk.positions();
