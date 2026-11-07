@@ -107,3 +107,13 @@ table-profile-fallback = This library has no { $profile } data yet, so this spot
 table-hand-vs-profile = Every bot plays { $profile }. { $about } Graded by EV against these bots.
 table-hand-profile-fallback = This library has no { $profile } data yet, so postflop is against the reference opponent. Rebuild the library with profiles to play postflop against { $profile }.
 table-hand-next-table = The next hand is against { $profile }.
+
+## Mixed tables (#29): one profile per bot seat.
+bot-table = Table ({ $seats })
+table-vs-table = Graded against { $table }: EV against these bots.
+table-seats-same = Same for all
+table-seats-each = Per seat
+table-seat-left = #{ $n }
+table-seats-from-left = From your left:
+table-hand-vs-mixed = Mixed table: each bot plays its own profile. Preflop is graded against the opponents still in the hand, postflop against the remaining bot.
+table-hand-next-mixed = The next hand is at the mixed table.

@@ -24,7 +24,7 @@ todo = "warn"
 postflop-solver = { git = "https://github.com/b-inary/postflop-solver", rev = "9d1509f", default-features = false, features = ["rayon"] }
 serde_json.workspace = true
 taful-core.workspace = true
-taful-solver.workspace = true
+taful-solver = { workspace = true, features = ["parallel"] }
 serde.workspace = true
 toml.workspace = true
 blake3.workspace = true

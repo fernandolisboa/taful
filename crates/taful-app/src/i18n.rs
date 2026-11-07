@@ -166,6 +166,25 @@ impl Localizer {
         self.format(id, Some(&fluent_args))
     }
 
+    /// Display name of an opponent id (`template::opponent_id`): a bot
+    /// profile, the reference, or a mixed table's key (#29), which lists
+    /// each live opponent's position and profile.
+    pub fn opponent(&self, id: &str) -> String {
+        match crate::mixed::parse_table_key(id) {
+            Some(seats) => {
+                let parts: Vec<String> = seats
+                    .iter()
+                    .map(|(pos, p)| {
+                        let p = p.as_deref().unwrap_or(taful_core::profile::REFERENCE);
+                        format!("{pos} {}", self.tr(&format!("bot-profile-{p}")))
+                    })
+                    .collect();
+                self.tr_args("bot-table", &[("seats", parts.join(", ").into())])
+            }
+            None => self.tr(&format!("bot-profile-{id}")),
+        }
+    }
+
     fn format(&self, id: &str, args: Option<&FluentArgs>) -> String {
         std::iter::once(&self.primary)
             .chain(self.fallback.as_ref())

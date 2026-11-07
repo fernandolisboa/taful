@@ -6,11 +6,14 @@
 //! (D11, enforced by `tools/arch-check`).
 //!
 //! M3 adds the library format ([`format`]) and preflop charts ([`preflop`]);
-//! the river solver and best response land in M4.
+//! the river solver and best response land in M4. [`preflop_game`] (the
+//! preflop tree and its solver, moved here from the build tool in #29) lets
+//! the app compute mixed tables' preflop best responses on demand.
 
 pub mod format;
 pub mod postflop;
 pub mod preflop;
+pub mod preflop_game;
 pub mod river;
 
 /// Version of the Taful library file format (spec §7.5).

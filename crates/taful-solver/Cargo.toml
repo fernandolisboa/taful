@@ -9,11 +9,20 @@ publish.workspace = true
 [lints]
 workspace = true
 
+# `parallel` walks the preflop tree on rayon's pool (the build tool and the
+# desktop app); off, everything runs on the calling thread (WASM).
+[features]
+parallel = ["dep:rayon"]
+
 [dependencies]
 taful-core.workspace = true
 ruzstd.workspace = true
 serde.workspace = true
 toml.workspace = true
+blake3.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
+rayon = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest.workspace = true

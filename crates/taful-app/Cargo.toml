@@ -9,6 +9,12 @@ publish.workspace = true
 [lints]
 workspace = true
 
+# `parallel` (default): on-demand preflop best responses for mixed tables
+# walk the tree on rayon's pool. Off for a single-threaded target (WASM).
+[features]
+default = ["parallel"]
+parallel = ["taful-solver/parallel"]
+
 [dependencies]
 taful-core.workspace = true
 taful-solver.workspace = true

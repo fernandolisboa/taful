@@ -82,7 +82,7 @@ impl Trainers {
     /// Whether this build can deal against `opponent` (`None` = the
     /// reference bot, always).
     pub fn knows_opponent(&self, opponent: Option<&str>) -> bool {
-        opponent.is_none_or(|id| self.preflop.profile(id).is_some())
+        opponent.is_none_or(|id| self.preflop.knows_opponent(id))
     }
 
     /// A spot of `template` (a review of a past mistake, spec §13): same
@@ -158,7 +158,7 @@ impl Trainers {
             };
             return self
                 .preflop
-                .spot(kind, seed)
+                .spot_against(kind, b.opponent.as_deref(), seed)
                 .map(|s| DrillSpot::Preflop(Box::new(s.against(b.opponent.as_deref()))))
                 .map_err(|_| PostflopError::Empty);
         }
@@ -1406,6 +1406,139 @@ mod tests {
         let buckets = a.store.bucket_stats(LEAK_WINDOW).unwrap();
         assert!(!buckets.is_empty());
         assert!(buckets.iter().all(|b| b.opponent == "nit"), "{buckets:?}");
+    }
+
+    /// #29 acceptance: through `App`, seeded hands at the demo mixed table
+    /// (two nits, a maniac, two TAGs) replay identically, preflop grades
+    /// match the on-demand best response against the opponents still in
+    /// the hand, and the stored hands, mistakes, leaks and review items
+    /// carry the table.
+    #[test]
+    fn mixed_table_hands_replay_and_grade_against_the_table() {
+        let mut a = profile_app();
+        let t = a.trainers().unwrap();
+        let bots: Vec<Option<String>> = ["nit", "nit", "maniac", "tag", "tag"]
+            .iter()
+            .map(|id| Some(id.to_string()))
+            .collect();
+        let mut against_table = Vec::new();
+        let mut hands = 0;
+        for seed in 0..400u64 {
+            let hero = Some((seed % 6) as usize);
+            // Hero answers by rote (not by the chart), so mistakes happen.
+            let play = || {
+                let mut h = FullHand::at_table(&t.preflop, t.post(), hero, seed, &bots).unwrap();
+                let mut i = seed as usize;
+                while h.end.is_none() {
+                    let acts = h.hero_actions(&t.preflop);
+                    let act = if h.walk().is_some() {
+                        steer(&h, &t)
+                    } else {
+                        i += 1;
+                        acts[i % acts.len()]
+                    };
+                    h.act(&t.preflop, t.post(), act).unwrap();
+                }
+                h
+            };
+            let h = play();
+            if h.decisions.is_empty() {
+                continue;
+            }
+            let again = play();
+            assert_eq!(again.state, h.state);
+            assert_eq!(again.end, h.end);
+            assert_eq!(again.decisions, h.decisions);
+            for d in h
+                .decisions
+                .iter()
+                .filter(|d| d.context.street == Street::Preflop)
+            {
+                let key = t
+                    .preflop
+                    .opponent_at(d.graded.node, &h.seat_profiles, h.hero);
+                assert_eq!(d.context.template.opponent, key);
+                if let Some(k) = key.filter(|k| crate::mixed::is_table_key(k)) {
+                    let evs = t
+                        .preflop
+                        .table_evs(&k, d.graded.node, d.graded.hand)
+                        .unwrap();
+                    assert_eq!(d.graded.hand_evs, evs);
+                    assert_eq!(d.graded.vs_profile.as_ref().unwrap().profile, k);
+                    against_table.push(d.clone());
+                }
+            }
+            let id = a.record_hand(&h).unwrap();
+            let r = a.hand_review(&id).unwrap();
+            assert_eq!(r.seat_profiles, h.seat_profiles);
+            for (rd, hd) in r.decisions.iter().zip(&h.decisions) {
+                assert_eq!(rd.vs_profile, hd.graded.vs_profile);
+                assert_eq!(rd.hand_evs, hd.graded.hand_evs);
+            }
+            hands += 1;
+            let mistakes = against_table
+                .iter()
+                .filter(|d| d.graded.grade > Grade::Correct)
+                .count();
+            if hands >= 6 && mistakes >= 2 {
+                break;
+            }
+        }
+        let mistake = against_table
+            .iter()
+            .find(|d| d.graded.grade > Grade::Correct)
+            .expect("a mistake against a table");
+        let key = mistake.context.template.opponent.clone().unwrap();
+        assert!(t.knows_opponent(Some(&key)));
+        assert!(!t.knows_opponent(Some("table:BTN=nit,BB=nobody")));
+        // Filed under the table's key (#26 keys) ...
+        let buckets = a.store.bucket_stats(LEAK_WINDOW).unwrap();
+        let bucket = buckets
+            .iter()
+            .find(|b| b.opponent == key)
+            .expect("a bucket for the table");
+        assert!(bucket.mistakes > 0);
+        // ... its review item deals the same line against the same table
+        // and grades on the same best response ...
+        let template = &mistake.context.template;
+        assert!(
+            a.store
+                .review_item(ItemKind::SpotTemplate.id(), &template.key())
+                .unwrap()
+                .is_some()
+        );
+        let DrillSpot::Preflop(s) = t.spot_for_template(template, 9).unwrap() else {
+            panic!("a preflop spot");
+        };
+        assert_eq!(s.opponent.as_deref(), Some(key.as_str()));
+        let g = t
+            .answer(&DrillSpot::Preflop(s.clone()), t.preflop.actions(s.node)[0])
+            .unwrap();
+        assert_eq!(g.vs_profile.unwrap().profile, key);
+        assert_eq!(
+            g.hand_evs,
+            t.preflop.table_evs(&key, s.node, s.hand).unwrap()
+        );
+        // ... and its leak drills spots where exactly that table is left.
+        let leak = LeakBucket {
+            street: Street::Preflop,
+            node_type: NodeType::parse(&bucket.node_type).unwrap(),
+            spot: bucket.spot.clone(),
+            texture: None,
+            opponent: Some(key.clone()),
+        };
+        let DrillSpot::Preflop(s) = t.spot_for_bucket(&leak, 3).unwrap() else {
+            panic!("a preflop spot");
+        };
+        assert_eq!(s.opponent.as_deref(), Some(key.as_str()));
+        let mut seats = vec![None; 6];
+        for (pos, id) in crate::mixed::parse_table_key(&key).unwrap() {
+            seats[taful_core::position::Position::by_button_offset(6)
+                .iter()
+                .position(|&p| p == pos)
+                .unwrap()] = id;
+        }
+        assert_eq!(t.preflop.opponent_at(s.node, &seats, s.hero), Some(key));
     }
 
     #[test]

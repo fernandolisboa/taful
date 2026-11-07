@@ -169,6 +169,9 @@ impl Shell {
                     &p,
                 ))
             })
+            .when(is_mixed(h), |d| {
+                d.child(muted(ui.i18n.tr("hand-review-mixed"), &ui, &p))
+            })
             .child(
                 div()
                     .text_size(px(t.text_size.sm))
@@ -269,6 +272,18 @@ impl Shell {
 }
 
 /// The profile every bot seat played, when they all played the same one.
+/// Whether the bots played different profiles (a mixed table, #29).
+fn is_mixed(h: &HandReview) -> bool {
+    let mut bots = h
+        .seat_profiles
+        .iter()
+        .enumerate()
+        .filter(|&(s, _)| s != h.hero)
+        .map(|(_, p)| p.as_deref());
+    let first = bots.next().flatten();
+    bots.any(|p| p != first)
+}
+
 fn table_profile(h: &HandReview) -> Option<&str> {
     let mut bots = h
         .seat_profiles

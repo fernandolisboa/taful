@@ -53,3 +53,11 @@ todo = "warn"
 [profile.release]
 codegen-units = 1
 lto = "thin"
+
+# The preflop tree walk (mixed tables' on-demand best responses, #29) is
+# ~20x slower unoptimized; tests in debug build call it many times.
+[profile.dev.package.taful-solver]
+opt-level = 3
+
+[profile.dev.package.taful-core]
+opt-level = 3
