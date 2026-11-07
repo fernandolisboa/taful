@@ -1,4 +1,4 @@
-//! Taful library format, versions 1 and 2 (spec §7.5).
+//! Taful library format, versions 1 to 4 (spec §7.5).
 //!
 //! One file per (configuration, board). Layout:
 //!
@@ -58,6 +58,15 @@
 //! The writer emits v3 only for files with profile data, so files without
 //! it stay v1/v2 and mean "reference only".
 //!
+//! **v4** (#48) adds, per profile section right after its `ev_scale`, the
+//! profile's own root ranges: count u8, then per range position u8 + rows
+//! `[u8; rows]` (× 255, like the header's). A profile plays its own
+//! preflop range along the line, wider than the reference's for loose
+//! profiles; the build seeds the solve with those combos and runs the best
+//! responses from them. A section without root ranges (every v3 file)
+//! starts from the header's reference ranges. The writer emits v4 only when
+//! a section has root ranges, so v3 files stay byte-identical.
+//!
 //! [`HandClass::index`]: taful_core::range::HandClass::index
 
 use std::fmt;
@@ -73,7 +82,7 @@ use taful_core::range::HandClass;
 
 pub const MAGIC: [u8; 4] = *b"TAFL";
 /// Version written by this crate.
-pub const FORMAT_VERSION: u16 = 3;
+pub const FORMAT_VERSION: u16 = 4;
 /// Oldest version this crate still reads (spec §7.5: current and previous;
 /// v1 also stays, since files without chance nodes, the preflop charts, are
 /// still written as v1).
@@ -294,6 +303,10 @@ pub struct ProfileSection {
     pub profile: String,
     /// bb per EV unit of this section.
     pub ev_scale: f32,
+    /// The profile's range of each player at the root, quantized × 255 per
+    /// row, in the header's position order (v4). Empty = the header's
+    /// reference ranges (v3).
+    pub root_ranges: Vec<(Position, Vec<u8>)>,
     /// One per node of [`LibraryFile::nodes`], same order.
     pub nodes: Vec<ProfileNode>,
 }
@@ -575,6 +588,15 @@ impl LibraryFile {
             if p.nodes.len() != n_nodes {
                 return Err(corrupt(format!("profile {}: node count", p.id)));
             }
+            if !p.root_ranges.is_empty()
+                && (p.root_ranges.len() != self.header.root_ranges.len()
+                    || p.root_ranges
+                        .iter()
+                        .zip(&self.header.root_ranges)
+                        .any(|((pp, r), (hp, _))| pp != hp || r.len() != rows))
+            {
+                return Err(corrupt(format!("profile {}: root ranges", p.id)));
+            }
             for (j, (pn, n)) in p.nodes.iter().zip(&self.nodes).enumerate() {
                 let k = n.actions.len();
                 if pn.live.windows(2).any(|w| w[0] >= w[1])
@@ -638,8 +660,11 @@ impl LibraryFile {
         }
 
         // Each version only when the file needs it: no chance nodes and no
-        // profiles stays v1 (preflop charts), no profiles stays v2.
-        let version: u16 = if !self.profiles.is_empty() {
+        // profiles stays v1 (preflop charts), no profiles stays v2, no
+        // profile root ranges stays v3.
+        let version: u16 = if self.profiles.iter().any(|p| !p.root_ranges.is_empty()) {
+            4
+        } else if !self.profiles.is_empty() {
             3
         } else if !self.chance.is_empty() {
             2
@@ -673,6 +698,13 @@ impl LibraryFile {
                 w.str(&p.id);
                 w.str(&p.profile);
                 w.f32(p.ev_scale);
+                if version >= 4 {
+                    w.u8(p.root_ranges.len() as u8);
+                    for (pos, r) in &p.root_ranges {
+                        w.u8(position_tag(*pos));
+                        w.bytes(r);
+                    }
+                }
                 for n in &p.nodes {
                     w.u16(n.live.len() as u16);
                     for &r in &n.live {
@@ -816,6 +848,13 @@ impl LibraryFile {
                 let id = r.str()?;
                 let profile = r.str()?;
                 let ev_scale = r.f32()?;
+                let mut root_ranges = Vec::new();
+                if version >= 4 {
+                    for _ in 0..r.u8()? {
+                        let p = position_from_tag(r.u8()?)?;
+                        root_ranges.push((p, r.take(domain.rows())?.to_vec()));
+                    }
+                }
                 let mut pnodes = Vec::with_capacity(nodes.len());
                 for n in &nodes {
                     let k = n.actions.len();
@@ -833,6 +872,7 @@ impl LibraryFile {
                     id,
                     profile,
                     ev_scale,
+                    root_ranges,
                     nodes: pnodes,
                 });
             }
@@ -1070,9 +1110,34 @@ mod tests {
             id: "calling-station".into(),
             profile: "id = \"calling-station\"\n".into(),
             ev_scale: 0.002,
+            root_ranges: vec![],
             nodes,
         }];
         f
+    }
+
+    #[test]
+    fn roundtrip_v4_profile_root_ranges() {
+        let mut f = sample_v3();
+        f.profiles[0].root_ranges = f
+            .header
+            .root_ranges
+            .iter()
+            .map(|(p, r)| (*p, r.iter().map(|&x| x.saturating_add(9)).collect()))
+            .collect();
+        let bytes = f.encode();
+        assert_eq!(u16::from_le_bytes([bytes[4], bytes[5]]), 4);
+        assert_eq!(LibraryFile::decode(&bytes).unwrap(), f);
+        // Positions must follow the header's.
+        let mut bad = f.clone();
+        bad.profiles[0].root_ranges.reverse();
+        assert!(bad.validate().is_err());
+        let mut bad = f.clone();
+        bad.profiles[0].root_ranges.pop();
+        assert!(bad.validate().is_err());
+        // Without root ranges the section is still written as v3.
+        let v3 = sample_v3().encode();
+        assert_eq!(u16::from_le_bytes([v3[4], v3[5]]), 3);
     }
 
     #[test]

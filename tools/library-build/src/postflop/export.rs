@@ -48,9 +48,10 @@ struct Ex<'a> {
     /// Interpreter history of each node.
     histories: Vec<Vec<usize>>,
     chance: Vec<ChanceNode>,
-    /// Per node history: the largest combo-pair mass any profile (bot
-    /// under the profile, responder under the reference) brings to it, on
-    /// the normalized weights' scale; empty without profiles (#45).
+    /// Per node history: the largest share of its root combo-pair mass any
+    /// profile (bot under the profile from its own root range, responder
+    /// under the reference) brings to it; empty without profiles (#45,
+    /// #48).
     profile_mass: HashMap<Vec<usize>, f64>,
     /// Whether profiles are listed (then every node has a mass).
     profiles: bool,
@@ -105,7 +106,7 @@ impl Ex<'_> {
         let threshold = self.prune_reach_pct * self.root_total[p];
         if !history.is_empty() && 100.0 * normalized < threshold {
             let by_profile = match self.profile_mass.get(history.as_slice()) {
-                Some(&m) => 100.0 * m as f32 >= threshold,
+                Some(&share) => 100.0 * share as f32 * self.root_total[p] >= threshold,
                 None if self.profiles => {
                     return Err(format!(
                         "node {history:?} not measured by the profile reach pass (a stored \
@@ -254,8 +255,64 @@ pub fn export(
             })
             .collect::<Vec<u16>>()
     });
-    let root_weights = [game.weights(0).to_vec(), game.weights(1).to_vec()];
+    // The reference's root weights: combos the solve holds only as a seed
+    // for a profile (#48) are not the reference's, so its rows leave them
+    // out.
+    let root_weights = [0, 1].map(|p| {
+        game.weights(p)
+            .iter()
+            .zip(&combos[p])
+            .map(|(&w, &c)| {
+                if job.ranges[p][usize::from(c)] > 0.0 {
+                    w
+                } else {
+                    0.0
+                }
+            })
+            .collect::<Vec<f32>>()
+    });
     let root_total = [0, 1].map(|p| game.normalized_weights(p).iter().sum::<f32>());
+    // Where each profile's best responses start: its own preflop range
+    // when the job carries one, else the reference.
+    let solve_ranges = job.solve_ranges();
+    let roots: Vec<super::profiles::ProfileRoot> = (0..profiles.len())
+        .map(|i| match job.profile_ranges.get(i) {
+            Some(r) => super::profiles::ProfileRoot {
+                weights: [0, 1].map(|p| {
+                    combos[p]
+                        .iter()
+                        .map(|&c| r[p][usize::from(c)])
+                        .collect::<Vec<f32>>()
+                }),
+                own: true,
+                // Only combos the solve holds: without a seed, the
+                // profile's range within the reference's.
+                quantized: [0, 1]
+                    .map(|p| {
+                        let held: Vec<f32> = (0..NUM_COMBOS)
+                            .map(|h| {
+                                if solve_ranges[p][h] > 0.0 {
+                                    r[p][h]
+                                } else {
+                                    0.0
+                                }
+                            })
+                            .collect();
+                        let pos = [job.geometry.oop, job.geometry.ip][p];
+                        (pos, quantize_range(&held))
+                    })
+                    .into(),
+            },
+            None => super::profiles::ProfileRoot {
+                weights: root_weights.clone(),
+                own: false,
+                quantized: Vec::new(),
+            },
+        })
+        .collect();
+    if !job.profile_ranges.is_empty() && job.profile_ranges.len() != profiles.len() {
+        return Err("profile ranges do not match the profiles".into());
+    }
     // With profiles, a reach-only pass per profile and side decides, with
     // the reference reach, which nodes are kept (#45).
     let shape = if profiles.is_empty() {
@@ -265,7 +322,7 @@ pub fn export(
     };
     let mut profile_mass: HashMap<Vec<usize>, f64> = HashMap::new();
     if let Some(shape) = &shape {
-        for profile in profiles {
+        for (profile, root) in profiles.iter().zip(&roots) {
             for bot in 0..2 {
                 let pass = super::profiles::Pass {
                     game,
@@ -274,10 +331,18 @@ pub fn export(
                     bot,
                     responder: super::profiles::Responder::Best,
                     keep: None,
+                    bot_root: root.own.then(|| root.weights[bot].as_slice()),
                 };
-                for (h, m) in pass.reach() {
+                let mass = pass.reach();
+                // As a share of the profile's own mass at the root (its
+                // range may be wider than the reference's, #48).
+                // A profile that never takes the line has no mass anywhere:
+                // its nodes are measured at 0.
+                let at_root = mass.get(&Vec::new()).copied().unwrap_or(0.0);
+                for (h, m) in mass {
+                    let share = if at_root > 0.0 { m / at_root } else { 0.0 };
                     let e = profile_mass.entry(h).or_insert(0.0);
-                    *e = e.max(m);
+                    *e = e.max(share);
                 }
             }
         }
@@ -333,7 +398,7 @@ pub fn export(
             shape,
             &kept,
             &ex.combos,
-            &ex.root_weights,
+            &roots,
             m.solve.min_combo_reach,
             profiles,
         )?
@@ -430,6 +495,19 @@ mod tests {
         profiles: &[taful_core::profile::Profile],
         prune_reach_pct: f32,
     ) -> (PostFlopGame, LibraryFile, Flop) {
+        solved_seeded(flop, profiles, prune_reach_pct, &[], 0.0)
+    }
+
+    const OOP: &str = "QQ+,AK,T9s,JTs,A5s";
+    const IP: &str = "JJ-88,AQs,KQs,98s,T8s,AJo";
+
+    fn solved_seeded(
+        flop: &str,
+        profiles: &[taful_core::profile::Profile],
+        prune_reach_pct: f32,
+        profile_ranges: &[[&str; 2]],
+        seed: f32,
+    ) -> (PostFlopGame, LibraryFile, Flop) {
         let chart = PreflopChart::decode(include_bytes!(
             "../../../../library/v1/c1c6782d353382947a3bbcf1493b6a17155b2e63a7218bf8f54cc38be59cf37f/preflop.tafl"
         ))
@@ -445,8 +523,10 @@ mod tests {
             tree: &tree,
             line,
             geometry: g,
-            ranges: [r("QQ+,AK,T9s,JTs,A5s"), r("JJ-88,AQs,KQs,98s,T8s,AJo")],
+            ranges: [r(OOP), r(IP)],
             flop,
+            profile_ranges: profile_ranges.iter().map(|[o, i]| [r(o), r(i)]).collect(),
+            seed,
         };
         let mut m =
             Manifest::parse(include_str!("../../manifests/postflop-6max-100bb.toml")).unwrap();
@@ -570,6 +650,7 @@ mod tests {
                     bot,
                     responder: Responder::Best,
                     keep: None,
+                    bot_root: None,
                 }
                 .run()
                 .0
@@ -793,5 +874,75 @@ mod tests {
             assert_eq!(r.live, w.live);
         }
         assert_eq!(reference.chance, with.chance);
+    }
+
+    /// #48 acceptance: a profile whose preflop range is wider than the
+    /// reference's has a strategy and best responses for the extra combos
+    /// when the solve seeds them, the file carries the profile's root
+    /// ranges (v4), and the reference's own rows and ranges stay as they
+    /// were. Without a seed the extra combos stay out.
+    #[test]
+    fn a_wider_profile_range_is_seeded_and_stored() {
+        use taful_core::position::Position;
+        use taful_solver::format::FORMAT_VERSION;
+
+        let station = taful_core::profile::Profile::from_toml(include_str!(
+            "../../../../content/bots/calling-station.toml"
+        ))
+        .unwrap();
+        let wide = format!("{IP},77-55,KJs,QJs,A9s");
+        let ranges = [[OOP, wide.as_str()]];
+        let (_, seeded, flop) =
+            solved_seeded("Td9d6h", std::slice::from_ref(&station), 0.0, &ranges, 1e-4);
+        let (_, unseeded, _) =
+            solved_seeded("Td9d6h", std::slice::from_ref(&station), 0.0, &ranges, 0.0);
+        let (_, reference, _) = solved_seeded("Td9d6h", &[], 0.0, &[], 0.0);
+
+        let bytes = seeded.encode();
+        assert_eq!(u16::from_le_bytes([bytes[4], bytes[5]]), FORMAT_VERSION);
+        assert_eq!(seeded.header.root_ranges, reference.header.root_ranges);
+        let pf = PostflopFile::decode(&bytes).unwrap();
+        let idx = pf.profile_index("calling-station").unwrap();
+        let id = taful_core::iso::SuitPerm::IDENTITY;
+        let extra: Hand = "7s7h".parse().unwrap();
+        let ip = pf.file().header.root_ranges[1].0;
+        assert_eq!(ip, Position::Btn);
+        assert_eq!(pf.root_range(ip, &id).unwrap()[extra.combo()], 0.0);
+        assert!(pf.profile_root_range(idx, ip, &id).unwrap()[extra.combo()] > 0.9);
+
+        // IP acts after a check: the profile has a strategy for the extra
+        // combo, the reference has no row for it, and OOP's best-response
+        // EVs exist when IP is the bot.
+        let root = pf.root(flop).unwrap();
+        let Step::Node(c) = pf.step(&root, Action::Check) else {
+            panic!()
+        };
+        assert!(
+            pf.strategy(&c, extra).is_none(),
+            "seeded combo in the reference's rows"
+        );
+        assert!(pf.profile_strategy(&c, idx, extra).is_some());
+        assert!(pf.profile_ev(&root, idx, "AsAh".parse().unwrap()).is_some());
+
+        // The reference's own rows never hold a seeded combo (the seed
+        // moves the reference's strategy only a little, so the rows may
+        // differ in a combo at the edge of reach).
+        let header = &seeded.header.root_ranges;
+        for n in &seeded.nodes {
+            let side = usize::from(n.player != header[0].0);
+            assert!(n.live.iter().all(|&r| header[side].1[usize::from(r)] > 0));
+        }
+
+        // Without a seed the solve never holds the extra combo.
+        let pf = PostflopFile::decode(&unseeded.encode()).unwrap();
+        assert_eq!(
+            pf.profile_root_range(idx, ip, &id).unwrap()[extra.combo()],
+            0.0
+        );
+        let root = pf.root(flop).unwrap();
+        let Step::Node(c) = pf.step(&root, Action::Check) else {
+            panic!()
+        };
+        assert!(pf.profile_strategy(&c, idx, extra).is_none());
     }
 }

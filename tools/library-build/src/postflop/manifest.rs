@@ -45,6 +45,16 @@ pub struct Solve {
     /// Store a combo at a node only if the actor plays its line to the node
     /// at least this often (0..1).
     pub min_combo_reach: f32,
+    /// With profiles: the weight at which the solve seeds every combo a
+    /// profile brings to the flop that the reference never does, so the
+    /// solve plays it and the profile's best responses start from the
+    /// profile's own preflop range (#48). Tiny, so the reference barely
+    /// moves; it costs memory and time in proportion to the wider ranges
+    /// (docs/spikes.md). Without it the best responses still start from
+    /// the profile's range, restricted to the reference's combos, and a
+    /// bot holding another combo leaves the library (`bot-off-range`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_seed: Option<f32>,
 }
 
 pub use taful_solver::postflop::TreeSpec as Tree;
@@ -87,6 +97,9 @@ impl Manifest {
         if !(0.0..100.0).contains(&s.prune_reach_pct) || !(0.0..1.0).contains(&s.min_combo_reach) {
             return Err("solve: prune_reach_pct in [0, 100), min_combo_reach in [0, 1)".into());
         }
+        if s.profile_seed.is_some_and(|x| !(x > 0.0 && x <= 0.01)) {
+            return Err("solve: profile_seed in (0, 0.01]".into());
+        }
         let mut ids = std::collections::HashSet::new();
         for spot in &self.spots {
             if !ids.insert(&spot.id) {
@@ -119,11 +132,18 @@ impl Manifest {
 
     /// BLAKE3 of the manifest's canonical TOML and, when it lists
     /// profiles, each one's canonical TOML (`profiles` = what
-    /// [`load_profiles`](Self::load_profiles) returned). Without profiles
-    /// this is the hash of the first-slice files.
+    /// [`load_profiles`](Self::load_profiles) returned), plus a tag for how
+    /// profile sections are built. Without profiles this is the hash of the
+    /// first-slice files.
     pub fn hash(&self, profiles: &[Profile]) -> [u8; 32] {
         let mut h = blake3::Hasher::new();
         h.update(toml::to_string(self).expect("serializable").as_bytes());
+        if !profiles.is_empty() {
+            // How profile sections are built, so a build resumed across a
+            // change never mixes files: v2 = best responses from each
+            // profile's own root range, stored in v4 sections (#48).
+            h.update(b"\nprofile-sections-v2");
+        }
         for p in profiles {
             h.update(b"\n");
             h.update(p.to_toml().as_bytes());
