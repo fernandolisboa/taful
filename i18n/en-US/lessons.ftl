@@ -10,7 +10,6 @@ track-game-plan = Game plan
 
 ## Skill tree
 
-tree-intro = Work through the tracks in order. Passing a lesson's quiz unlocks the next ones.
 tree-state-done = Done
 tree-state-available = Available
 tree-state-locked = Locked
@@ -19,13 +18,13 @@ tree-best = Best { $score }
 
 ## Lesson reader
 
-lesson-none = Pick a lesson in the skill tree to start reading.
-lesson-open-tree = Open the skill tree
+lesson-none = Pick a lesson in the lessons list to start reading.
+lesson-open-tree = Open the lessons
 lesson-locked-note = This lesson is still locked: finish its prerequisites first. You can read it, but the quiz waits.
 lesson-glossary = Terms in this lesson
 lesson-take-quiz = Take the quiz
 lesson-retake-quiz = Take the quiz again
-lesson-back-to-tree = Back to the skill tree
+lesson-back-to-tree = ← Back to lessons
 lesson-render-error = This lesson failed to render: { $error }
 
 ## Quiz
@@ -41,3 +40,10 @@ quiz-wrong = Not quite. Answer: { $answer }
 quiz-passed = Passed with { $score }.
 quiz-failed = { $score }. You need { $pass } to pass; the missed questions went to your review queue.
 quiz-unlocked = Unlocked: { $lessons }
+
+tree-track-progress = { $done } of { $total }
+tree-start = Start
+tree-track-locked = { $count ->
+    [one] 1 lesson
+   *[other] { $count } lessons
+} · unlocks when you finish the previous track. Click to preview.

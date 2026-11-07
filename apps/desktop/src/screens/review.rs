@@ -12,6 +12,10 @@ use crate::screens::lesson::QuestionState;
 use crate::shell::{KeyResult, Shell};
 use crate::widgets::{button, card, muted};
 
+/// Calc and quiz review cards keep a definite width (wrapped text measures
+/// at it) that still fits the default window.
+const REVIEW_CARD_WIDTH: f32 = 760.;
+
 #[derive(Default)]
 pub struct ReviewView {
     pub prompt: Option<ReviewPrompt>,
@@ -407,7 +411,7 @@ impl Shell {
             _ => card(&ui, &p).into_any_element(),
         };
         // Calc and quiz cards keep the reading width; a spot needs the table's.
-        col.when(!spot, |c| c.w(px(crate::shell::CONTENT_MAX_WIDTH)))
+        col.when(!spot, |c| c.w(px(REVIEW_CARD_WIDTH)))
             .child(body)
             .into_any_element()
     }

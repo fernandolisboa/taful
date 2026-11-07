@@ -5,7 +5,7 @@ use taful_app::fmt;
 
 use crate::screen::Screen;
 use crate::shell::Shell;
-use crate::widgets::{button, card, muted, title};
+use crate::widgets::{button, card, eyebrow, muted, progress};
 
 impl Shell {
     pub(crate) fn home_view(&mut self, cx: &mut Context<Self>) -> AnyElement {
@@ -17,24 +17,93 @@ impl Shell {
             Err(e) => return muted(e.to_string(), &ui, &p).into_any_element(),
         };
 
-        let reviews = card(&ui, &p)
-            .child(title(ui.i18n.tr("home-due-title"), &ui))
-            .child(
-                div().text_size(px(t.text_size.md)).child(
-                    ui.i18n
-                        .tr_args("review-due", &[("count", home.due_now.into())]),
-                ),
-            )
-            .when_some(home.next_due.filter(|_| home.due_now == 0), |d, when| {
-                d.child(muted(
-                    ui.i18n.tr_args(
-                        "review-next-at",
-                        &[("when", fmt::datetime(when, loc).into())],
-                    ),
-                    &ui,
-                    &p,
-                ))
+        let lessons_frac = if home.lessons_total == 0 {
+            0.
+        } else {
+            home.lessons_done as f32 / home.lessons_total as f32
+        };
+        let progress_line = ui.i18n.tr_args(
+            "home-progress",
+            &[
+                ("done", home.lessons_done.into()),
+                ("total", home.lessons_total.into()),
+            ],
+        );
+        // The one thing to do next, big, at the top.
+        let lesson = card(&ui, &p)
+            .border_l(px(4.))
+            .border_color(p.accent)
+            .gap(px(t.spacing.lg))
+            .child(eyebrow(ui.i18n.tr("home-continue-title"), &ui, &p))
+            .child(match &home.next_lesson {
+                Some((id, name)) => {
+                    let id = id.clone();
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap(px(t.spacing.lg))
+                        .child(
+                            div()
+                                .text_size(px(t.text_size.xl))
+                                .font_weight(gpui::FontWeight::BOLD)
+                                .child(name.clone()),
+                        )
+                        .child(
+                            button(
+                                "home_lesson",
+                                ui.i18n.tr("home-start-lesson"),
+                                true,
+                                &ui,
+                                &p,
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.open_lesson(&id);
+                                    this.select(Screen::Lesson, window, cx);
+                                },
+                            )),
+                        )
+                        .into_any_element()
+                }
+                None => muted(ui.i18n.tr("home-lesson-none"), &ui, &p).into_any_element(),
             })
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(t.spacing.sm))
+                    .child(progress(lessons_frac, &ui, &p))
+                    .child(muted(progress_line, &ui, &p)),
+            );
+
+        let stat = |n: String| {
+            div()
+                .text_size(px(t.text_size.xl))
+                .font_weight(gpui::FontWeight::BOLD)
+                .child(n)
+        };
+        let reviews = card(&ui, &p)
+            .flex_1()
+            .child(eyebrow(ui.i18n.tr("home-due-title"), &ui, &p))
+            .child(stat(home.due_now.to_string()))
+            .child(muted(
+                if home.due_now > 0 {
+                    ui.i18n.tr("home-due-short")
+                } else {
+                    match home.next_due {
+                        Some(when) => ui.i18n.tr_args(
+                            "review-next-at",
+                            &[("when", fmt::datetime(when, loc).into())],
+                        ),
+                        None => ui
+                            .i18n
+                            .tr_args("review-due", &[("count", home.due_now.into())]),
+                    }
+                },
+                &ui,
+                &p,
+            ))
             .when(home.due_now > 0, |d| {
                 d.child(
                     button("home_review", ui.i18n.tr("review-start"), true, &ui, &p).on_click(
@@ -43,46 +112,18 @@ impl Shell {
                 )
             });
 
-        let lesson = card(&ui, &p)
-            .child(title(ui.i18n.tr("home-lesson-title"), &ui))
-            .child(muted(
-                ui.i18n.tr_args(
-                    "home-progress",
-                    &[
-                        ("done", home.lessons_done.into()),
-                        ("total", home.lessons_total.into()),
-                    ],
-                ),
-                &ui,
-                &p,
-            ))
-            .child(match &home.next_lesson {
-                Some((id, name)) => {
-                    let id = id.clone();
-                    div()
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .gap(px(t.spacing.md))
-                        .child(div().text_size(px(t.text_size.lg)).child(name.clone()))
-                        .child(
-                            button("home_lesson", ui.i18n.tr("home-open-lesson"), true, &ui, &p)
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.open_lesson(&id);
-                                    this.select(Screen::Lesson, window, cx);
-                                })),
-                        )
-                        .into_any_element()
-                }
-                None => muted(ui.i18n.tr("home-lesson-none"), &ui, &p).into_any_element(),
-            });
-
         let (right, total) = home.calc_recent;
         let calc = card(&ui, &p)
-            .child(title(ui.i18n.tr("home-calc-title"), &ui))
+            .flex_1()
+            .child(eyebrow(ui.i18n.tr("home-calc-title"), &ui, &p))
+            .child(stat(if total == 0 {
+                "–".to_owned()
+            } else {
+                format!("{right}/{total}")
+            }))
             .child(muted(
                 if total == 0 {
-                    ui.i18n.tr("home-calc-none")
+                    ui.i18n.tr("home-calc-short")
                 } else {
                     ui.i18n.tr_args(
                         "home-calc-recent",
@@ -147,7 +188,7 @@ impl Shell {
         });
         let rows: Vec<_> = rows.collect();
         let leaks = card(&ui, &p)
-            .child(title(ui.i18n.tr("home-leaks-title"), &ui))
+            .child(eyebrow(ui.i18n.tr("home-leaks-title"), &ui, &p))
             .when(rows.is_empty(), |c| {
                 c.child(muted(ui.i18n.tr("home-leaks-body"), &ui, &p))
             })
@@ -157,9 +198,14 @@ impl Shell {
             .flex()
             .flex_col()
             .gap(px(t.spacing.lg))
-            .child(reviews)
             .child(lesson)
-            .child(calc)
+            .child(
+                div()
+                    .flex()
+                    .gap(px(t.spacing.lg))
+                    .child(reviews)
+                    .child(calc),
+            )
             .child(leaks)
             .into_any_element()
     }

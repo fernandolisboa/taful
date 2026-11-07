@@ -17,14 +17,16 @@ review-session-done = { $count ->
 }
 
 home-due-title = Reviews
-home-lesson-title = Next lesson
 home-lesson-none = Every lesson is done. More arrive with the next milestones.
-home-open-lesson = Read
 home-calc-title = Mental math
 home-calc-recent = { $correct } of { $total } right in your last answers
-home-calc-none = No answers yet.
 home-calc-start = Train
 home-progress = { $done } of { $total } lessons done
 home-leaks-title = Top leaks
 home-leaks-body = No leaks yet. They show up once graded decisions pile up mistakes in a spot.
 review-dealing = Dealing a spot…
+
+home-continue-title = Pick up where you left off
+home-start-lesson = Start lesson
+home-calc-short = Drill pot odds, outs and equity against the clock.
+home-due-short = waiting for you now

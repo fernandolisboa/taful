@@ -10,8 +10,11 @@ window-title = { -product } · No-Limit Hold'em coach
 ## Navigation (spec §15.1)
 
 nav-home = Home
-nav-skill-tree = Skill tree
-nav-lesson = Lessons
+nav-skill-tree = Lessons
+nav-lesson = Lesson
+nav-group-learn = Learn
+nav-group-practice = Practice
+nav-group-analyze = Analyze
 nav-table = Table
 nav-hand-review = Hand review
 nav-calc = Mental math

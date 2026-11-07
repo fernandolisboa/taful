@@ -119,6 +119,9 @@ table-seats-from-left = À sua esquerda:
 table-hand-vs-mixed = Mesa mista: cada bot joga o próprio perfil. O pré-flop é avaliado contra os oponentes ainda na mão, o pós-flop contra o bot que sobrou.
 table-hand-next-mixed = A próxima mão é na mesa mista.
 
+table-row-mode = Modo
+table-row-spot = Situação
+
 ## Como a mão chegou aqui (#53)
 
 table-story-title = Como a mão chegou aqui
