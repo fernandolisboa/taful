@@ -122,10 +122,15 @@ table-hand-next-mixed = The next hand is at the mixed table.
 ## How the hand got here (#53)
 
 table-story-title = How the hand got here
-table-story-blinds = Blinds: { $blinds }
 table-story-you = { $position } (you)
-table-story-none = Nobody acted before you.
 table-replay-auto = Auto replay
 table-replay-playing = Replaying the hand…
 table-replay-skip = Skip replay
 table-replay-again = Replay the action
+table-tl-folds = { $positions } fold
+table-tl-open = Open { $amount }
+table-tl-nbet = { $n }-bet { $amount }
+table-replay-earlier = You are looking at an earlier moment of the hand.
+table-replay-back = Back to your turn
+table-tl-pot = pot { $amount }
+table-replay-panel = The table is replaying how the hand got to your turn. Click an action on the timeline to see that moment.
