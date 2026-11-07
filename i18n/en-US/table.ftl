@@ -118,3 +118,19 @@ table-seat-left = #{ $n }
 table-seats-from-left = From your left:
 table-hand-vs-mixed = Mixed table: each bot plays its own profile. Preflop is graded against the opponents still in the hand, postflop against the remaining bot.
 table-hand-next-mixed = The next hand is at the mixed table.
+
+## How the hand got here (#53)
+
+table-story-title = How the hand got here
+table-story-you = { $position } (you)
+table-replay-auto = Auto replay
+table-replay-playing = Replaying the hand…
+table-replay-skip = Skip replay
+table-replay-again = Replay the action
+table-tl-folds = { $positions } fold
+table-tl-open = Open { $amount }
+table-tl-nbet = { $n }-bet { $amount }
+table-replay-earlier = You are looking at an earlier moment of the hand.
+table-replay-back = Back to your turn
+table-tl-pot = pot { $amount }
+table-replay-panel = The table is replaying how the hand got to your turn. Click a line of the history to see that moment.

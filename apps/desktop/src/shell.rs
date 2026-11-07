@@ -68,7 +68,9 @@ impl Shell {
             .ok()
             .and_then(|id| taful_app::layout::Layout::builtin(&id))
             .unwrap_or_else(|| app.active_layout().1);
-        let table = cx.new(|cx| TableScreen::new(ui.clone(), trainers, layout, cx));
+        let auto_replay =
+            app.string_setting(taful_app::keys::TABLE_REPLAY).as_deref() != Some("off");
+        let table = cx.new(|cx| TableScreen::new(ui.clone(), trainers, layout, auto_replay, cx));
         window.focus(&focus);
         let ticker = cx.spawn(async move |this, cx| {
             let mut since_use = Duration::ZERO;
@@ -163,6 +165,15 @@ impl Shell {
                     }
                 };
                 self.table.update(cx, |t, cx| t.layout_saved(r, cx));
+            }
+            TableEvent::AutoReplay(on) => {
+                let value = if *on { "on" } else { "off" };
+                if let Err(e) = self
+                    .app
+                    .set_string_setting(taful_app::keys::TABLE_REPLAY, value)
+                {
+                    eprintln!("taful: storing the replay setting failed: {e}");
+                }
             }
             TableEvent::ReviewHand => {
                 let id = self.hand_review.last_stored.clone();

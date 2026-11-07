@@ -771,6 +771,37 @@ pub(crate) mod tests {
         }
     }
 
+    /// The story of a full hand (#53) ends on the hand's table, with one
+    /// event per action and per dealt street.
+    #[test]
+    fn full_hand_stories_end_on_the_table() {
+        use crate::story::{Story, StoryEvent};
+        let (pre, post) = (pre(), post());
+        for seed in 0..30 {
+            let mut h = FullHand::new(&pre, Some(&post), None, seed).unwrap();
+            play_best(&mut h, &pre, Some(&post));
+            let story = Story::of(&h.state).unwrap();
+            assert!(same_table(story.last(), &h.state), "seed {seed}");
+            let actions: usize = h.state.actions().iter().map(Vec::len).sum();
+            let dealt = story
+                .events
+                .iter()
+                .filter(|e| matches!(e, StoryEvent::Dealt { .. }))
+                .count();
+            assert_eq!(story.events.len(), actions + dealt, "seed {seed}");
+            let streets = match h.state.board().len() {
+                0 => 0,
+                3 => 1,
+                4 => 2,
+                _ => 3,
+            };
+            assert_eq!(dealt, streets, "seed {seed}");
+            for (i, e) in story.events.iter().enumerate() {
+                assert_eq!(e.step(), i + 1);
+            }
+        }
+    }
+
     #[test]
     fn preflop_only_hands_end_at_the_flop_without_a_library() {
         let pre = pre();
