@@ -512,6 +512,8 @@ Facing a half-pot bet you need {{ calc: pot_odds(pot=100, bet=50) | pct(1) }} eq
 
 As in spike §9.1: oval rail + felt, seats on an ellipse, avatars, stacks, positions, dealer button, chips, pot, 4-color deck, card backs. Animations: dealing, chips to pot, pot to winner (GPUI animation, 150–300 ms, can be disabled).
 
+**As built (#59):** `apps/desktop/src/motion.rs`. Screens fade in on navigation (180 ms) and each tour step fades in; on the felt, hole and board cards drop into place as they are dealt, a bet slides from the seat toward the pot whenever its amount changes, the pot label fades on every new amount, and at the end of a full hand each winner's take slides from the pot to the seat (260 ms, ease-out). An animation replays when its element id changes (a new card, bet or screen visit), so nothing needs extra state. Setting `ui.animations`: `on` (default), `reduced` (fades only, nothing moves) or `off`, in Settings.
+
 **Performance (M6):** nothing that can solve a river runs on the UI thread. The table screen deals postflop spots, drills and full hands, and plays every full-hand step (bots, library file loads, the river solve), on GPUI's background executor; the screen shows a busy line and ignores clicks until the result lands, and a result from an older deal is dropped. The review session deals spot templates the same way (`App::next_review_step` → `TemplateDeal::run` off-thread → `App::finish_review_deal`). The types that cross threads are checked `Send` by a test. Preflop spots and grading stay synchronous (table lookups).
 
 ### 15.3 Layout model (D7)

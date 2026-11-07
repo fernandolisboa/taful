@@ -33,6 +33,8 @@ pub mod keys {
     /// Screens whose guided tour was finished or skipped (#58),
     /// comma-separated screen ids.
     pub const TOUR_SEEN: &str = "tour.seen";
+    /// Animations (#59): `on` (default), `reduced` (fades only) or `off`.
+    pub const UI_ANIMATIONS: &str = "ui.animations";
 }
 
 /// The database file name inside the data folder.

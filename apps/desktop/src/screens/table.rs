@@ -1288,6 +1288,17 @@ impl TableScreen {
             self.actions_bar(&h.state, &h.hero_actions(&t.preflop), cx)
         };
         let panel = panel.children(self.story_panel(h.hero, cx));
+        // Winners' takes, slid from the pot once the hand is settled.
+        let wins: Vec<(usize, u64)> = match (&h.end, over) {
+            (Some(HandEnd::Settled(st)), true) => st
+                .net
+                .iter()
+                .enumerate()
+                .filter(|(_, n)| **n > 0)
+                .map(|(seat, n)| (seat, *n as u64))
+                .collect(),
+            _ => Vec::new(),
+        };
         Parts {
             table: felt::table_tagged(
                 &self.ui,
@@ -1296,7 +1307,10 @@ impl TableScreen {
                 h.hero,
                 over,
                 scale,
-                &felt::seat_tags(&self.ui, &h.seat_profiles),
+                felt::SeatExtras {
+                    tags: &felt::seat_tags(&self.ui, &h.seat_profiles),
+                    wins: &wins,
+                },
             ),
             actions,
             panel,

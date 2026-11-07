@@ -7,6 +7,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod felt;
+mod motion;
 mod screen;
 mod screens;
 mod shell;

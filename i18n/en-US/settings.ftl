@@ -59,3 +59,10 @@ settings-library-folder = Folder: { $path }
 settings-library-ok = Installed: { $count } postflop configurations.
 settings-library-missing = Not installed in this folder.
 settings-library-change = Change folder…
+
+# Animations (#59).
+settings-animations = Animations
+settings-animations-body = Screen fades, cards being dealt and chips moving to the pot. Reduced keeps only the fades.
+settings-animations-on = On
+settings-animations-reduced = Reduced
+settings-animations-off = Off

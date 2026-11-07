@@ -221,7 +221,10 @@ impl Shell {
                         h.hero,
                         step == last,
                         1.,
-                        &felt::seat_tags(&ui, &h.seat_profiles),
+                        felt::SeatExtras {
+                            tags: &felt::seat_tags(&ui, &h.seat_profiles),
+                            wins: &[],
+                        },
                     ))
                     .child(controls),
             )

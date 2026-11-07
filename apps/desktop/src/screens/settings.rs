@@ -757,6 +757,36 @@ impl Shell {
             .child(backups)
             .child(library)
             .child(grading)
+            .child({
+                let now = crate::motion::level();
+                card(&ui, &p)
+                    .child(title(ui.i18n.tr("settings-animations"), &ui))
+                    .child(muted(ui.i18n.tr("settings-animations-body"), &ui, &p))
+                    .child(
+                        div().flex().child(
+                            crate::widgets::segmented(&ui, &p).children(
+                                crate::motion::Motion::ALL
+                                    .into_iter()
+                                    .enumerate()
+                                    .map(|(k, m)| {
+                                        crate::widgets::segment(
+                                            ("motion", k),
+                                            ui.i18n.tr(m.label_key()),
+                                            m == now,
+                                            &ui,
+                                            &p,
+                                        )
+                                        .on_click(
+                                            cx.listener(move |this, _, _, cx| {
+                                                this.set_motion(m);
+                                                cx.notify();
+                                            }),
+                                        )
+                                    }),
+                            ),
+                        ),
+                    )
+            })
             .child(
                 card(&ui, &p)
                     .child(title(ui.i18n.tr("tour-reset-title"), &ui))
