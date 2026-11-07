@@ -6,8 +6,15 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-[lints]
-workspace = true
+# The workspace lints, with `unsafe_code` lowered from forbid to deny: one
+# call into postflop-solver's evaluator needs it (postflop/profiles.rs,
+# `evaluate`). This tool is never shipped.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
 
 # postflop-solver (AGPL, D11): only this crate may depend on it, and
 # tools/arch-check enforces that. Pinned to the last upstream commit;

@@ -9,6 +9,7 @@
 
 pub mod export;
 pub mod manifest;
+pub mod profiles;
 mod validate;
 
 use std::io::Write as _;
@@ -247,7 +248,12 @@ pub fn run(manifest_path: &Path, out: &Path, opt: &Options) -> Result<(), String
         lower_priority();
     }
     std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
-    let manifest_hash = m.hash();
+    let profiles = m.load_profiles(manifest_path.parent().unwrap_or(Path::new(".")))?;
+    let manifest_hash = m.hash(&profiles);
+    if !profiles.is_empty() {
+        let ids: Vec<&str> = profiles.iter().map(|p| p.id.as_str()).collect();
+        eprintln!("profiles: {} (best responses inline)", ids.join(", "));
+    }
     let mut done = 0usize;
     let mut skipped_mem = 0usize;
     let total = n_flops * prepared.len();
@@ -303,7 +309,15 @@ pub fn run(manifest_path: &Path, out: &Path, opt: &Options) -> Result<(), String
             game.allocate_memory(m.solve.compression);
             let report = solve(&mut game, &m.solve, g.pot as f32);
             let t_export = Instant::now();
-            let file = export::export(&mut game, &job, &config, &m, &report, manifest_hash)?;
+            let file = export::export(
+                &mut game,
+                &job,
+                &config,
+                &m,
+                &report,
+                manifest_hash,
+                &profiles,
+            )?;
             let bytes = file.encode();
             let export_secs = t_export.elapsed().as_secs_f64();
             drop(game);

@@ -489,7 +489,7 @@ pub(crate) fn postflop_context(config_key: &str, walk: &Walk, position: Position
             postflop: walk.history().to_vec(),
             texture: Some(walk.texture().id()),
             hero: position,
-            opponent: None,
+            opponent: walk.vs_profile().map(Into::into),
         },
         street: walk.street(),
         node_type: NodeType::postflop(node.map_or(0, |n| n.facing)),

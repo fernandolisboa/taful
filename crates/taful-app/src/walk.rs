@@ -14,9 +14,11 @@ use taful_core::cards::{Card, CardSet, Hand, NUM_COMBOS};
 use taful_core::config::{BB_CHIPS, Chips, Rake};
 use taful_core::iso::{Flop, SuitPerm, TextureClass};
 use taful_core::position::Position;
+use taful_core::profile::Profile;
 use taful_solver::postflop::{Cursor, PostflopFile, SpotGeometry, Step, TreeSpec};
 use taful_solver::river::{
     DcfrRiverSolver, RiverSolution, RiverSpot, RiverTree, SolveOptions, SubgameSolver,
+    best_response_detail, profile_strategy,
 };
 
 use crate::postflop::PostflopError;
@@ -32,8 +34,33 @@ enum Tree {
     Library(Cursor),
     River {
         sol: Arc<RiverSolution>,
+        /// Against a profile: the bot's locked river strategy and the
+        /// responder's best-response EVs.
+        vs: Option<Arc<RiverVs>>,
         node: usize,
     },
+}
+
+/// A solved river against a profile (spec §7.8, #27).
+#[derive(Debug)]
+struct RiverVs {
+    /// Per node, the bot's profiled strategy `[action][hand]` (empty where
+    /// the other player acts).
+    strategy: Vec<Vec<f32>>,
+    /// Per node, the responder's EV in chips of each action `[action][hand]`.
+    br: Vec<Option<Vec<f32>>>,
+}
+
+/// The opponent a walk plays against when it is a bot profile (spec §9,
+/// #27): the profile's data in the file and the side it plays.
+#[derive(Debug, Clone)]
+struct Vs {
+    /// Profile section in the file.
+    index: usize,
+    /// The profile as the build locked it (the file's copy), for rivers.
+    profile: Arc<Profile>,
+    /// 0 = the bot is out of position.
+    bot: usize,
 }
 
 /// What happens after an action or a dealt card.
@@ -79,7 +106,9 @@ pub struct Walk {
     tree_spec: Option<TreeSpec>,
     tree: Tree,
     pending: Option<Pending>,
-    /// Reach of OOP and IP, real-card space.
+    /// Against a bot profile; `None` = the reference.
+    vs: Option<Vs>,
+    /// Reach of OOP and IP, real-card space (the bot's under its profile).
     reach: [Vec<f32>; 2],
     board: Vec<Card>,
     /// Chips each side put in on earlier postflop streets.
@@ -124,6 +153,7 @@ impl Walk {
             tree_spec,
             tree: Tree::Library(cursor),
             pending: None,
+            vs: None,
             reach,
             board: real.cards().to_vec(),
             committed: [0, 0],
@@ -132,6 +162,40 @@ impl Walk {
             street: Street::Flop,
             history: vec![Vec::new()],
         })
+    }
+
+    /// The same walk against bot profile `id` playing side `bot` (0 = out
+    /// of position), before any action. `Ok(None)` when the file has no
+    /// data for the profile (a reference-only library, #27).
+    pub(crate) fn against(mut self, id: &str, bot: usize) -> Result<Option<Walk>, PostflopError> {
+        if !self.history.iter().all(Vec::is_empty) || bot > 1 {
+            return Err(PostflopError::NoData);
+        }
+        let Some(index) = self.file.profile_index(id) else {
+            return Ok(None);
+        };
+        let profile = Profile::from_toml(&self.file.profile(index).profile)
+            .map_err(|e| PostflopError::Library(format!("profile `{id}` in the file: {e}")))?;
+        // The bot's range at the root is its reference range; from here on
+        // it follows the profile.
+        self.vs = Some(Vs {
+            index,
+            profile: Arc::new(profile),
+            bot,
+        });
+        Ok(Some(self))
+    }
+
+    /// The bot profile this walk plays against, if any.
+    pub fn vs_profile(&self) -> Option<&str> {
+        self.vs
+            .as_ref()
+            .map(|v| self.file.profile(v.index).id.as_str())
+    }
+
+    /// The side the profile plays, if any (0 = out of position).
+    pub fn bot_side(&self) -> Option<usize> {
+        self.vs.as_ref().map(|v| v.bot)
     }
 
     pub fn spot_id(&self) -> &str {
@@ -195,7 +259,7 @@ impl Walk {
                     facing,
                 }
             }
-            Tree::River { sol, node } => {
+            Tree::River { sol, node, .. } => {
                 let n = &sol.nodes[*node];
                 NodeView {
                     side: n.player,
@@ -218,7 +282,7 @@ impl Walk {
         }
         match &self.tree {
             Tree::Library(c) => self.file.strategy(c, hand),
-            Tree::River { sol, node } => sol.strategy(*node, hand),
+            Tree::River { sol, node, .. } => sol.strategy(*node, hand),
         }
     }
 
@@ -229,23 +293,57 @@ impl Walk {
         }
         match &self.tree {
             Tree::Library(c) => self.file.ev(c, hand),
-            Tree::River { sol, node } => sol
+            Tree::River { sol, node, .. } => sol
                 .ev(*node, hand)
                 .map(|v| v.into_iter().map(|chips| chips / BB_CHIPS as f32).collect()),
         }
     }
 
-    /// Multiply `reach` (real-card space) by the actor's frequency of action
-    /// `a` at the node.
-    fn apply_reach(&self, a: usize, reach: &mut [f32]) {
+    /// Against a profile: the acting player's best-response EV of each
+    /// action against it for `hand`, in bb (from the file on the flop and
+    /// turn, from the river solve on the river). `None` without a profile,
+    /// when the bot acts, or when the hand has no data.
+    pub fn profile_ev_bb(&self, hand: Hand) -> Option<Vec<f32>> {
+        let vs = self.vs.as_ref()?;
+        if self.pending.is_some() || self.node()?.side == vs.bot {
+            return None;
+        }
         match &self.tree {
-            Tree::Library(c) => self.file.apply_action_reach(c, a, reach),
-            Tree::River { sol, node } => {
+            Tree::Library(c) => self.file.profile_ev(c, vs.index, hand),
+            Tree::River { sol, node, vs: rv } => {
+                let br = rv.as_ref()?.br[*node].as_ref()?;
+                let n = &sol.nodes[*node];
+                let i = sol.hand_index(n.player, hand)?;
+                let len = sol.hands[n.player].len();
+                Some(
+                    (0..n.actions.len())
+                        .map(|a| br[a * len + i] / BB_CHIPS as f32)
+                        .collect(),
+                )
+            }
+        }
+    }
+
+    /// Multiply `reach` (real-card space) by the actor's frequency of action
+    /// `a` at the node; the actor is `side`, and plays its profile if it is
+    /// the bot.
+    fn apply_reach(&self, side: usize, a: usize, reach: &mut [f32]) {
+        let bot = self.vs.as_ref().filter(|v| v.bot == side);
+        match &self.tree {
+            Tree::Library(c) => match bot {
+                Some(v) => self.file.apply_profile_reach(c, v.index, a, reach),
+                None => self.file.apply_action_reach(c, a, reach),
+            },
+            Tree::River { sol, node, vs } => {
                 let n = &sol.nodes[*node];
                 let len = sol.hands[n.player].len();
+                let table = match (bot, vs) {
+                    (Some(_), Some(rv)) => &rv.strategy[*node],
+                    _ => &n.strategy,
+                };
                 let mut next = vec![0.0f32; NUM_COMBOS];
                 for (i, h) in sol.hands[n.player].iter().enumerate() {
-                    next[h.combo()] = reach[h.combo()] * n.strategy[a * len + i];
+                    next[h.combo()] = reach[h.combo()] * table[a * len + i];
                 }
                 reach.copy_from_slice(&next);
             }
@@ -272,7 +370,7 @@ impl Walk {
         let Some(node) = self.node() else { return 0.0 };
         let dead = CardSet::from_cards(&self.board);
         let mut r = self.reach[node.side].clone();
-        self.apply_reach(a, &mut r);
+        self.apply_reach(node.side, a, &mut r);
         r.iter()
             .enumerate()
             .filter(|(h, _)| !Hand::from_combo(*h).expect("<1326").mask().intersects(dead))
@@ -303,7 +401,7 @@ impl Walk {
             .ok_or(PostflopError::NotInTree(action))?;
         let side = node.side;
         let mut r = std::mem::take(&mut self.reach[side]);
-        self.apply_reach(a, &mut r);
+        self.apply_reach(side, a, &mut r);
         self.reach[side] = r;
         self.history
             .last_mut()
@@ -342,9 +440,13 @@ impl Walk {
                 }
                 Step::Left => Ok(self.finish(Progress::Left)),
             },
-            Tree::River { sol, node } => match sol.nodes[node].children[a] {
+            Tree::River { sol, node, vs } => match sol.nodes[node].children[a] {
                 Some(next) => {
-                    self.tree = Tree::River { sol, node: next };
+                    self.tree = Tree::River {
+                        sol,
+                        vs,
+                        node: next,
+                    };
                     Ok(Progress::Decision)
                 }
                 None => Ok(self.finish(Progress::Over)),
@@ -409,9 +511,10 @@ impl Walk {
             Some(Pending::River) => {
                 self.board.push(card);
                 match self.solve_river(pins) {
-                    Ok(sol) => {
+                    Ok((sol, vs)) => {
                         self.tree = Tree::River {
                             sol: Arc::new(sol),
+                            vs: vs.map(Arc::new),
                             node: 0,
                         };
                         Ok(Progress::Decision)
@@ -464,11 +567,26 @@ impl Walk {
         })
     }
 
-    fn solve_river(&self, pins: &[Hand]) -> Result<RiverSolution, PostflopError> {
+    /// The river solve, and against a profile its locked strategy and the
+    /// other side's best responses (spec §7.8: rivers on demand).
+    fn solve_river(
+        &self,
+        pins: &[Hand],
+    ) -> Result<(RiverSolution, Option<RiverVs>), PostflopError> {
         let spot = self.river_spot(pins)?;
-        DcfrRiverSolver
+        let sol = DcfrRiverSolver
             .solve(&spot, &river_options())
-            .map_err(PostflopError::Library)
+            .map_err(PostflopError::Library)?;
+        let vs = match &self.vs {
+            None => None,
+            Some(v) => {
+                let strategy = profile_strategy(&spot, &sol, v.bot, &v.profile);
+                let br = best_response_detail(&spot, &sol, v.bot ^ 1, &strategy)
+                    .map_err(PostflopError::Library)?;
+                Some(RiverVs { strategy, br })
+            }
+        };
+        Ok((sol, vs))
     }
 }
 

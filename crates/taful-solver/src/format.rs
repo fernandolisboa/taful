@@ -26,6 +26,19 @@
 //!                    that subtree with combos and cards mapped by `perm`
 //! ```
 //!
+//! v3 appends, after the chance section:
+//!
+//! ```text
+//! profiles  count u8, then per bot profile: id, canonical profile TOML,
+//!           ev_scale f32, then per node (same order as `nodes`):
+//!             live rows: count u16 + row indices u16   rows the profile
+//!                        plays to this node
+//!             strategy [u8; live × actions]   the profile's strategy when
+//!                                             it acts here, × 255
+//!             ev       [i16; node live × actions]   the actor's best-response
+//!                        EVs against the profile, rows as the node's `live`
+//! ```
+//!
 //! A *row* is a combo (`Domain::Combos`, 1,326 rows, postflop) or a preflop
 //! hand class (`Domain::Classes`, 169 rows in [`HandClass::index`] order).
 //! Preflop strategy is suit-symmetric, so class rows lose nothing and make
@@ -38,6 +51,12 @@
 //! the turn subtree ends at the river ([`Child::End`]; rivers are solved on
 //! demand, D11). The writer emits v1 when a file has no chance nodes, so a
 //! preflop chart is byte-identical across the bump.
+//!
+//! **v3** (#27) adds per-profile sections (D8): for every node, the bot
+//! profile's locked strategy and the acting player's best-response EVs
+//! against it, computed by the build tool while the full tree is in memory.
+//! The writer emits v3 only for files with profile data, so files without
+//! it stay v1/v2 and mean "reference only".
 //!
 //! [`HandClass::index`]: taful_core::range::HandClass::index
 
@@ -54,8 +73,10 @@ use taful_core::range::HandClass;
 
 pub const MAGIC: [u8; 4] = *b"TAFL";
 /// Version written by this crate.
-pub const FORMAT_VERSION: u16 = 2;
-/// Oldest version this crate still reads (spec §7.5: current and previous).
+pub const FORMAT_VERSION: u16 = 3;
+/// Oldest version this crate still reads (spec §7.5: current and previous;
+/// v1 also stays, since files without chance nodes, the preflop charts, are
+/// still written as v1).
 pub const MIN_READ_VERSION: u16 = 1;
 /// Largest inflated body a reader accepts (a turn-truncated postflop file is
 /// tens of MB; this leaves ample room).
@@ -259,6 +280,65 @@ pub struct LibraryFile {
     pub nodes: Vec<Node>,
     /// Chance nodes (v2); empty for preflop charts.
     pub chance: Vec<ChanceNode>,
+    /// Per bot profile data (v3); empty = reference only.
+    pub profiles: Vec<ProfileSection>,
+}
+
+/// One bot profile's data in a file (v3, D8).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProfileSection {
+    /// Profile id (`content/bots/<id>.toml`).
+    pub id: String,
+    /// Canonical TOML of the profile the build locked, so a reader applies
+    /// exactly the same transform where it solves on its own (the river).
+    pub profile: String,
+    /// bb per EV unit of this section.
+    pub ev_scale: f32,
+    /// One per node of [`LibraryFile::nodes`], same order.
+    pub nodes: Vec<ProfileNode>,
+}
+
+/// One node's profile data.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProfileNode {
+    /// Rows the profile plays to this node, ascending.
+    pub live: Vec<u16>,
+    /// `[live.len()][actions]`, the profile's strategy when it acts here,
+    /// frequencies × 255.
+    pub strategy: Vec<u8>,
+    /// `[node.live.len()][actions]`, the acting player's best-response EVs
+    /// against the profile (rows as the node's own `live`), × `ev_scale` =
+    /// bb, same convention as the reference EVs.
+    pub ev: Vec<i16>,
+}
+
+impl ProfileNode {
+    /// The profile's frequencies for a row (renormalized). `None` if the
+    /// profile does not play the row to this node.
+    pub fn strategy(&self, row: usize, actions: usize) -> Option<Vec<f32>> {
+        let row = u16::try_from(row).ok()?;
+        let i = self.live.binary_search(&row).ok()?;
+        let q = &self.strategy[i * actions..(i + 1) * actions];
+        let total: u32 = q.iter().map(|&x| u32::from(x)).sum();
+        Some(if total == 0 {
+            vec![1.0 / actions as f32; actions]
+        } else {
+            q.iter().map(|&x| f32::from(x) / total as f32).collect()
+        })
+    }
+
+    /// Best-response EVs of `node`'s actor for a row, bb. `None` if the row
+    /// is not live at the node.
+    pub fn ev(&self, node: &Node, row: usize, ev_scale: f32) -> Option<Vec<f32>> {
+        let i = node.live_index(row)?;
+        let k = node.actions.len();
+        Some(
+            self.ev[i * k..(i + 1) * k]
+                .iter()
+                .map(|&e| f32::from(e) * ev_scale)
+                .collect(),
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -482,6 +562,32 @@ impl LibraryFile {
                 }
             }
         }
+        if self.profiles.len() > usize::from(u8::MAX) {
+            return Err(corrupt("more than 255 profiles"));
+        }
+        for (i, p) in self.profiles.iter().enumerate() {
+            if p.id.is_empty() || self.profiles[..i].iter().any(|q| q.id == p.id) {
+                return Err(corrupt(format!("profile {i}: empty or repeated id")));
+            }
+            if !p.ev_scale.is_finite() || p.ev_scale <= 0.0 {
+                return Err(corrupt(format!("profile {}: ev_scale", p.id)));
+            }
+            if p.nodes.len() != n_nodes {
+                return Err(corrupt(format!("profile {}: node count", p.id)));
+            }
+            for (j, (pn, n)) in p.nodes.iter().zip(&self.nodes).enumerate() {
+                let k = n.actions.len();
+                if pn.live.windows(2).any(|w| w[0] >= w[1])
+                    || pn.live.last().is_some_and(|&r| usize::from(r) >= rows)
+                    || pn.live.len() > usize::from(u16::MAX)
+                {
+                    return Err(corrupt(format!("profile {} node {j}: live rows", p.id)));
+                }
+                if pn.strategy.len() != pn.live.len() * k || pn.ev.len() != n.live.len() * k {
+                    return Err(corrupt(format!("profile {} node {j}: table sizes", p.id)));
+                }
+            }
+        }
         Ok(())
     }
 
@@ -531,8 +637,15 @@ impl LibraryFile {
             }
         }
 
-        // v1 has no chance section; keep files without chance nodes at v1.
-        let version: u16 = if self.chance.is_empty() { 1 } else { 2 };
+        // Each version only when the file needs it: no chance nodes and no
+        // profiles stays v1 (preflop charts), no profiles stays v2.
+        let version: u16 = if !self.profiles.is_empty() {
+            3
+        } else if !self.chance.is_empty() {
+            2
+        } else {
+            1
+        };
         if version >= 2 {
             w.u32(u32::try_from(self.chance.len()).expect("< 4G chance nodes"));
             for ch in &self.chance {
@@ -550,6 +663,24 @@ impl LibraryFile {
                             w.u8(of.index());
                             w.bytes(&perm.map());
                         }
+                    }
+                }
+            }
+        }
+        if version >= 3 {
+            w.u8(self.profiles.len() as u8);
+            for p in &self.profiles {
+                w.str(&p.id);
+                w.str(&p.profile);
+                w.f32(p.ev_scale);
+                for n in &p.nodes {
+                    w.u16(n.live.len() as u16);
+                    for &r in &n.live {
+                        w.u16(r);
+                    }
+                    w.bytes(&n.strategy);
+                    for &e in &n.ev {
+                        w.bytes(&e.to_le_bytes());
                     }
                 }
             }
@@ -678,6 +809,34 @@ impl LibraryFile {
                 chance.push(ChanceNode { branches });
             }
         }
+        let mut profiles = Vec::new();
+        if version >= 3 {
+            let count = r.u8()?;
+            for _ in 0..count {
+                let id = r.str()?;
+                let profile = r.str()?;
+                let ev_scale = r.f32()?;
+                let mut pnodes = Vec::with_capacity(nodes.len());
+                for n in &nodes {
+                    let k = n.actions.len();
+                    let n_live = usize::from(r.u16()?);
+                    let live = (0..n_live)
+                        .map(|_| r.u16())
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let strategy = r.take(n_live * k)?.to_vec();
+                    let ev = (0..n.live.len() * k)
+                        .map(|_| r.u16().map(|v| v as i16))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    pnodes.push(ProfileNode { live, strategy, ev });
+                }
+                profiles.push(ProfileSection {
+                    id,
+                    profile,
+                    ev_scale,
+                    nodes: pnodes,
+                });
+            }
+        }
         if r.at != body.len() {
             return Err(corrupt("trailing bytes (unsupported extension?)"));
         }
@@ -697,6 +856,7 @@ impl LibraryFile {
             },
             nodes,
             chance,
+            profiles,
         };
         file.validate()?;
         Ok(file)
@@ -828,6 +988,7 @@ mod tests {
                 ),
             ],
             chance: vec![],
+            profiles: vec![],
         }
     }
 
@@ -888,6 +1049,70 @@ mod tests {
         // A file without chance nodes stays v1.
         let v1 = sample().encode();
         assert_eq!(u16::from_le_bytes([v1[4], v1[5]]), 1);
+    }
+
+    /// `sample_v2` with one profile section.
+    fn sample_v3() -> LibraryFile {
+        let mut f = sample_v2();
+        let nodes = f
+            .nodes
+            .iter()
+            .map(|n| {
+                let k = n.actions.len();
+                ProfileNode {
+                    live: vec![7, 900],
+                    strategy: (0..2 * k).map(|i| (i * 51 % 256) as u8).collect(),
+                    ev: (0..n.live.len() * k).map(|i| i as i16 - 3).collect(),
+                }
+            })
+            .collect();
+        f.profiles = vec![ProfileSection {
+            id: "calling-station".into(),
+            profile: "id = \"calling-station\"\n".into(),
+            ev_scale: 0.002,
+            nodes,
+        }];
+        f
+    }
+
+    #[test]
+    fn roundtrip_v3_profiles() {
+        let f = sample_v3();
+        let bytes = f.encode();
+        assert_eq!(u16::from_le_bytes([bytes[4], bytes[5]]), 3);
+        let back = LibraryFile::decode(&bytes).unwrap();
+        assert_eq!(back, f);
+        let p = &back.profiles[0];
+        let k = back.nodes[0].actions.len();
+        assert!(p.nodes[0].strategy(7, k).is_some());
+        assert!(p.nodes[0].strategy(3, k).is_none());
+        // EV rows follow the node's own live rows.
+        assert_eq!(
+            p.nodes[0].ev(&back.nodes[0], 3, p.ev_scale).unwrap().len(),
+            k
+        );
+        assert!(p.nodes[0].ev(&back.nodes[0], 7, p.ev_scale).is_none());
+        // Without profiles the same file is still written as v2.
+        let v2 = sample_v2().encode();
+        assert_eq!(u16::from_le_bytes([v2[4], v2[5]]), 2);
+        assert_eq!(LibraryFile::decode(&v2).unwrap().profiles, vec![]);
+    }
+
+    #[test]
+    fn rejects_bad_profile_sections() {
+        let mut f = sample_v3();
+        f.profiles[0].nodes.pop();
+        assert!(f.validate().is_err());
+        let mut f = sample_v3();
+        f.profiles[0].nodes[0].ev.pop();
+        assert!(f.validate().is_err());
+        let mut f = sample_v3();
+        f.profiles[0].nodes[1].live = vec![5, 5];
+        assert!(f.validate().is_err());
+        let mut f = sample_v3();
+        let dup = f.profiles[0].clone();
+        f.profiles.push(dup);
+        assert!(f.validate().is_err());
     }
 
     #[test]

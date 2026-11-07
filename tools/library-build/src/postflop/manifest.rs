@@ -3,7 +3,10 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+use std::path::Path;
+
 use taful_core::action::Line;
+use taful_core::profile::Profile;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -17,7 +20,14 @@ pub struct Manifest {
     pub solve: Solve,
     pub trees: BTreeMap<String, Tree>,
     pub spots: Vec<Spot>,
+    /// Bot profiles whose best responses each solve computes inline (D8,
+    /// #27). Part of the hash, with every listed profile's contents: a
+    /// changed profile means a new build.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profiles: Option<Profiles>,
 }
+
+pub use crate::preflop::manifest::Profiles;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -107,9 +117,25 @@ impl Manifest {
         Ok(())
     }
 
-    /// BLAKE3 of the manifest's canonical TOML.
-    pub fn hash(&self) -> [u8; 32] {
-        *blake3::hash(toml::to_string(self).expect("serializable").as_bytes()).as_bytes()
+    /// BLAKE3 of the manifest's canonical TOML and, when it lists
+    /// profiles, each one's canonical TOML (`profiles` = what
+    /// [`load_profiles`](Self::load_profiles) returned). Without profiles
+    /// this is the hash of the first-slice files.
+    pub fn hash(&self, profiles: &[Profile]) -> [u8; 32] {
+        let mut h = blake3::Hasher::new();
+        h.update(toml::to_string(self).expect("serializable").as_bytes());
+        for p in profiles {
+            h.update(b"\n");
+            h.update(p.to_toml().as_bytes());
+        }
+        *h.finalize().as_bytes()
+    }
+
+    /// The listed profiles, from `<manifest dir>/<profiles.dir>/<id>.toml`.
+    pub fn load_profiles(&self, manifest_dir: &Path) -> Result<Vec<Profile>, String> {
+        self.profiles
+            .as_ref()
+            .map_or(Ok(Vec::new()), |set| set.load(manifest_dir))
     }
 }
 
@@ -122,5 +148,24 @@ mod tests {
         let m = Manifest::parse(include_str!("../../manifests/postflop-6max-100bb.toml")).unwrap();
         assert_eq!(m.spots.len(), 5);
         assert_eq!(m.flop_count, 49);
+    }
+
+    #[test]
+    fn profiles_move_the_hash_and_none_keeps_it() {
+        let text = include_str!("../../manifests/fixture.toml");
+        let m = Manifest::parse(text).unwrap();
+        assert!(m.profiles.is_none());
+        // Without profiles: the plain BLAKE3 of the canonical TOML, as the
+        // first-slice files were built.
+        let plain = *blake3::hash(toml::to_string(&m).unwrap().as_bytes()).as_bytes();
+        assert_eq!(m.hash(&[]), plain);
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("manifests");
+        let with = Manifest::parse(include_str!("../../manifests/fixture-profiles.toml")).unwrap();
+        let profiles = with.load_profiles(&dir).unwrap();
+        assert_eq!(profiles.len(), 4);
+        let mut edited = profiles.clone();
+        edited[0].postflop.aggression += 0.1;
+        assert_ne!(with.hash(&profiles), with.hash(&edited));
+        assert_ne!(with.hash(&profiles), m.hash(&[]));
     }
 }
