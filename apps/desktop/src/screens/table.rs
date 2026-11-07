@@ -143,8 +143,6 @@ enum Done {
 
 /// Smallest grid cell in pixels: below it the window scrolls instead.
 const MIN_CELL: f32 = 14.;
-/// Room the timeline takes under the felt (#53), in pixels.
-const TIMELINE_H: f32 = 110.;
 /// Room the shell takes above the screen (title and gap), in pixels.
 const TITLE_ROOM: f32 = 56.;
 
@@ -480,7 +478,7 @@ impl TableScreen {
         }
     }
 
-    /// Shows the story at state `step` (a timeline click); hero's buttons
+    /// Shows the story at state `step` (a click on a story row); hero's buttons
     /// wait until the replay is back at the decision.
     fn jump_to(&mut self, step: usize, cx: &mut Context<Self>) {
         self._ticker = None;
@@ -491,11 +489,11 @@ impl TableScreen {
         cx.notify();
     }
 
-    /// The hand's timeline under the felt (#53): one column per street
-    /// (its board and the pot it started with) with the actions as tags,
-    /// openers' folds folded into one tag. A tag shows the felt at that
-    /// moment; the controls replay, step and toggle auto-replay.
-    fn timeline(&self, hero: taful_app::preflop::Seat, cx: &mut Context<Self>) -> Option<Div> {
+    /// How the hand got here (#53), for the side panel: one block per
+    /// street (its board and the pot it started with) with a row per action,
+    /// openers' folds in one row. A row shows the felt at that moment; the
+    /// controls replay, step and toggle auto-replay.
+    fn story_panel(&self, hero: taful_app::preflop::Seat, cx: &mut Context<Self>) -> Option<Div> {
         let pb = self.playback.as_ref()?;
         let (ui, p) = (self.ui.clone(), self.palette);
         let (th, i18n) = (&ui.theme, &ui.i18n);
@@ -503,7 +501,8 @@ impl TableScreen {
 
         // Columns: (street, board cards, pot at its start, tags).
         struct Tag {
-            label: String,
+            who: String,
+            what: String,
             step: usize,
             hero: bool,
             fold: bool,
@@ -541,17 +540,15 @@ impl TableScreen {
                     // Folds before the first voluntary action: one tag.
                     if col.street == Street::Preflop && !opened && a.action == Action::Fold {
                         openers.push(a.position.label());
-                        let label = i18n.tr_args(
-                            "table-tl-folds",
-                            &[("positions", openers.join(", ").into())],
-                        );
+                        let who = openers.join(", ");
                         match col.tags.last_mut() {
                             Some(t) if t.fold && openers.len() > 1 => {
-                                t.label = label;
+                                t.who = who;
                                 t.step = a.step;
                             }
                             _ => col.tags.push(Tag {
-                                label,
+                                who,
+                                what: i18n.tr("table-action-fold"),
                                 step: a.step,
                                 hero: a.seat == hero,
                                 fold: true,
@@ -597,7 +594,8 @@ impl TableScreen {
                         a.position.label().to_string()
                     };
                     col.tags.push(Tag {
-                        label: format!("{who} {what}"),
+                        who,
+                        what,
                         step: a.step,
                         hero: a.seat == hero,
                         fold: a.action == Action::Fold,
@@ -608,62 +606,101 @@ impl TableScreen {
         }
 
         let at = pb.at;
-        let tag = |t: Tag| {
-            let step = t.step;
-            let past = step <= at;
-            let current = step == at && pb.playing();
-            div()
-                .id(("tl", step))
-                .px(px(th.spacing.sm))
-                .py(px(2.))
-                .rounded(px(th.radii.sm))
-                .border_1()
-                .text_size(px(th.text_size.sm))
-                .cursor_pointer()
-                .bg(if current {
-                    p.accent_muted
-                } else {
-                    p.surface_raised
-                })
-                .border_color(if current || t.hero {
-                    p.accent
-                } else {
-                    p.border
-                })
-                .text_color(if t.fold { p.text_muted } else { p.text })
-                .when(t.aggressive, |d| d.font_weight(gpui::FontWeight::SEMIBOLD))
-                .when(!past, |d| d.opacity(0.35))
-                .hover(|d| d.border_color(p.accent))
-                .on_click(cx.listener(move |this, _, _, cx| this.jump_to(step, cx)))
-                .child(t.label)
-        };
-        // One flow: a street marker (board and pot), then its actions.
-        let mut flow: Vec<gpui::AnyElement> = Vec::new();
-        for col in cols {
-            let street = i18n.tr(&format!("street-{}", street_id(col.street)));
-            flow.push(
-                div()
+        let playing = pb.playing();
+        // One block per street: its name, board and pot, then one row per
+        // action (position | action). Rows after the replay's moment wait.
+        let blocks: Vec<_> = cols
+            .into_iter()
+            .enumerate()
+            .filter(|(_, col)| {
+                // A street the replay has not dealt yet stays hidden.
+                col.street == Street::Preflop
+                    || col.tags.first().is_some_and(|t| t.step <= at)
+                    || !playing
+            })
+            .map(|(ci, col)| {
+                let street = i18n.tr(&format!("street-{}", street_id(col.street)));
+                let header = div()
                     .flex()
                     .items_center()
-                    .gap(px(th.spacing.xs))
-                    .when(col.street != Street::Preflop, |d| d.ml(px(th.spacing.md)))
-                    .text_size(px(th.text_size.sm))
+                    .justify_between()
+                    .pb(px(th.spacing.xs))
+                    .border_b_1()
+                    .border_color(p.border)
                     .child(
                         div()
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(p.text)
-                            .child(street),
+                            .flex()
+                            .items_center()
+                            .gap(px(th.spacing.sm))
+                            .child(
+                                div()
+                                    .text_size(px(th.text_size.sm))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(p.text)
+                                    .child(street),
+                            )
+                            .children(col.cards.iter().map(|&c| felt::card(&ui, &p, Some(c), 0.8))),
                     )
-                    .children(col.cards.iter().map(|&c| felt::card(&ui, &p, Some(c), 0.7)))
-                    .child(div().text_color(p.text_muted).child(
-                        i18n.tr_args("table-tl-pot", &[("amount", felt::bb(&ui, col.pot).into())]),
-                    ))
-                    .into_any_element(),
-            );
-            for t in col.tags {
-                flow.push(tag(t).into_any_element());
-            }
-        }
+                    .child(
+                        div()
+                            .text_size(px(th.text_size.sm))
+                            .text_color(p.text_muted)
+                            .child(i18n.tr_args(
+                                "table-tl-pot",
+                                &[("amount", felt::bb(&ui, col.pot).into())],
+                            )),
+                    );
+                let rows = col
+                    .tags
+                    .into_iter()
+                    .filter(|t| !playing || t.step <= at)
+                    .map(|t| {
+                        let step = t.step;
+                        let current = playing && step == at;
+                        div()
+                            .id(("story", step))
+                            .flex()
+                            .gap(px(th.spacing.md))
+                            .px(px(th.spacing.xs))
+                            .py(px(2.))
+                            .rounded(px(th.radii.sm))
+                            .text_size(px(th.text_size.sm))
+                            .cursor_pointer()
+                            .when(current, |d| d.bg(p.accent_muted))
+                            .hover(|d| d.bg(p.surface_raised))
+                            .on_click(cx.listener(move |this, _, _, cx| this.jump_to(step, cx)))
+                            .child(
+                                div()
+                                    .w(px(110.))
+                                    .flex_none()
+                                    .text_color(if t.hero {
+                                        p.accent
+                                    } else if t.fold {
+                                        p.text_muted
+                                    } else {
+                                        p.text
+                                    })
+                                    .when(t.hero, |d| d.font_weight(gpui::FontWeight::SEMIBOLD))
+                                    .child(t.who),
+                            )
+                            .child(
+                                div()
+                                    .text_color(if t.fold { p.text_muted } else { p.text })
+                                    .when(t.aggressive, |d| {
+                                        d.font_weight(gpui::FontWeight::SEMIBOLD)
+                                    })
+                                    .child(t.what),
+                            )
+                    });
+                div()
+                    .id(("story_street", ci))
+                    .flex()
+                    .flex_col()
+                    .gap(px(2.))
+                    .child(header)
+                    .children(rows)
+            })
+            .collect();
 
         let last = pb.last();
         let small = |id: &'static str, label: String, enabled: bool| {
@@ -672,20 +709,21 @@ impl TableScreen {
         let controls =
             div()
                 .flex()
+                .flex_wrap()
                 .items_center()
                 .gap(px(th.spacing.xs))
                 .child(
                     small(
-                        "tl_play",
+                        "story_play",
                         i18n.tr("table-replay-again"),
                         !story.events.is_empty(),
                     )
                     .on_click(cx.listener(|this, _, _, cx| this.replay_again(cx))),
                 )
-                .child(small("tl_prev", "‹".into(), at > 0).on_click(
+                .child(small("story_prev", "‹".into(), at > 0).on_click(
                     cx.listener(move |this, _, _, cx| this.jump_to(at.saturating_sub(1), cx)),
                 ))
-                .child(small("tl_next", "›".into(), at < last).on_click(
+                .child(small("story_next", "›".into(), at < last).on_click(
                     cx.listener(move |this, _, _, cx| this.jump_to((at + 1).min(last), cx)),
                 ))
                 .child(self.chip(
@@ -699,37 +737,18 @@ impl TableScreen {
             div()
                 .flex()
                 .flex_col()
-                .gap(px(th.spacing.sm))
-                .w_full()
-                .px(px(th.spacing.md))
-                .py(px(th.spacing.sm))
-                .rounded(px(th.radii.lg))
-                .bg(p.surface)
-                .border_1()
+                .gap(px(th.spacing.md))
+                .pt(px(th.spacing.md))
+                .border_t_1()
                 .border_color(p.border)
                 .child(
                     div()
-                        .flex()
-                        .flex_wrap()
-                        .justify_between()
-                        .items_center()
-                        .gap(px(th.spacing.sm))
-                        .child(
-                            div()
-                                .text_size(px(th.text_size.sm))
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .child(i18n.tr("table-story-title")),
-                        )
-                        .child(controls),
+                        .text_size(px(th.text_size.md))
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .child(i18n.tr("table-story-title")),
                 )
-                .child(
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .items_center()
-                        .gap(px(th.spacing.xs))
-                        .children(flow),
-                ),
+                .children(blocks)
+                .child(controls),
         )
     }
 
@@ -1062,9 +1081,14 @@ impl TableScreen {
                 self.actions_bar(q.state(), &q.actions(t), cx),
             ),
         };
+        let panel = div()
+            .flex()
+            .flex_col()
+            .gap(px(self.ui.theme.spacing.lg))
+            .child(panel)
+            .children(self.story_panel(q.hero(), cx));
         Parts {
             table: felt::table_scaled(&self.ui, p, self.shown(q.state()), q.hero(), false, scale),
-            timeline: self.timeline(q.hero(), cx),
             actions,
             panel,
         }
@@ -1232,8 +1256,8 @@ impl TableScreen {
         } else {
             self.actions_bar(&h.state, &h.hero_actions(&t.preflop), cx)
         };
+        let panel = panel.children(self.story_panel(h.hero, cx));
         Parts {
-            timeline: self.timeline(h.hero, cx),
             table: felt::table_tagged(
                 &self.ui,
                 p,
@@ -1514,7 +1538,7 @@ impl Render for TableScreen {
         self.cell = cell;
         let scale = self
             .panel_rect(&layout, PanelId::Table, cell)
-            .map_or(1., |r| felt::fit_scale(r.w, r.h - TIMELINE_H));
+            .map_or(1., |r| felt::fit_scale(r.w, r.h));
         let parts = match self.mode {
             Mode::Hand => self.hand_parts(&trainers, scale, cx),
             _ => self.question_parts(&trainers, scale, cx),
@@ -1542,15 +1566,11 @@ impl Render for TableScreen {
                     let table = parts
                         .as_mut()
                         .map(|p| std::mem::replace(&mut p.table, div()));
-                    let timeline = parts.as_mut().and_then(|p| p.timeline.take());
                     Self::place(r)
                         .flex()
-                        .flex_col()
                         .items_center()
                         .justify_center()
-                        .gap(px(th.spacing.sm))
                         .children(table)
-                        .children(timeline)
                 }
                 PanelId::Actions => {
                     let actions = parts
@@ -1604,8 +1624,6 @@ impl Render for TableScreen {
 /// What the table, actions and explanation panels show.
 struct Parts {
     table: Div,
-    /// The hand's timeline under the felt (#53).
-    timeline: Option<Div>,
     actions: Div,
     panel: Div,
 }
@@ -1615,7 +1633,6 @@ impl Parts {
     fn message(text: Div) -> Parts {
         Parts {
             table: text,
-            timeline: None,
             actions: div(),
             panel: div(),
         }

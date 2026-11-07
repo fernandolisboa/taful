@@ -133,4 +133,4 @@ table-tl-nbet = { $n }-bet { $amount }
 table-replay-earlier = Você está vendo um momento anterior da mão.
 table-replay-back = Voltar para a sua vez
 table-tl-pot = pote { $amount }
-table-replay-panel = A mesa está repassando como a mão chegou até a sua vez. Clique numa ação da linha do tempo para ver aquele momento.
+table-replay-panel = A mesa está repassando como a mão chegou até a sua vez. Clique numa linha do histórico para ver aquele momento.

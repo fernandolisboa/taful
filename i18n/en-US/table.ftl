@@ -133,4 +133,4 @@ table-tl-nbet = { $n }-bet { $amount }
 table-replay-earlier = You are looking at an earlier moment of the hand.
 table-replay-back = Back to your turn
 table-tl-pot = pot { $amount }
-table-replay-panel = The table is replaying how the hand got to your turn. Click an action on the timeline to see that moment.
+table-replay-panel = The table is replaying how the hand got to your turn. Click a line of the history to see that moment.
