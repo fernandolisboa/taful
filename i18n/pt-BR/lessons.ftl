@@ -18,13 +18,13 @@ tree-best = Melhor { $score }
 
 ## Lesson reader
 
-lesson-none = Escolha uma lição na trilha para começar a ler.
-lesson-open-tree = Abrir a trilha
+lesson-none = Escolha uma lição na lista para começar a ler.
+lesson-open-tree = Ver as lições
 lesson-locked-note = Esta lição ainda está bloqueada: conclua os pré-requisitos primeiro. Dá para ler, mas o quiz espera.
 lesson-glossary = Termos desta lição
 lesson-take-quiz = Fazer o quiz
 lesson-retake-quiz = Fazer o quiz de novo
-lesson-back-to-tree = Voltar à trilha
+lesson-back-to-tree = ← Voltar às lições
 lesson-render-error = Esta lição não pôde ser exibida: { $error }
 
 ## Quiz
@@ -43,6 +43,7 @@ quiz-unlocked = Liberadas: { $lessons }
 
 tree-track-progress = { $done } de { $total }
 tree-start = Começar
-tree-next = Próxima
-tree-track-locked = { $count } lições · libera quando você terminar a trilha anterior
-lesson-back = ← Voltar às lições
+tree-track-locked = { $count ->
+    [one] 1 lição
+   *[other] { $count } lições
+} · libera quando você terminar a trilha anterior. Clique para dar uma olhada.

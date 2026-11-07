@@ -15,6 +15,8 @@ pub struct LessonView {
     /// Rendered lesson, or the render error.
     pub open: Option<Result<OpenLesson, String>>,
     pub quiz: Option<QuizRun>,
+    /// Locked tracks the user expanded in the tree to preview.
+    pub expanded: std::collections::HashSet<String>,
 }
 
 pub struct QuizRun {
@@ -384,7 +386,7 @@ impl Shell {
                 .on_click(
                     cx.listener(|this, _, window, cx| this.select(Screen::SkillTree, window, cx)),
                 )
-                .child(ui.i18n.tr("lesson-back")),
+                .child(ui.i18n.tr("lesson-back-to-tree")),
         );
         if open.state == LessonState::Locked {
             col = col.child(muted(ui.i18n.tr("lesson-locked-note"), &ui, &p));

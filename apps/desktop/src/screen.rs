@@ -13,8 +13,24 @@ pub enum Screen {
     Settings,
 }
 
+/// The nav rail's groups, top to bottom: optional heading key, screens.
+/// The lesson reader has no item (it lives under the lessons tree).
+pub const NAV_GROUPS: [(Option<&str>, &[Screen]); 4] = [
+    (None, &[Screen::Home]),
+    (Some("nav-group-learn"), &[Screen::SkillTree]),
+    (
+        Some("nav-group-practice"),
+        &[Screen::Table, Screen::Calc, Screen::Review],
+    ),
+    (Some("nav-group-analyze"), &[Screen::HandReview]),
+];
+
+/// The item pinned to the bottom of the nav rail.
+pub const NAV_BOTTOM: Screen = Screen::Settings;
+
 impl Screen {
-    /// Navigation order.
+    /// Every screen (`from_id` looks ids up here). The nav rail's order is
+    /// [`NAV_GROUPS`] + [`NAV_BOTTOM`].
     pub const ALL: [Screen; 8] = [
         Screen::Home,
         Screen::SkillTree,
@@ -73,5 +89,25 @@ impl Screen {
             Screen::Table => "M3",
             Screen::HandReview => "M5",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every screen but the lesson reader has exactly one nav item.
+    #[test]
+    fn nav_covers_every_screen_once() {
+        let mut nav: Vec<Screen> = NAV_GROUPS
+            .iter()
+            .flat_map(|(_, s)| s.iter().copied())
+            .collect();
+        nav.push(NAV_BOTTOM);
+        for s in Screen::ALL {
+            let n = nav.iter().filter(|&&x| x == s).count();
+            assert_eq!(n, usize::from(s != Screen::Lesson), "{s:?}");
+        }
+        assert_eq!(nav.len(), Screen::ALL.len() - 1);
     }
 }

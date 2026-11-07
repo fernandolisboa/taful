@@ -330,18 +330,9 @@ impl Shell {
                     )
                 })
         };
-        let groups: [(Option<&str>, &[Screen]); 4] = [
-            (None, &[Screen::Home]),
-            (Some("nav-group-learn"), &[Screen::SkillTree]),
-            (
-                Some("nav-group-practice"),
-                &[Screen::Table, Screen::Calc, Screen::Review],
-            ),
-            (Some("nav-group-analyze"), &[Screen::HandReview]),
-        ];
         let mut n = 0;
         let mut items = div().flex().flex_col().gap(px(t.spacing.lg));
-        for (heading, screens) in groups {
+        for (heading, screens) in crate::screen::NAV_GROUPS {
             let mut g = div().flex().flex_col().gap(px(t.spacing.xs));
             if let Some(h) = heading {
                 g = g.child(
@@ -360,7 +351,7 @@ impl Shell {
             }
             items = items.child(g);
         }
-        let settings = item(n, Screen::Settings, cx);
+        let settings = item(n, crate::screen::NAV_BOTTOM, cx);
 
         div()
             .w(px(NAV_WIDTH))

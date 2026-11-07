@@ -89,8 +89,7 @@ impl Shell {
             .child(stat(home.due_now.to_string()))
             .child(muted(
                 if home.due_now > 0 {
-                    ui.i18n
-                        .tr_args("home-due-short", &[("count", home.due_now.into())])
+                    ui.i18n.tr("home-due-short")
                 } else {
                     match home.next_due {
                         Some(when) => ui.i18n.tr_args(

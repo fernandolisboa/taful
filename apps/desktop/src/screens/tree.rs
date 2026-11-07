@@ -27,12 +27,16 @@ impl Shell {
         let mut n = 0usize;
         for track in tracks {
             let total = track.lessons.len();
+            if total == 0 {
+                continue;
+            }
             let done = track
                 .lessons
                 .iter()
                 .filter(|l| l.state == LessonState::Done)
                 .count();
             let open = track.lessons.iter().any(|l| l.state != LessonState::Locked);
+            let expanded = open || self.lesson.expanded.contains(&track.id);
             let header = div()
                 .flex()
                 .flex_col()
@@ -59,14 +63,26 @@ impl Shell {
                     d.child(progress(done as f32 / total.max(1) as f32, &ui, &p))
                 });
             let mut c = card(&ui, &p).child(header);
-            if !open {
-                // A locked track is one line, not a wall of grey rows.
-                c = c.child(muted(
-                    ui.i18n
-                        .tr_args("tree-track-locked", &[("count", total.into())]),
-                    &ui,
-                    &p,
-                ));
+            if !expanded {
+                // A locked track is one line, not a wall of grey rows; a
+                // click expands it to preview its lessons.
+                let track_id = track.id.clone();
+                c = c.child(
+                    div()
+                        .id(("track", n))
+                        .cursor_pointer()
+                        .hover(|s| s.opacity(0.8))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.lesson.expanded.insert(track_id.clone());
+                            cx.notify();
+                        }))
+                        .child(muted(
+                            ui.i18n
+                                .tr_args("tree-track-locked", &[("count", total.into())]),
+                            &ui,
+                            &p,
+                        )),
+                );
                 n += total;
                 col = col.child(c);
                 continue;
@@ -109,20 +125,18 @@ impl Shell {
                         .px(px(t.spacing.md))
                         .py(px(t.spacing.sm))
                         .rounded(px(t.radii.md))
-                        .when(!locked, |d| {
-                            d.cursor_pointer().hover(|s| s.bg(p.surface_raised))
-                        })
+                        // Locked lessons open too (read-only preview, no quiz).
+                        .cursor_pointer()
+                        .hover(|s| s.bg(p.surface_raised))
                         .when(is_next, |d| {
                             d.bg(p.surface_raised)
                                 .border_1()
                                 .border_color(p.accent_muted)
                         })
-                        .when(!locked, |d| {
-                            d.on_click(cx.listener(move |this, _, window, cx| {
-                                this.open_lesson(&id);
-                                this.select(Screen::Lesson, window, cx);
-                            }))
-                        })
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.open_lesson(&id);
+                            this.select(Screen::Lesson, window, cx);
+                        }))
                         .child(
                             div()
                                 .size(px(28.))
@@ -171,6 +185,7 @@ impl Shell {
                             d.child(
                                 button(("start", n), ui.i18n.tr("tree-start"), true, &ui, &p)
                                     .on_click(cx.listener(move |this, _, window, cx| {
+                                        cx.stop_propagation();
                                         this.open_lesson(&id2);
                                         this.select(Screen::Lesson, window, cx);
                                     })),
