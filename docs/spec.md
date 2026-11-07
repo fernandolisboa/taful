@@ -506,6 +506,8 @@ Facing a half-pot bet you need {{ calc: pot_odds(pot=100, bet=50) | pct(1) }} eq
 
 **As built (polish pass, #56):** the nav groups screens under Learn (Lessons = the skill tree), Practice (Table, Mental math, Reviews) and Analyze (Hand review), with Settings pinned at the bottom; the lesson reader has no nav item of its own (it highlights Lessons and links back to it). Reading screens use a centered column of at most 960 px with a one-line subtitle under the title. Home leads with a "pick up where you left off" card; the tree shows per-track progress, highlights the next lesson and collapses fully locked tracks to one line; the table controls are labeled rows (Mode as a segmented control, Spot, Opponent) with Edit layout on the right.
 
+**As built (guided tour, #58):** the first visit to each screen opens a short tour of coach marks (`apps/desktop/src/tour.rs`): a card beside or under an accent ring around the part it explains, with Next, Skip and Escape. Each screen's main parts paint an invisible anchor that records its laid-out bounds; a step whose anchor is missing falls back to a centered card. Finished or skipped screens are kept in the `tour.seen` setting; the "? Tour" pill next to each screen title replays it, and Settings resets all tours. `TAFUL_TOUR=0` turns tours off (screenshots, CI).
+
 ### 15.2 Table rendering
 
 As in spike §9.1: oval rail + felt, seats on an ellipse, avatars, stacks, positions, dealer button, chips, pot, 4-color deck, card backs. Animations: dealing, chips to pot, pot to winner (GPUI animation, 150–300 ms, can be disabled).

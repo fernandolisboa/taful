@@ -11,6 +11,7 @@ mod screen;
 mod screens;
 mod shell;
 mod theme;
+mod tour;
 mod widgets;
 
 use std::rc::Rc;

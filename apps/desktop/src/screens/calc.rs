@@ -311,56 +311,57 @@ impl Shell {
         let loc = ui.i18n.locale();
         let kinds = std::iter::once(None).chain(ExerciseKind::ALL.into_iter().map(Some));
         // One card per exercise: name plus what it trains.
-        let picker =
-            div()
-                .flex()
-                .flex_wrap()
-                .gap(px(t.spacing.md))
-                .children(kinds.enumerate().map(|(i, k)| {
-                    let (label, desc) = match k {
-                        None => (ui.i18n.tr("calc-mixed"), ui.i18n.tr("calc-desc-mixed")),
-                        Some(k) => (
-                            ui.i18n.tr(&format!("calc-kind-{}", k.id())),
-                            ui.i18n.tr(&format!("calc-desc-{}", k.id())),
-                        ),
-                    };
-                    let selected = self.calc.kind == k;
-                    div()
-                        .id(("calc_kind", i))
-                        .w(px(PICK_CARD_WIDTH))
-                        .flex()
-                        .flex_col()
-                        .gap(px(t.spacing.xs))
-                        .p(px(t.spacing.md))
-                        .rounded(px(t.radii.lg))
-                        .border_1()
-                        .cursor_pointer()
-                        .when(selected, |d| d.bg(p.surface_raised).border_color(p.accent))
-                        .when(!selected, |d| {
-                            d.bg(p.surface)
-                                .border_color(p.border)
-                                .hover(|s| s.border_color(p.accent_muted))
-                        })
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.calc.kind = k;
-                            this.calc_new_round();
-                            window.focus(&this.focus);
-                            cx.notify();
-                        }))
-                        .child(
-                            div()
-                                .text_size(px(t.text_size.md))
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .text_color(if selected { p.accent } else { p.text })
-                                .child(label),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(t.text_size.sm))
-                                .text_color(p.text_muted)
-                                .child(desc),
-                        )
-                }));
+        let picker = div()
+            .relative()
+            .flex()
+            .flex_wrap()
+            .gap(px(t.spacing.md))
+            .child(crate::tour::anchor("calc_picker"))
+            .children(kinds.enumerate().map(|(i, k)| {
+                let (label, desc) = match k {
+                    None => (ui.i18n.tr("calc-mixed"), ui.i18n.tr("calc-desc-mixed")),
+                    Some(k) => (
+                        ui.i18n.tr(&format!("calc-kind-{}", k.id())),
+                        ui.i18n.tr(&format!("calc-desc-{}", k.id())),
+                    ),
+                };
+                let selected = self.calc.kind == k;
+                div()
+                    .id(("calc_kind", i))
+                    .w(px(PICK_CARD_WIDTH))
+                    .flex()
+                    .flex_col()
+                    .gap(px(t.spacing.xs))
+                    .p(px(t.spacing.md))
+                    .rounded(px(t.radii.lg))
+                    .border_1()
+                    .cursor_pointer()
+                    .when(selected, |d| d.bg(p.surface_raised).border_color(p.accent))
+                    .when(!selected, |d| {
+                        d.bg(p.surface)
+                            .border_color(p.border)
+                            .hover(|s| s.border_color(p.accent_muted))
+                    })
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.calc.kind = k;
+                        this.calc_new_round();
+                        window.focus(&this.focus);
+                        cx.notify();
+                    }))
+                    .child(
+                        div()
+                            .text_size(px(t.text_size.md))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(if selected { p.accent } else { p.text })
+                            .child(label),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(t.text_size.sm))
+                            .text_color(p.text_muted)
+                            .child(desc),
+                    )
+            }));
         let body: AnyElement = match (&self.calc.round, &self.calc.outcome) {
             (Some(round), Some(o)) => div()
                 .flex()
@@ -445,7 +446,12 @@ impl Shell {
             .flex_col()
             .gap(px(t.spacing.lg))
             .child(picker)
-            .child(card(&ui, &p).child(body))
+            .child(
+                card(&ui, &p)
+                    .relative()
+                    .child(crate::tour::anchor("calc_body"))
+                    .child(body),
+            )
             // How answers are rated stays on screen while drilling.
             .child(muted(ui.i18n.tr("calc-intro"), &ui, &p))
             .when_some(stats.filter(|s| s.attempts > 0), |d, s| {

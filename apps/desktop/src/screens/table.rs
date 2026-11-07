@@ -1469,6 +1469,8 @@ impl TableScreen {
         };
         let show_opponents = matches!(self.mode, Mode::Spot | Mode::Postflop | Mode::Hand);
         div()
+            .relative()
+            .child(crate::tour::anchor("table_controls"))
             .flex()
             .flex_col()
             .gap(px(th.spacing.md))
@@ -1616,6 +1618,14 @@ impl Render for TableScreen {
                             .children(panel),
                     )
                 }
+            };
+            // The controls anchor sits on their content (it can outgrow
+            // its panel); the other panels anchor the whole panel.
+            let el = match id {
+                PanelId::Controls => el,
+                PanelId::Table => el.child(crate::tour::anchor("table_felt")),
+                PanelId::Actions => el.child(crate::tour::anchor("table_actions")),
+                PanelId::Explanation => el.child(crate::tour::anchor("table_explanation")),
             };
             let el: AnyElement = self.edit_chrome(id, el, cx);
             if self.dragged_panel() == Some(id) {

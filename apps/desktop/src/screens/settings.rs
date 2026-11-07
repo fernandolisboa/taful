@@ -757,6 +757,21 @@ impl Shell {
             .child(backups)
             .child(library)
             .child(grading)
+            .child(
+                card(&ui, &p)
+                    .child(title(ui.i18n.tr("tour-reset-title"), &ui))
+                    .child(
+                        button("tour_reset", ui.i18n.tr("tour-reset"), false, &ui, &p).on_click(
+                            cx.listener(|this, _, _, cx| {
+                                this.tour_reset();
+                                cx.notify();
+                            }),
+                        ),
+                    )
+                    .when(self.tour_seen.is_empty(), |c| {
+                        c.child(muted(ui.i18n.tr("tour-reset-done"), &ui, &p))
+                    }),
+            )
             .child(muted(ui.i18n.tr("settings-later"), &ui, &p))
             .into_any_element()
     }
