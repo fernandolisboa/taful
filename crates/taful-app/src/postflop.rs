@@ -23,8 +23,8 @@ use taful_core::iso::{Flop, SuitPerm, deal_weights};
 use taful_solver::format::FormatError;
 use taful_solver::postflop::{PostflopFile, SpotGeometry, geometry};
 
-pub use crate::preflop::{GradedDecision, VsProfile};
 use crate::preflop::{Action, BB_CHIPS, Card, GameState, Hand, Position, Seat};
+pub use crate::preflop::{GradedDecision, VsProfile};
 pub use crate::template::NodeType;
 use crate::walk::{Progress, Walk};
 
@@ -642,13 +642,7 @@ pub(crate) fn grade_walk(
         hand,
         actions: node.actions.clone(),
         chosen,
-        grade: grade(
-            ev_loss,
-            pot_bb,
-            graded_freq,
-            node.tolerance_bb,
-            thresholds,
-        ),
+        grade: grade(ev_loss, pot_bb, graded_freq, node.tolerance_bb, thresholds),
         hand_freqs: freqs,
         hand_evs: evs,
         range_freqs: walk.range_freqs(),

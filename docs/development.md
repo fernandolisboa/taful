@@ -107,6 +107,7 @@ cargo run --release -p taful-library-build -- postflop tools/library-build/manif
 - **Flop order:** `library/flops.txt` (all 1,755 canonical flops; the first 49 are the stratified first slice). Regenerate with `taful-library-build flops library/flops.txt` only if no solved flop moves; a test pins it.
 - **River solver validation** (`tools/library-build/src/postflop/validate.rs`): Taful's river solver against postflop-solver on fixed spots. Fast, so it runs with the normal tests.
 - **App test fixture:** `crates/taful-app/tests/fixtures/postflop` is a tiny library (coarse tree, few iterations) from `manifests/fixture.toml`; rebuild with the command at the top of that manifest.
+- **Bot profiles (#27):** a `[profiles]` table (`dir` relative to the manifest, `ids`) makes every solve also store each profile's flop/turn strategy and hero's best-response EVs (format v3, spec §7.5, §9). Profiles are part of the postflop hash, so editing one means rebuilding. The shipped first-slice manifest does not list them yet: the 245 finish reference-only (D8 amendment); the full-coverage run (#31) adds `[profiles]` and writes to a **fresh output folder**, because finished files are skipped by existence and old reference-only files would otherwise stay. Files grow about 5× with the four profiles. `crates/taful-app/tests/fixtures/postflop-profiles` is the fixture with profile data, from `manifests/fixture-profiles.toml`.
 
 ## Full hands, reviews and leaks (M5)
 

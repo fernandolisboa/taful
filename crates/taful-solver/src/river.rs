@@ -927,10 +927,14 @@ pub fn best_response_detail(
     solution: &RiverSolution,
     responder: usize,
     opp_strategy: &[Vec<f32>],
-) -> Result<Vec<Option<Vec<f32>>>, String> {
+) -> Result<NodeEvs, String> {
     let (_, _, out) = best_response_pass(spot, solution, responder, opp_strategy)?;
     Ok(out)
 }
+
+/// Per-action EVs (`[action][hand]`) per decision node; `None` where the
+/// responder does not act.
+type NodeEvs = Vec<Option<Vec<f32>>>;
 
 /// One best-response evaluation: the game, the responder's root
 /// counterfactual values and the per-action EVs per decision node.
@@ -939,7 +943,7 @@ fn best_response_pass(
     solution: &RiverSolution,
     responder: usize,
     opp_strategy: &[Vec<f32>],
-) -> Result<(Game, Vec<f64>, Vec<Option<Vec<f32>>>), String> {
+) -> Result<(Game, Vec<f64>, NodeEvs), String> {
     let g = Game::new(spot)?;
     let mut dec = Vec::new();
     for (i, n) in g.nodes.iter().enumerate() {

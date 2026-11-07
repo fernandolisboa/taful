@@ -14,8 +14,8 @@ use taful_core::cards::{Card, CardSet, Hand, NUM_COMBOS};
 use taful_core::config::{BB_CHIPS, Chips, Rake};
 use taful_core::iso::{Flop, SuitPerm, TextureClass};
 use taful_core::position::Position;
-use taful_solver::postflop::{Cursor, PostflopFile, SpotGeometry, Step, TreeSpec};
 use taful_core::profile::Profile;
+use taful_solver::postflop::{Cursor, PostflopFile, SpotGeometry, Step, TreeSpec};
 use taful_solver::river::{
     DcfrRiverSolver, RiverSolution, RiverSpot, RiverTree, SolveOptions, SubgameSolver,
     best_response_detail, profile_strategy,

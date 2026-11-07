@@ -547,9 +547,7 @@ impl Pass<'_> {
             facing: 0,
             scale: 1.0,
         };
-        let root = g.root();
-        let v = ctx.visit(&root, &at, w[self.bot], w[hero]);
-        drop(root);
+        let v = ctx.visit(&g.root(), &at, w[self.bot], w[hero]);
         (ctx.out.into_inner().expect("not poisoned"), v)
     }
 }
