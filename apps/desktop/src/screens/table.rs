@@ -895,7 +895,7 @@ impl TableScreen {
                 .child(felt::grade_label(&self.ui, p, d.graded.grade))
         });
         let mut panel = div().flex().flex_col().gap(px(th.spacing.lg));
-        if h.decisions.is_empty() && !over {
+        if h.decisions.is_empty() && !over && !playing {
             panel = panel.child(self.message(i18n.tr("table-spot-prompt")));
         }
         let name = |id: &str| i18n.tr(&format!("bot-profile-{id}"));

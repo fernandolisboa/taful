@@ -61,18 +61,9 @@ impl Story {
     /// The story that led to `state`. Fails only on a state the engine
     /// cannot rebuild (never for states it produced).
     pub fn of(state: &GameState) -> Result<Story, String> {
-        let mut states = Replay::of(state).states(state.config())?;
-        // `Replay::states` deals all-in runouts the state has not dealt
-        // yet; the story stops at `state`.
-        let len = states
-            .iter()
-            .position(|s| {
-                s.board().len() == state.board().len()
-                    && s.actions().iter().map(Vec::len).sum::<usize>()
-                        == state.actions().iter().map(Vec::len).sum::<usize>()
-            })
-            .map_or(states.len(), |i| i + 1);
-        states.truncate(len);
+        // `Replay::states` deals only the cards already on `state`'s
+        // board, so its last state is `state`'s table.
+        let states = Replay::of(state).states(state.config())?;
         let events = states
             .windows(2)
             .enumerate()
@@ -106,7 +97,12 @@ fn event(before: &GameState, after: &GameState, step: usize) -> Result<StoryEven
     // A fold or check leaves the commitment as it was; the street can end
     // on a call and reset it, so read it from before plus what went in.
     let paid = before.players()[seat].stack - player.stack;
-    let to = before.players()[seat].street_commit + paid;
+    // An all-in that closes the round gets its uncalled part back at
+    // once; the log shows the shove, not what was called.
+    let to = match action {
+        Action::AllIn => before.players()[seat].street_commit + before.players()[seat].stack,
+        _ => before.players()[seat].street_commit + paid,
+    };
     Ok(StoryEvent::Action(StoryAction {
         street: before.street(),
         seat,
