@@ -737,6 +737,118 @@ mod tests {
         );
     }
 
+    fn profile_app() -> App {
+        let (mut app, _) = app_at(1_000_000);
+        app.set_library_dir(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/postflop-profiles"),
+        );
+        app
+    }
+
+    /// #27 acceptance: through `App`, flop, turn and river decisions against
+    /// a profile are graded on hero's best-response EVs against it (flop and
+    /// turn from the file, river solved on demand), with the reference EVs
+    /// alongside, and the exploitative action is Best.
+    #[test]
+    fn postflop_spots_against_a_profile_grade_on_best_responses() {
+        let mut a = profile_app();
+        let t = a.trainers().unwrap();
+        let post = t.post().unwrap();
+        let mut streets = std::collections::HashSet::new();
+        for (seed, street) in (0..24).zip([None, None, Some(Street::River)].into_iter().cycle()) {
+            let req = SpotRequest {
+                street,
+                opponent: Some("calling-station"),
+                ..SpotRequest::default()
+            };
+            let Ok(s) = post.generate(&req, seed) else {
+                continue;
+            };
+            assert_eq!(s.opponent.as_deref(), Some("calling-station"));
+            assert!(s.fallback.is_none());
+            let w = s.walk();
+            assert_eq!(w.vs_profile(), Some("calling-station"));
+            let br = w.profile_ev_bb(s.hand).unwrap();
+            let reference = w.ev_bb(s.hand).unwrap();
+            streets.insert(w.street());
+            let spot = DrillSpot::Postflop(Box::new(s));
+            let acts = spot_actions(&spot, &t);
+            for (i, &act) in acts.iter().enumerate() {
+                let d = t.answer(&spot, act).unwrap();
+                let vs = d.vs_profile.as_ref().expect("graded against the profile");
+                assert_eq!(vs.profile, "calling-station");
+                assert_eq!(d.hand_evs, br);
+                assert_eq!(vs.reference_evs, reference);
+                let best = br.iter().copied().fold(f32::MIN, f32::max);
+                assert!((d.ev_loss_bb - f64::from(best - br[i]).max(0.0)).abs() < 1e-9);
+                assert_eq!(vs.exploit, crate::preflop::argmax(&br));
+                // Kept out of the history until #26 keys it by profile.
+                let ctx = spot.context(&t);
+                a.record_spot_decision(&d, &ctx, None).unwrap();
+            }
+            let exploit = t.answer(&spot, acts[0]).unwrap().vs_profile.unwrap().exploit;
+            assert_eq!(t.answer(&spot, acts[exploit]).unwrap().grade, Grade::Best);
+        }
+        for st in [Street::Flop, Street::Turn, Street::River] {
+            assert!(streets.contains(&st), "no {st:?} spot vs the profile");
+        }
+        assert!(a.leaks().unwrap().is_empty());
+        assert_eq!(a.store.review_totals().unwrap().0, 0);
+    }
+
+    /// #27 acceptance: a reference-only (older format) library still loads,
+    /// and asking for a profile deals a reference spot that says so.
+    #[test]
+    fn reference_only_library_falls_back_to_the_reference() {
+        let mut a = app();
+        let t = a.trainers().unwrap();
+        let post = t.post().unwrap();
+        let req = SpotRequest {
+            opponent: Some("calling-station"),
+            ..SpotRequest::default()
+        };
+        let s = post.generate(&req, 5).unwrap();
+        assert_eq!(s.fallback.as_deref(), Some("calling-station"));
+        assert!(s.opponent.is_none());
+        assert!(s.walk().vs_profile().is_none());
+        let spot = DrillSpot::Postflop(Box::new(s));
+        let d = t.answer(&spot, spot_actions(&spot, &t)[0]).unwrap();
+        assert!(d.vs_profile.is_none());
+    }
+
+    /// #27 demo: against the calling station some hand bets thin for value
+    /// where the reference checks, and the bet is graded Best.
+    #[test]
+    fn calling_station_rewards_a_thin_value_bet() {
+        let mut a = profile_app();
+        let t = a.trainers().unwrap();
+        let post = t.post().unwrap();
+        let found = (0..400).any(|seed| {
+            let req = SpotRequest {
+                opponent: Some("calling-station"),
+                ..SpotRequest::default()
+            };
+            let Ok(s) = post.generate(&req, seed) else {
+                return false;
+            };
+            let spot = DrillSpot::Postflop(Box::new(s));
+            let acts = spot_actions(&spot, &t);
+            let Some(check) = acts.iter().position(|&x| x == Action::Check) else {
+                return false;
+            };
+            let d = t.answer(&spot, acts[check]).unwrap();
+            let vs = d.vs_profile.unwrap();
+            if vs.gto != check || !matches!(acts[vs.exploit], Action::Bet(_)) {
+                return false;
+            }
+            let bet = t.answer(&spot, acts[vs.exploit]).unwrap();
+            assert_eq!(bet.grade, Grade::Best);
+            assert!(d.grade > Grade::Best);
+            true
+        });
+        assert!(found, "no spot where GTO checks and a bet exploits the station");
+    }
+
     fn spot_actions(s: &DrillSpot, t: &Trainers) -> Vec<Action> {
         s.actions(t)
     }

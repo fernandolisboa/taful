@@ -8,8 +8,11 @@
 //! transform (it reads the same chart data), which is what spot mode grades
 //! against.
 //!
-//! Postflop the profiled bot still plays the reference until the postflop
-//! profiles land (#27); full-hand mode against profiles comes with #28.
+//! Postflop spots against a profile do not go through this trait: the
+//! library file stores the profile's flop and turn strategy next to hero's
+//! best-response EVs, and the river applies the same transform to the
+//! in-app solve (`walk.rs`, #27). Full-hand mode against profiles comes with
+//! #28.
 
 use rand::seq::IndexedRandom;
 use rand_chacha::ChaCha8Rng;

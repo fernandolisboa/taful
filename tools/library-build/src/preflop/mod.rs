@@ -188,6 +188,7 @@ fn export_with(m: &Manifest, solved: &Solved, profile: Option<(&str, [u8; 32])>)
         },
         nodes: ex.nodes,
         chance: Vec::new(),
+        profiles: Vec::new(),
     }
 }
 

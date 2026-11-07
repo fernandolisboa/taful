@@ -897,6 +897,49 @@ pub fn best_response(
     responder: usize,
     opp_strategy: &[Vec<f32>],
 ) -> Result<Vec<(Hand, f32)>, String> {
+    let (g, cfv, _) = best_response_pass(spot, solution, responder, opp_strategy)?;
+    let norm = g.compat_reach(responder, &g.hands[responder ^ 1].root);
+    Ok(g.hands[responder]
+        .hands
+        .iter()
+        .enumerate()
+        .map(|(i, &h)| {
+            (
+                h,
+                if norm[i] > 0.0 {
+                    (cfv[i] / norm[i]) as f32
+                } else {
+                    0.0
+                },
+            )
+        })
+        .collect())
+}
+
+/// Best response at every node (spec §7.8, #27): for each decision node of
+/// the solution where `responder` acts, the EV in chips of each action
+/// `[action][hand]` over the responder's hands (as [`RiverNode::ev`]) when
+/// the responder best-responds afterwards and the opponent plays
+/// `opp_strategy`; `None` at the opponent's nodes and at nodes the
+/// opponent's strategy never reaches.
+pub fn best_response_detail(
+    spot: &RiverSpot,
+    solution: &RiverSolution,
+    responder: usize,
+    opp_strategy: &[Vec<f32>],
+) -> Result<Vec<Option<Vec<f32>>>, String> {
+    let (_, _, out) = best_response_pass(spot, solution, responder, opp_strategy)?;
+    Ok(out)
+}
+
+/// One best-response evaluation: the game, the responder's root
+/// counterfactual values and the per-action EVs per decision node.
+fn best_response_pass(
+    spot: &RiverSpot,
+    solution: &RiverSolution,
+    responder: usize,
+    opp_strategy: &[Vec<f32>],
+) -> Result<(Game, Vec<f64>, Vec<Option<Vec<f32>>>), String> {
     let g = Game::new(spot)?;
     let mut dec = Vec::new();
     for (i, n) in g.nodes.iter().enumerate() {
@@ -931,22 +974,83 @@ pub fn best_response(
         true,
         &mut scratch,
     );
-    let norm = g.compat_reach(responder, &g.hands[responder ^ 1].root);
-    Ok(g.hands[responder]
-        .hands
+    let out = dec
         .iter()
-        .enumerate()
-        .map(|(i, &h)| {
-            (
-                h,
-                if norm[i] > 0.0 {
-                    (cfv[i] / norm[i]) as f32
-                } else {
-                    0.0
-                },
-            )
+        .map(|&i| match (&g.nodes[i], &scratch[i]) {
+            (Kind::Decision { player, .. }, Some((ev, reach)))
+                if *player == responder && reach.iter().any(|&r| r > 0.0) =>
+            {
+                Some(ev.iter().map(|&x| x as f32).collect())
+            }
+            _ => None,
         })
-        .collect())
+        .collect();
+    Ok((g, cfv, out))
+}
+
+/// The strategy `profile` plays as `bot` on a solved river (spec §9, #27):
+/// per decision node, the profile's transform of the solution's strategy at
+/// the bot's nodes (`[action][hand]` over `solution.hands[bot]`, the layout
+/// [`best_response`] takes) and an empty table at the other player's.
+/// The bot's range at each node is its range in `spot` played down the tree
+/// with this same profiled strategy.
+pub fn profile_strategy(
+    spot: &RiverSpot,
+    solution: &RiverSolution,
+    bot: usize,
+    profile: &taful_core::profile::Profile,
+) -> Vec<Vec<f32>> {
+    let hands = &solution.hands[bot];
+    let reach: Vec<f32> = hands.iter().map(|h| spot.ranges[bot][h.combo()]).collect();
+    let mut out = vec![Vec::new(); solution.nodes.len()];
+    if !solution.nodes.is_empty() {
+        lock_profile(solution, bot, profile, 0, &reach, 0, &mut out);
+    }
+    out
+}
+
+fn lock_profile(
+    sol: &RiverSolution,
+    bot: usize,
+    profile: &taful_core::profile::Profile,
+    node: usize,
+    reach: &[f32],
+    facing: usize,
+    out: &mut [Vec<f32>],
+) {
+    let n = &sol.nodes[node];
+    let k = n.actions.len();
+    let next_facing = |a: usize| facing + usize::from(n.actions[a].is_aggressive());
+    if n.player != bot {
+        for (a, c) in n.children.iter().enumerate() {
+            if let Some(c) = *c {
+                lock_profile(sol, bot, profile, c, reach, next_facing(a), out);
+            }
+        }
+        return;
+    }
+    let len = reach.len();
+    // `[action][hand]` → rows by hand for the transform, and back.
+    let rows = |t: &[f32]| -> Vec<f32> {
+        (0..len)
+            .flat_map(|h| (0..k).map(move |a| t[a * len + h]))
+            .collect()
+    };
+    let locked =
+        profile.postflop_strategy(&n.actions, &rows(&n.strategy), &rows(&n.ev), reach, facing);
+    let mut table = vec![0.0f32; k * len];
+    for h in 0..len {
+        for a in 0..k {
+            table[a * len + h] = locked[h * k + a];
+        }
+    }
+    for (a, c) in n.children.iter().enumerate() {
+        if let Some(c) = *c {
+            let r: Vec<f32> = (0..len).map(|h| reach[h] * table[a * len + h]).collect();
+            lock_profile(sol, bot, profile, c, &r, next_facing(a), out);
+        }
+    }
+    out[node] = table;
 }
 
 #[cfg(test)]
@@ -1070,6 +1174,81 @@ mod tests {
         let opp: Vec<Vec<f32>> = sol.nodes.iter().map(|n| n.strategy.clone()).collect();
         let br = best_response(&s, &sol, 1, &opp).unwrap();
         assert_eq!(br.len(), sol.hands[1].len());
+    }
+
+    #[test]
+    fn best_response_detail_and_profiled_rivers() {
+        use taful_core::profile::Profile;
+        let s = spot(
+            "AsKd7c4h2s",
+            "AA,KK,77,AQ,KQ,QJs,T9s,65s",
+            "AA,KK,AK,AQ,QQ,JJ,65s,T9s,J9s",
+            ("50%, 100%", "3x"),
+        );
+        let sol = DcfrRiverSolver.solve(&s, &SolveOptions::default()).unwrap();
+        let neutral = Profile::from_toml(
+            "id = \"n\"\n[preflop]\nvpip_mult = 1.0\npfr_mult = 1.0\nthreebet_mult = 1.0\n\
+             [postflop]\nfold_to_cbet = 0.0\nfold_to_raise = 0.0\nbluff_value_shift = 0.0\naggression = 0.0\n\
+             [sizing]\nprefer = \"reference\"\n",
+        )
+        .unwrap();
+        // A neutral profile plays the solution.
+        let locked = profile_strategy(&s, &sol, 1, &neutral);
+        for (n, t) in sol.nodes.iter().zip(&locked) {
+            if n.player == 1 {
+                for (a, b) in n.strategy.iter().zip(t) {
+                    assert!((a - b).abs() < 1e-5);
+                }
+            } else {
+                assert!(t.is_empty());
+            }
+        }
+        // A station that folds less and bets less.
+        let mut station = neutral.clone();
+        station.postflop.fold_to_cbet = -0.6;
+        station.postflop.fold_to_raise = -0.6;
+        station.postflop.aggression = -0.5;
+        let locked = profile_strategy(&s, &sol, 1, &station);
+        let root = best_response(&s, &sol, 0, &locked).unwrap();
+        let detail = best_response_detail(&s, &sol, 0, &locked).unwrap();
+        let n0 = &sol.nodes[0];
+        let len = sol.hands[0].len();
+        let at_root = detail[0].as_ref().expect("OOP acts at the root");
+        for (i, (h, v)) in root.iter().enumerate() {
+            // The root value is the best action's value.
+            let best = (0..n0.actions.len())
+                .map(|a| at_root[a * len + i])
+                .fold(f32::MIN, f32::max);
+            assert!((best - v).abs() < 1e-2, "{h}: {best} vs {v}");
+        }
+        assert!(
+            detail
+                .iter()
+                .zip(&sol.nodes)
+                .all(|(d, n)| d.is_none() || n.player == 0)
+        );
+        // Exploiting the station gains over playing the equilibrium.
+        let reference = best_response(
+            &s,
+            &sol,
+            0,
+            &sol.nodes
+                .iter()
+                .map(|n| n.strategy.clone())
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let w = |r: &[(Hand, f32)]| {
+            r.iter()
+                .map(|(h, v)| v * s.ranges[0][h.combo()])
+                .sum::<f32>()
+        };
+        assert!(
+            w(&root) > w(&reference),
+            "{} vs {}",
+            w(&root),
+            w(&reference)
+        );
     }
 
     #[test]

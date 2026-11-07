@@ -53,6 +53,13 @@ pub enum Action {
     AllIn,
 }
 
+impl Action {
+    /// A bet, a raise or an all-in.
+    pub fn is_aggressive(self) -> bool {
+        matches!(self, Action::Bet(_) | Action::Raise(_) | Action::AllIn)
+    }
+}
+
 impl fmt::Display for Action {
     /// Canonical short form: `f`, `x`, `c`, `b<chips>`, `r<to>`, `a`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -21,7 +21,7 @@ use taful_app::layout::{Layout, PanelId, Rect};
 use taful_app::model::{
     DrillSpot, FullHand, HandEnd, LeakBucket, LeftReason, SpotContext, Street, Trainers,
 };
-use taful_app::postflop::PostflopError;
+use taful_app::postflop::{PostflopError, SpotRequest};
 use taful_app::preflop::{Action, GameState, GradedDecision, SpotKind};
 use taful_app::template::{street_id, texture_label_keys};
 
@@ -219,9 +219,15 @@ impl TableScreen {
             Mode::Postflop => {
                 self.question = None;
                 let spot = self.postflop_spot.clone();
+                let opponent = self.opponent.clone();
                 self.run(Busy::Dealing, cx, move || {
                     Done::Question(t.post().and_then(|pf| {
-                        pf.spot(spot.as_deref(), seed)
+                        let req = SpotRequest {
+                            spot: spot.as_deref(),
+                            opponent: opponent.as_deref(),
+                            ..SpotRequest::default()
+                        };
+                        pf.generate(&req, seed)
                             .ok()
                             .map(|s| DrillSpot::Postflop(Box::new(s)))
                     }))
@@ -317,7 +323,10 @@ impl TableScreen {
 
     fn set_opponent(&mut self, opponent: Option<String>, cx: &mut Context<Self>) {
         self.opponent = opponent;
-        self.mode = Mode::Spot;
+        // Preflop and postflop spots both have an opponent (#27).
+        if self.mode != Mode::Postflop {
+            self.mode = Mode::Spot;
+        }
         self.deal(cx);
         cx.notify();
     }
@@ -431,15 +440,21 @@ impl TableScreen {
     /// The prompt before hero answers; against a profile, who the bot is.
     fn prompt(&self, q: &DrillSpot) -> Div {
         let (th, i18n) = (&self.ui.theme, &self.ui.i18n);
-        let opponent = match q {
-            DrillSpot::Preflop(s) => s.opponent.as_deref(),
-            DrillSpot::Postflop(_) => None,
+        let (opponent, fallback) = match q {
+            DrillSpot::Preflop(s) => (s.opponent.as_deref(), None),
+            DrillSpot::Postflop(s) => (s.opponent.as_deref(), s.fallback.as_deref()),
         };
         let mut d = div()
             .flex()
             .flex_col()
             .gap(px(th.spacing.md))
             .child(self.message(i18n.tr("table-spot-prompt")));
+        if let Some(id) = fallback {
+            d = d.child(self.message(i18n.tr_args(
+                "table-profile-fallback",
+                &[("profile", i18n.tr(&format!("bot-profile-{id}")).into())],
+            )));
+        }
         if let Some(id) = opponent {
             d = d.child(self.message(i18n.tr_args(
                 "table-vs-profile-prompt",
@@ -707,7 +722,7 @@ impl TableScreen {
                 this.set_opponent(Some(id.clone()), cx)
             }));
         }
-        if self.mode == Mode::Spot {
+        if matches!(self.mode, Mode::Spot | Mode::Postflop) {
             modes = modes.child(
                 div()
                     .flex()

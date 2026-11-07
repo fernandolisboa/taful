@@ -14,7 +14,7 @@ use taful_core::iso::{Flop, SuitPerm};
 use taful_core::position::Position;
 use taful_core::range::HandClass;
 
-use crate::format::{Branch, Child, Domain, FormatError, LibraryFile, Node};
+use crate::format::{Branch, Child, Domain, FormatError, LibraryFile, Node, ProfileSection};
 use crate::preflop::{Lookup, PreflopChart};
 
 /// Bet sizes of a postflop tree in postflop-solver syntax (`"33%, 75%"`,
@@ -263,6 +263,49 @@ impl PostflopFile {
                 _ => Step::Left,
             },
             Some(Branch::Pruned) | None => Step::Left,
+        }
+    }
+
+    /// Index of the profile section `id` (v3, #27), if the file has one.
+    pub fn profile_index(&self, id: &str) -> Option<usize> {
+        self.file.profiles.iter().position(|p| p.id == id)
+    }
+
+    /// Profile ids with data in this file.
+    pub fn profile_ids(&self) -> impl Iterator<Item = &str> {
+        self.file.profiles.iter().map(|p| p.id.as_str())
+    }
+
+    /// The profile section at `index`.
+    pub fn profile(&self, index: usize) -> &ProfileSection {
+        &self.file.profiles[index]
+    }
+
+    /// The profile's frequencies at `c` for a real hand of the actor (the
+    /// bot), renormalized. `None` if the profile does not play the hand to
+    /// this node.
+    pub fn profile_strategy(&self, c: &Cursor, index: usize, hand: Hand) -> Option<Vec<f32>> {
+        let k = self.node(c).actions.len();
+        self.file.profiles[index].nodes[c.node as usize].strategy(c.perm.hand(hand).combo(), k)
+    }
+
+    /// The actor's best-response EVs against the profile at `c` for a real
+    /// hand, in bb. `None` if the hand is not stored at the node.
+    pub fn profile_ev(&self, c: &Cursor, index: usize, hand: Hand) -> Option<Vec<f32>> {
+        let p = &self.file.profiles[index];
+        p.nodes[c.node as usize].ev(self.node(c), c.perm.hand(hand).combo(), p.ev_scale)
+    }
+
+    /// As [`apply_action_reach`](Self::apply_action_reach), with the
+    /// profile's strategy for the actor.
+    pub fn apply_profile_reach(&self, c: &Cursor, index: usize, a: usize, reach: &mut [f32]) {
+        let k = self.node(c).actions.len();
+        let pn = &self.file.profiles[index].nodes[c.node as usize];
+        let table = c.perm.combo_table();
+        for (h, w) in reach.iter_mut().enumerate() {
+            if *w > 0.0 {
+                *w *= pn.strategy(usize::from(table[h]), k).map_or(0.0, |s| s[a]);
+            }
         }
     }
 

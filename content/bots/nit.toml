@@ -7,12 +7,17 @@ vpip_mult = 0.6
 pfr_mult = 0.7
 threebet_mult = 0.5
 
-# Postflop and sizing come with the postflop profiles (#27).
+# Postflop shifts, each in -1..=1 (0 = reference): fold_to_cbet and
+# fold_to_raise > 0 fold more to a bet / a raise; aggression > 0 bets and
+# raises more; bluff_value_shift > 0 makes bets value-heavier, < 0 bluffier.
+# Calibrated on the first-slice library in #31.
 [postflop]
 fold_to_cbet = 0.25
 fold_to_raise = 0.3
 bluff_value_shift = 0.4
 aggression = -0.2
 
+# Moves half of the other bet sizes to the preferred one (small, large or
+# reference = no preference).
 [sizing]
 prefer = "reference"

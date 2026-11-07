@@ -9,8 +9,7 @@
 //! the build tool and the app compute exactly the same strategy from the same
 //! chart data (the build tool computes best responses against it, D12).
 //!
-//! **Preflop** (the only street the transform covers so far; postflop and
-//! sizing fields are parsed and validated for the postflop work, #27):
+//! **Preflop:**
 //!
 //! 1. *Entering the pot.* The share of the range that does not fold is scaled
 //!    by `pfr_mult` at an unopened node (the tree has no limps, so opening is
@@ -31,10 +30,38 @@
 //! Mass added to a hand's action group follows that hand's reference split
 //! between the group's actions, or goes to the group's best-EV action when
 //! the reference never took it.
+//!
+//! **Postflop** (#27; rows are combos, `weights` the bot's range at the
+//! node, `facing` the bets and raises already made on the street):
+//!
+//! 1. *Folding.* Facing a bet (the first bet of the street, so c-bets,
+//!    donks and probes alike) the fold share `f` of the range moves to
+//!    `f + fold_to_cbet × (1 − f)` when the shift is positive and to
+//!    `f × (1 + fold_to_cbet)` when it is negative; facing a raise
+//!    `fold_to_raise` does the same. Hands move by reference EV of their
+//!    best continuing action over folding, as preflop.
+//! 2. *Aggression.* Among the hands that do not fold, the share that bets
+//!    or raises moves toward all of them (`aggression > 0`) or none (`< 0`)
+//!    the same way, checks and calls ↔ bets and raises, by reference EV of
+//!    the best aggressive action over the best passive one.
+//! 3. *Bluff/value.* The aggressive share stays; each hand's aggressive
+//!    mass moves `|bluff_value_shift|` of the way toward an allocation that
+//!    gives it to the strongest hands first (`> 0`, value-heavy) or the
+//!    weakest first (`< 0`, bluff-heavy). Strength is the hand's reference
+//!    EV at the node.
+//! 4. *Sizing.* With two or more bet or raise sizes (all-in aside), every
+//!    hand moves [`SIZING_SHARE`] of its mass on the other sizes to the
+//!    smallest (`small`) or largest (`large`) one.
+//! 5. Every row is renormalized.
+//!
+//! The build tool runs this at every node the bot acts in a solved tree and
+//! stores the result for the flop and turn (#27); the app runs it on rivers
+//! it solves on demand.
 
 use serde::{Deserialize, Serialize};
 
 use crate::action::Action;
+use crate::config::Chips;
 
 /// Multipliers are clamped to this range by validation.
 pub const MAX_MULT: f64 = 5.0;
@@ -62,8 +89,7 @@ pub struct PreflopDeviation {
     pub threebet_mult: f64,
 }
 
-/// Postflop shifts, each in `-1..=1` (0 = reference). Used by the postflop
-/// transform (#27); validated now so profiles are complete.
+/// Postflop shifts, each in `-1..=1` (0 = reference); see the module docs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PostflopDeviation {
@@ -205,6 +231,197 @@ impl Profile {
         renormalize(&mut s, k);
         s
     }
+
+    /// The profiled strategy at a postflop node (see the module docs).
+    ///
+    /// Same shapes as [`preflop_strategy`](Self::preflop_strategy): rows are
+    /// combos, `weights` is the bot's range at the node (any scale; dead
+    /// combos 0). `facing` is the number of bets and raises already made on
+    /// this street (0 = nobody bet, 1 = facing a bet, 2+ = facing a raise).
+    pub fn postflop_strategy(
+        &self,
+        actions: &[Action],
+        strategy: &[f32],
+        ev: &[f32],
+        weights: &[f32],
+        facing: usize,
+    ) -> Vec<f32> {
+        let k = actions.len();
+        let n = weights.len();
+        assert_eq!(strategy.len(), n * k, "strategy shape");
+        assert_eq!(ev.len(), n * k, "ev shape");
+        let mut s: Vec<f32> = strategy.to_vec();
+        renormalize(&mut s, k);
+        let total: f64 = weights.iter().map(|&w| f64::from(w.max(0.0))).sum();
+        if k < 2 || total <= 0.0 || !total.is_finite() {
+            return s;
+        }
+        // Range shares do not depend on the weights' scale.
+        let weights: Vec<f32> = weights
+            .iter()
+            .map(|&w| (f64::from(w.max(0.0)) / total) as f32)
+            .collect();
+        let reference = s.clone();
+        let q = &self.postflop;
+        let fold = actions.iter().position(|a| *a == Action::Fold);
+        let aggressive: Vec<usize> = (0..k).filter(|&a| actions[a].is_aggressive()).collect();
+        let passive: Vec<usize> = (0..k)
+            .filter(|&a| matches!(actions[a], Action::Check | Action::Call))
+            .collect();
+        let non_fold: Vec<usize> = (0..k).filter(|&a| Some(a) != fold).collect();
+
+        // 1. Folding to a bet or a raise.
+        if let Some(fold) = fold
+            && facing > 0
+        {
+            let adj = if facing == 1 {
+                q.fold_to_cbet
+            } else {
+                q.fold_to_raise
+            };
+            let g = Groups {
+                from: &[fold],
+                to: &non_fold,
+                base: None,
+            };
+            let (have, cap) = masses(&s, k, &weights, &g);
+            // Folding more means continuing less, and the other way round.
+            let target = toward(have, -adj, cap);
+            move_mass(&mut s, k, ev, &weights, &g, have, cap, target);
+        }
+        if aggressive.is_empty() || passive.is_empty() {
+            renormalize(&mut s, k);
+            return s;
+        }
+        // 2. Aggression: bets and raises against checks and calls, within
+        // the hands that do not fold.
+        let g = Groups {
+            from: &passive,
+            to: &aggressive,
+            base: Some(&non_fold),
+        };
+        let (have, cap) = masses(&s, k, &weights, &g);
+        let target = toward(have, q.aggression, cap);
+        move_mass(&mut s, k, ev, &weights, &g, have, cap, target);
+        // 3. Bluff/value: same aggressive share, carried by stronger hands
+        // (shift > 0) or weaker ones (shift < 0).
+        if q.bluff_value_shift != 0.0 {
+            rebalance_aggression(
+                &mut s,
+                k,
+                ev,
+                &weights,
+                &reference,
+                [&passive, &aggressive, &non_fold],
+                q.bluff_value_shift,
+            );
+        }
+        // 4. Sizing: part of every row's other bet sizes moves to the
+        // preferred one.
+        let mut sized: Vec<(Chips, usize)> = aggressive
+            .iter()
+            .filter_map(|&a| match actions[a] {
+                Action::Bet(x) | Action::Raise(x) => Some((x, a)),
+                _ => None,
+            })
+            .collect();
+        sized.sort_unstable();
+        let preferred = match self.sizing.prefer {
+            Sizing::Reference => None,
+            Sizing::Small => sized.first().map(|x| x.1),
+            Sizing::Large => sized.last().map(|x| x.1),
+        };
+        if let Some(to) = preferred
+            && sized.len() >= 2
+        {
+            for row in s.chunks_mut(k) {
+                let mut moved = 0.0;
+                for &(_, a) in &sized {
+                    if a != to {
+                        moved += row[a] * SIZING_SHARE;
+                        row[a] *= 1.0 - SIZING_SHARE;
+                    }
+                }
+                row[to] += moved;
+            }
+        }
+        renormalize(&mut s, k);
+        s
+    }
+}
+
+/// Share of a row's mass on other bet sizes that moves to the preferred size
+/// (`sizing.prefer`).
+pub const SIZING_SHARE: f32 = 0.5;
+
+/// Moves a share `x` (of `0..=max`) by `t` in `-1..=1`: toward `max` when
+/// `t > 0`, toward 0 when `t < 0`.
+fn toward(x: f64, t: f64, max: f64) -> f64 {
+    if t >= 0.0 {
+        x + t * (max - x)
+    } else {
+        x + t * x
+    }
+}
+
+/// Step 3 of the postflop transform: each row's aggressive mass moves
+/// `|shift|` of the way toward an allocation of the same range share that
+/// fills rows strongest first (`shift > 0`) or weakest first (`shift < 0`),
+/// each row up to its non-fold mass. Strength is the hand's reference EV at
+/// the node.
+fn rebalance_aggression(
+    s: &mut [f32],
+    k: usize,
+    ev: &[f32],
+    weights: &[f32],
+    reference: &[f32],
+    [passive, aggressive, non_fold]: [&[usize]; 3],
+    shift: f64,
+) {
+    let n = weights.len();
+    let strength = |h: usize| -> f32 {
+        (0..k)
+            .map(|a| reference[h * k + a] * ev[h * k + a])
+            .sum::<f32>()
+    };
+    let rows: Vec<usize> = (0..n).filter(|&h| weights[h] > 0.0).collect();
+    let mass = |s: &[f32], h: usize, g: &[usize]| f64::from(group_mass(&s[h * k..(h + 1) * k], g));
+    let total: f64 = rows
+        .iter()
+        .map(|&h| f64::from(weights[h]) * mass(s, h, aggressive))
+        .sum();
+    let mut order = rows.clone();
+    order.sort_by(|&a, &b| strength(b).total_cmp(&strength(a)).then(a.cmp(&b)));
+    if shift < 0.0 {
+        order.reverse();
+    }
+    let mut extreme = vec![0.0f64; n];
+    let mut left = total;
+    for &h in &order {
+        if left <= 0.0 {
+            break;
+        }
+        let w = f64::from(weights[h]);
+        let take = mass(s, h, non_fold).min(left / w);
+        extreme[h] = take;
+        left -= take * w;
+    }
+    let t = shift.abs().min(1.0);
+    for &h in &rows {
+        let m = mass(s, h, aggressive);
+        let d = (t * (extreme[h] - m)) as f32;
+        let e = &ev[h * k..(h + 1) * k];
+        let row = &mut s[h * k..(h + 1) * k];
+        if d > 0.0 {
+            let d = d.min(group_mass(row, passive));
+            take_from(row, passive, d);
+            add_to(row, e, aggressive, d);
+        } else if d < 0.0 {
+            let d = (-d).min(group_mass(row, aggressive));
+            take_from(row, aggressive, d);
+            add_to(row, e, passive, d);
+        }
+    }
 }
 
 /// The id that stands for the reference (GTO) bot; no profile may use it.
@@ -262,21 +479,44 @@ fn take_from(row: &mut [f32], g: &[usize], amount: f32) {
 /// EV advantage of `to` over `from`: best rows gain first, worst rows lose
 /// first.
 fn shift(s: &mut [f32], k: usize, ev: &[f32], weights: &[f32], g: &Groups<'_>, mult: f64) {
+    let (have, cap) = masses(s, k, weights, g);
+    let target = (have * mult).min(cap);
+    move_mass(s, k, ev, weights, g, have, cap, target);
+}
+
+/// Weighted mass of `g.to` over the range, and its cap (the mass of
+/// `g.base`, or the whole range).
+fn masses(s: &[f32], k: usize, weights: &[f32], g: &Groups<'_>) -> (f64, f64) {
+    let mut have = 0.0f64;
+    let mut cap = 0.0f64;
+    for (h, &wh) in weights.iter().enumerate() {
+        let w = f64::from(wh.max(0.0));
+        let r = &s[h * k..(h + 1) * k];
+        have += w * f64::from(group_mass(r, g.to));
+        cap += w * f64::from(match g.base {
+            Some(b) => group_mass(r, b),
+            None => 1.0,
+        });
+    }
+    (have, cap)
+}
+
+/// Moves mass between `g.from` and `g.to` until `g.to` holds `target`
+/// (weighted), best rows by EV advantage gaining first, worst losing first.
+#[allow(clippy::too_many_arguments)]
+fn move_mass(
+    s: &mut [f32],
+    k: usize,
+    ev: &[f32],
+    weights: &[f32],
+    g: &Groups<'_>,
+    have: f64,
+    cap: f64,
+    target: f64,
+) {
     let n = weights.len();
     let w = |h: usize| f64::from(weights[h].max(0.0));
     let row = |s: &[f32], h: usize| s[h * k..(h + 1) * k].to_vec();
-    let mut have = 0.0f64;
-    let mut cap = 0.0f64;
-    for h in 0..n {
-        let r = &s[h * k..(h + 1) * k];
-        have += w(h) * f64::from(group_mass(r, g.to));
-        cap += w(h)
-            * f64::from(match g.base {
-                Some(b) => group_mass(r, b),
-                None => 1.0,
-            });
-    }
-    let target = (have * mult).min(cap);
     let mut delta = target - have;
     if delta.abs() <= 1e-9 * cap.max(1.0) {
         return;
@@ -470,6 +710,167 @@ mod tests {
         assert!((out[1] - 0.75).abs() < 1e-6, "{out:?}");
     }
 
+    fn postflop(
+        fold_to_cbet: f64,
+        fold_to_raise: f64,
+        bvs: f64,
+        aggression: f64,
+        prefer: Sizing,
+    ) -> Profile {
+        let mut p = profile(1.0, 1.0, 1.0);
+        p.postflop = PostflopDeviation {
+            fold_to_cbet,
+            fold_to_raise,
+            bluff_value_shift: bvs,
+            aggression,
+        };
+        p.sizing.prefer = prefer;
+        p
+    }
+
+    const FACING_BET: [Action; 3] = [Action::Fold, Action::Call, Action::Raise(900)];
+    const OPEN: [Action; 3] = [Action::Check, Action::Bet(150), Action::Bet(450)];
+
+    /// Four combos, strong to weak, facing a bet: a raise, a call, a mixed
+    /// call/fold and a fold.
+    fn facing_bet() -> (Vec<f32>, Vec<f32>, Vec<f32>) {
+        let s = vec![
+            0.0, 0.2, 0.8, //
+            0.0, 1.0, 0.0, //
+            0.5, 0.5, 0.0, //
+            1.0, 0.0, 0.0,
+        ];
+        let ev = vec![
+            0.0, 6.0, 7.0, //
+            0.0, 2.0, 1.0, //
+            0.0, 0.0, -2.0, //
+            0.0, -3.0, -6.0,
+        ];
+        (s, ev, vec![1.0; 4])
+    }
+
+    #[test]
+    fn neutral_postflop_profile_keeps_the_reference() {
+        let (s, ev, w) = facing_bet();
+        let p = postflop(0.0, 0.0, 0.0, 0.0, Sizing::Reference);
+        for facing in 0..3 {
+            let out = p.postflop_strategy(&FACING_BET, &s, &ev, &w, facing);
+            for (a, b) in out.iter().zip(&s) {
+                assert!((a - b).abs() < 1e-6, "{out:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn fold_to_cbet_and_fold_to_raise_move_the_fold_share() {
+        let (s, ev, w) = facing_bet();
+        let before = share(&s, 3, &w, &[0]);
+        // Facing a bet: fold share f → f + 0.5 (1 − f); the raise share
+        // follows the continuing range (aggression 0).
+        let nit = postflop(0.5, 0.0, 0.0, 0.0, Sizing::Reference);
+        let out = nit.postflop_strategy(&FACING_BET, &s, &ev, &w, 1);
+        let want = before + 0.5 * (1.0 - before);
+        assert!((share(&out, 3, &w, &[0]) - want).abs() < 1e-5, "{out:?}");
+        // The worst continuing hand folds first: the mixed one.
+        assert!(out[6] > 0.99, "{out:?}");
+        // Facing a raise the other parameter applies.
+        let out = nit.postflop_strategy(&FACING_BET, &s, &ev, &w, 2);
+        assert!((share(&out, 3, &w, &[0]) - before).abs() < 1e-5);
+        // A station folds less: f → f × (1 − 0.5).
+        let station = postflop(-0.5, -0.5, 0.0, 0.0, Sizing::Reference);
+        let out = station.postflop_strategy(&FACING_BET, &s, &ev, &w, 2);
+        assert!((share(&out, 3, &w, &[0]) - before * 0.5).abs() < 1e-5);
+        // Nothing to fold to at an unopened node.
+        let out = nit.postflop_strategy(&FACING_BET, &s, &ev, &w, 0);
+        assert!((share(&out, 3, &w, &[0]) - before).abs() < 1e-6);
+    }
+
+    #[test]
+    fn aggression_moves_checks_to_bets() {
+        let s = vec![0.2, 0.0, 0.8, 1.0, 0.0, 0.0, 0.5, 0.5, 0.0, 1.0, 0.0, 0.0];
+        let ev = vec![
+            3.0, 3.5, 4.0, 1.0, 0.8, 0.5, 0.0, 0.0, -0.1, -1.0, -1.5, -2.0,
+        ];
+        let w = vec![1.0, 2.0, 1.0, 3.0];
+        let before = share(&s, 3, &w, &[1, 2]);
+        let out = postflop(0.0, 0.0, 0.0, 0.5, Sizing::Reference)
+            .postflop_strategy(&OPEN, &s, &ev, &w, 0);
+        let after = share(&out, 3, &w, &[1, 2]);
+        assert!(
+            (after - (before + 0.5 * (1.0 - before))).abs() < 1e-5,
+            "{before} → {after}"
+        );
+        let out = postflop(0.0, 0.0, 0.0, -0.5, Sizing::Reference)
+            .postflop_strategy(&OPEN, &s, &ev, &w, 0);
+        assert!((share(&out, 3, &w, &[1, 2]) - before * 0.5).abs() < 1e-5);
+    }
+
+    /// Strength-weighted mean of the aggressive mass.
+    fn aggressive_strength(
+        s: &[f32],
+        k: usize,
+        ev: &[f32],
+        reference: &[f32],
+        w: &[f32],
+        g: &[usize],
+    ) -> f64 {
+        let mut num = 0.0;
+        let mut den = 0.0;
+        for h in 0..w.len() {
+            let st: f32 = (0..k).map(|a| reference[h * k + a] * ev[h * k + a]).sum();
+            let m: f32 = g.iter().map(|&a| s[h * k + a]).sum();
+            num += f64::from(w[h] * m * st);
+            den += f64::from(w[h] * m);
+        }
+        num / den
+    }
+
+    #[test]
+    fn bluff_value_shift_keeps_the_bet_share_and_moves_its_strength() {
+        // The strong hand checks some, the weak one bluffs some.
+        let s = vec![0.5, 0.5, 0.0, 1.0, 0.0, 0.0, 0.6, 0.4, 0.0];
+        let ev = vec![5.0, 5.0, 4.0, 1.0, 0.5, 0.2, -1.0, -1.0, -2.0];
+        let w = vec![1.0, 1.0, 1.0];
+        let before = share(&s, 3, &w, &[1, 2]);
+        let base = aggressive_strength(&s, 3, &ev, &s, &w, &[1, 2]);
+        let value = postflop(0.0, 0.0, 0.5, 0.0, Sizing::Reference)
+            .postflop_strategy(&OPEN, &s, &ev, &w, 0);
+        assert!((share(&value, 3, &w, &[1, 2]) - before).abs() < 1e-5);
+        assert!(aggressive_strength(&value, 3, &ev, &s, &w, &[1, 2]) > base + 0.5);
+        // Fully value-heavy: the strong hand bets everything it can.
+        let full = postflop(0.0, 0.0, 1.0, 0.0, Sizing::Reference)
+            .postflop_strategy(&OPEN, &s, &ev, &w, 0);
+        assert!((full[1] + full[2] - 0.9).abs() < 1e-5, "{full:?}");
+        let bluffy = postflop(0.0, 0.0, -0.5, 0.0, Sizing::Reference)
+            .postflop_strategy(&OPEN, &s, &ev, &w, 0);
+        assert!((share(&bluffy, 3, &w, &[1, 2]) - before).abs() < 1e-5);
+        assert!(aggressive_strength(&bluffy, 3, &ev, &s, &w, &[1, 2]) < base - 0.5);
+    }
+
+    #[test]
+    fn sizing_preference_moves_half_to_the_preferred_size() {
+        let s = vec![0.0, 0.4, 0.6, 1.0, 0.0, 0.0];
+        let ev = vec![0.0; 6];
+        let w = vec![1.0, 1.0];
+        let small =
+            postflop(0.0, 0.0, 0.0, 0.0, Sizing::Small).postflop_strategy(&OPEN, &s, &ev, &w, 0);
+        assert!(
+            (small[1] - 0.7).abs() < 1e-6 && (small[2] - 0.3).abs() < 1e-6,
+            "{small:?}"
+        );
+        let large =
+            postflop(0.0, 0.0, 0.0, 0.0, Sizing::Large).postflop_strategy(&OPEN, &s, &ev, &w, 0);
+        assert!(
+            (large[1] - 0.2).abs() < 1e-6 && (large[2] - 0.8).abs() < 1e-6,
+            "{large:?}"
+        );
+        // One size (plus all-in): nothing to prefer.
+        let one = [Action::Check, Action::Bet(150), Action::AllIn];
+        let out =
+            postflop(0.0, 0.0, 0.0, 0.0, Sizing::Large).postflop_strategy(&one, &s, &ev, &w, 0);
+        assert!((out[1] - 0.4).abs() < 1e-6);
+    }
+
     fn node() -> impl Strategy<Value = (Vec<Action>, Vec<f32>, Vec<f32>, Vec<f32>)> {
         (2usize..=4, 1usize..=12).prop_flat_map(|(k, n)| {
             let actions: Vec<Action> = match k {
@@ -508,6 +909,34 @@ mod tests {
                 prop_assert!(row.iter().all(|x| x.is_finite() && *x >= 0.0), "{:?}", row);
                 let t: f32 = row.iter().sum();
                 prop_assert!((t - 1.0).abs() < 1e-4, "{:?}", row);
+            }
+        }
+
+        #[test]
+        fn postflop_transform_is_deterministic_and_valid(
+            (s, ev, w) in (1usize..=12).prop_flat_map(|n| (
+                prop::collection::vec(0.0f32..1.0, n * 3),
+                prop::collection::vec(-5.0f32..5.0, n * 3),
+                prop::collection::vec(0.0f32..12.0, n),
+            )),
+            q in prop::collection::vec(-1.0f64..=1.0, 4),
+            facing in 0usize..3,
+            prefer in 0u8..3,
+        ) {
+            let prefer = [Sizing::Reference, Sizing::Small, Sizing::Large][usize::from(prefer)];
+            let p = postflop(q[0], q[1], q[2], q[3], prefer);
+            let actions: &[Action] = if facing == 0 { &OPEN } else { &FACING_BET };
+            let a = p.postflop_strategy(actions, &s, &ev, &w, facing);
+            prop_assert_eq!(&a, &p.postflop_strategy(actions, &s, &ev, &w, facing));
+            for row in a.chunks(3) {
+                prop_assert!(row.iter().all(|x| x.is_finite() && *x >= 0.0), "{:?}", row);
+                prop_assert!((row.iter().sum::<f32>() - 1.0).abs() < 1e-4, "{:?}", row);
+            }
+            // Scale-free in the weights.
+            let w10: Vec<f32> = w.iter().map(|x| x * 10.0).collect();
+            let b = p.postflop_strategy(actions, &s, &ev, &w10, facing);
+            for (x, y) in a.iter().zip(&b) {
+                prop_assert!((x - y).abs() < 1e-3);
             }
         }
 

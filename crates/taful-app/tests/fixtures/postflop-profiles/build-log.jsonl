@@ -1,0 +1,2 @@
+{"chance_nodes":3,"est_mem_bytes":113736208,"exploitability_pct":2.009000062942505,"export_secs":2.246686364,"file_bytes":1654391,"flop":"Tc9c6d","iterations":30,"nodes":401,"solve_secs":2.888837257,"spot":"btn-sb-3bp","threads":4,"unix_time":1794010018}
+{"chance_nodes":3,"est_mem_bytes":55960404,"exploitability_pct":1.7565867900848389,"export_secs":0.991067369,"file_bytes":1091930,"flop":"Kc7c2c","iterations":30,"nodes":269,"solve_secs":1.444062495,"spot":"btn-sb-3bp","threads":4,"unix_time":1794010021}

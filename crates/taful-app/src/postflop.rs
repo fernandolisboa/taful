@@ -23,7 +23,7 @@ use taful_core::iso::{Flop, SuitPerm, deal_weights};
 use taful_solver::format::FormatError;
 use taful_solver::postflop::{PostflopFile, SpotGeometry, geometry};
 
-pub use crate::preflop::GradedDecision;
+pub use crate::preflop::{GradedDecision, VsProfile};
 use crate::preflop::{Action, BB_CHIPS, Card, GameState, Hand, Position, Seat};
 pub use crate::template::NodeType;
 use crate::walk::{Progress, Walk};
@@ -343,6 +343,22 @@ impl PostflopTrainer {
             return Ok(None);
         };
         let mut walk = self.walk(cfg, file, real)?;
+        // Against a profile hero's side is fixed up front, so the villain
+        // plays the profile on the way to hero's decision.
+        let mut fallback = None;
+        let mut hero_side = req
+            .hero
+            .and_then(|h| walk.positions().iter().position(|&p| p == h));
+        if let Some(id) = req.opponent {
+            let side = hero_side.unwrap_or_else(|| usize::from(rng.random::<bool>()));
+            match walk.clone().against(id, side ^ 1)? {
+                Some(w) => {
+                    walk = w;
+                    hero_side = Some(side);
+                }
+                None => fallback = Some(id.to_string()),
+            }
+        }
         let script: Vec<(Position, Action)> = req
             .script
             .iter()
@@ -356,6 +372,7 @@ impl PostflopTrainer {
         loop {
             let node = walk.node().expect("at a decision");
             let acceptable = req.hero.is_none_or(|h| h == node.position)
+                && hero_side.is_none_or(|h| h == node.side)
                 && req.street.is_none_or(|s| s == node.street)
                 && req
                     .node_type
@@ -479,6 +496,8 @@ impl PostflopTrainer {
             state,
             postflop_line: Line(walk.actions().collect()),
             board: walk.board().to_vec(),
+            opponent: walk.vs_profile().map(str::to_owned),
+            fallback,
             walk,
         }))
     }
@@ -565,9 +584,15 @@ pub struct SpotRequest<'a> {
     pub street: Option<Street>,
     pub node_type: Option<NodeType>,
     pub hero: Option<Position>,
+    /// Bot profile id the villain plays (`None` = the reference). A file
+    /// without that profile's data deals a reference spot instead and says
+    /// so in [`PostflopSpot::fallback`] (#27).
+    pub opponent: Option<&'a str>,
 }
 
 /// Grade `hand` taking action `chosen` at the walk's node (spec §8).
+/// Against a bot profile (the walk's) the EV loss is measured on hero's
+/// best-response EVs against it and only EV counts, as preflop (D8).
 pub(crate) fn grade_walk(
     walk: &Walk,
     hand: Hand,
@@ -576,13 +601,40 @@ pub(crate) fn grade_walk(
 ) -> Result<GradedDecision, PostflopError> {
     let node = walk.node().ok_or(PostflopError::NoData)?;
     let freqs = walk.strategy(hand).ok_or(PostflopError::NoData)?;
-    let evs = walk.ev_bb(hand).ok_or(PostflopError::NoData)?;
+    let reference_evs = walk.ev_bb(hand).ok_or(PostflopError::NoData)?;
     if chosen >= node.actions.len() {
         return Err(PostflopError::NoData);
     }
+    let (evs, vs_profile) = match walk.vs_profile() {
+        None => (reference_evs, None),
+        Some(id) => {
+            let evs = walk.profile_ev_bb(hand).ok_or(PostflopError::NoData)?;
+            let gto = (0..freqs.len())
+                .max_by(|&a, &b| {
+                    freqs[a]
+                        .total_cmp(&freqs[b])
+                        .then(reference_evs[a].total_cmp(&reference_evs[b]))
+                })
+                .unwrap_or(0);
+            let exploit = crate::preflop::argmax(&evs);
+            let vs = VsProfile {
+                profile: id.into(),
+                gto,
+                exploit,
+                ev_gap_bb: f64::from(evs[exploit] - evs[gto]).max(0.0),
+                reference_evs,
+            };
+            (evs, Some(vs))
+        }
+    };
     let best_ev = evs.iter().copied().fold(f32::NEG_INFINITY, f32::max);
     let ev_loss = f64::from(best_ev - evs[chosen]).max(0.0);
     let pot_bb = node.pot as f64 / BB_CHIPS as f64;
+    let graded_freq = if vs_profile.is_some() {
+        0.0
+    } else {
+        freqs[chosen]
+    };
     Ok(GradedDecision {
         node: walk.history().iter().map(Vec::len).sum(),
         line: Line(walk.actions().collect()),
@@ -593,7 +645,7 @@ pub(crate) fn grade_walk(
         grade: grade(
             ev_loss,
             pot_bb,
-            freqs[chosen],
+            graded_freq,
             node.tolerance_bb,
             thresholds,
         ),
@@ -604,7 +656,7 @@ pub(crate) fn grade_walk(
         ev_loss_bb: ev_loss,
         tolerance_bb: node.tolerance_bb,
         thresholds_version: thresholds.version,
-        vs_profile: None,
+        vs_profile,
     })
 }
 
@@ -621,6 +673,12 @@ pub struct PostflopSpot {
     pub postflop_line: Line,
     /// Real board (3 to 5 cards).
     pub board: Vec<Card>,
+    /// The bot profile the villain plays and hero is graded against
+    /// (`None` = the reference).
+    pub opponent: Option<String>,
+    /// A profile was asked for but this spot's library file has no data for
+    /// it (a reference-only library): the spot is against the reference.
+    pub fallback: Option<String>,
 }
 
 impl PostflopSpot {

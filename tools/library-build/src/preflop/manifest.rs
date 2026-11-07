@@ -22,13 +22,34 @@ pub struct Manifest {
     pub profiles: Option<Profiles>,
 }
 
-/// Where the profiles live and which to build.
+/// Where the profiles live and which to build (preflop and postflop
+/// manifests).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Profiles {
     /// Folder of `<id>.toml` profiles, relative to the manifest file.
     pub dir: String,
     pub ids: Vec<String>,
+}
+
+impl Profiles {
+    /// Loads `<manifest dir>/<dir>/<id>.toml` for every listed id.
+    pub fn load(&self, manifest_dir: &Path) -> Result<Vec<Profile>, String> {
+        self.ids
+            .iter()
+            .map(|id| {
+                let path = manifest_dir.join(&self.dir).join(format!("{id}.toml"));
+                let text = std::fs::read_to_string(&path)
+                    .map_err(|e| format!("{}: {e}", path.display()))?;
+                let p =
+                    Profile::from_toml(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+                if &p.id != id {
+                    return Err(format!("{}: id `{}` is not `{id}`", path.display(), p.id));
+                }
+                Ok(p)
+            })
+            .collect()
+    }
 }
 
 /// The game: a uniform-stack cash table (other formats come with their own
@@ -195,23 +216,9 @@ impl Manifest {
 
     /// Loads the listed profiles from `<manifest dir>/<profiles.dir>/<id>.toml`.
     pub fn load_profiles(&self, manifest_dir: &Path) -> Result<Vec<Profile>, String> {
-        let Some(set) = &self.profiles else {
-            return Ok(Vec::new());
-        };
-        set.ids
-            .iter()
-            .map(|id| {
-                let path = manifest_dir.join(&set.dir).join(format!("{id}.toml"));
-                let text = std::fs::read_to_string(&path)
-                    .map_err(|e| format!("{}: {e}", path.display()))?;
-                let p =
-                    Profile::from_toml(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-                if &p.id != id {
-                    return Err(format!("{}: id `{}` is not `{id}`", path.display(), p.id));
-                }
-                Ok(p)
-            })
-            .collect()
+        self.profiles
+            .as_ref()
+            .map_or(Ok(Vec::new()), |set| set.load(manifest_dir))
     }
 
     /// One-line description of the sizing tree for the file header.

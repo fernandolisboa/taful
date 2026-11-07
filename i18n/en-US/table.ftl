@@ -103,3 +103,4 @@ table-exploit-line = Exploitative line: { $action }
 table-gto-line = GTO line: { $action }
 table-ev-gap = EV gap: { $amount } bb
 table-vs-profile-prompt = Opponent: { $profile }. { $about } Graded by EV against this bot.
+table-profile-fallback = This library has no { $profile } data yet, so this spot is against the reference opponent. Rebuild the library with profiles to play postflop against { $profile }.
