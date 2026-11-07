@@ -176,8 +176,17 @@ impl Walk {
         };
         let profile = Profile::from_toml(&self.file.profile(index).profile)
             .map_err(|e| PostflopError::Library(format!("profile `{id}` in the file: {e}")))?;
-        // The bot's range at the root is its reference range; from here on
-        // it follows the profile.
+        // The bot starts from the profile's own preflop range along the line
+        // (#48; the reference range in a file without one), and follows the
+        // profile from here on.
+        let Tree::Library(cursor) = &self.tree else {
+            return Err(PostflopError::NoData);
+        };
+        let pos = [self.geometry.oop, self.geometry.ip][bot];
+        self.reach[bot] = self
+            .file
+            .profile_root_range(index, pos, &cursor.perm)
+            .ok_or(PostflopError::NoData)?;
         self.vs = Some(Vs {
             index,
             profile: Arc::new(profile),

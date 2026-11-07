@@ -51,8 +51,9 @@ pub enum LeftReason {
     /// strategy earlier).
     NotInRange,
     /// A profiled bot holds a hand the library has no data for: the profile
-    /// played it preflop, but the postflop solve starts from the reference
-    /// range along the line (spec §9 simplifications).
+    /// played it preflop, but the file has no row for it (a file built
+    /// before #48, whose solve starts from the reference range only, or a
+    /// combo the profile plays too rarely to store).
     BotOffRange,
 }
 
@@ -1173,18 +1174,21 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_loose_bot_off_the_library_range_ends_the_hand_with_its_own_reason() {
+    fn a_loose_bot_plays_its_own_range_in_the_library() {
+        // #48: the build seeds the solve with the profile's preflop range,
+        // so a calling station never holds a hand the library lacks (#28
+        // measured 19 of 60 flops before).
         let (pre, post) = (pre(), post_profiles());
-        let mut off = 0;
+        let (mut flops, mut off) = (0, 0);
         for mut h in library_hands_vs(&pre, &post, Some("calling-station"), 30) {
             play_best(&mut h, &pre, Some(&post));
+            flops += usize::from(h.state.board().len() >= 3);
             if let Some(HandEnd::LeftLibrary { reason, .. }) = &h.end {
-                // Hero follows the reference, so only the bot can be off
-                // the library's range.
                 assert_ne!(*reason, LeftReason::NotInRange, "seed {}", h.seed);
                 off += usize::from(*reason == LeftReason::BotOffRange);
             }
         }
-        assert!(off > 0, "the station never left the library's range");
+        assert!(flops > 10, "{flops} hands reached the flop");
+        assert_eq!(off, 0, "{off} of {flops} hands left the library's range");
     }
 }

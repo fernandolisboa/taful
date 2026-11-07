@@ -173,6 +173,9 @@ pub struct Pass<'a> {
     /// Interpreter histories (actions and card indices) to record; `None`
     /// records every decision node (tests on small trees).
     pub keep: Option<&'a HashSet<Vec<usize>>>,
+    /// The bot's reach at the root per solver hand: the profile's own
+    /// preflop range (#48). `None` = the solve's own root weights.
+    pub bot_root: Option<&'a [f32]>,
 }
 
 struct Ctx<'a> {
@@ -600,7 +603,13 @@ impl Pass<'_> {
             facing: 0,
             scale: 1.0,
         };
-        let v = ctx.visit(&g.root(), &at, w[self.bot], w[hero]);
+        let bot_root = self.bot_root.unwrap_or(w[self.bot]);
+        assert_eq!(
+            bot_root.len(),
+            w[self.bot].len(),
+            "bot root per solver hand"
+        );
+        let v = ctx.visit(&g.root(), &at, bot_root, w[hero]);
         (ctx, v)
     }
 }
@@ -616,6 +625,24 @@ pub struct Kept {
     pub actions: usize,
 }
 
+/// Where one profile's best responses start (#48).
+pub struct ProfileRoot {
+    /// Per player, the root weight per solver hand the profile's rows are
+    /// measured against: the profile's own range, or the reference's.
+    pub weights: [Vec<f32>; 2],
+    /// Whether `weights` are the profile's own (then the passes start the
+    /// bot from them); otherwise the solve's root weights.
+    pub own: bool,
+    /// The section's root ranges (v4); empty without own ranges.
+    pub quantized: Vec<(taful_core::position::Position, Vec<u8>)>,
+}
+
+impl ProfileRoot {
+    fn bot_root(&self, bot: usize) -> Option<&[f32]> {
+        self.own.then(|| self.weights[bot].as_slice())
+    }
+}
+
 /// The v3 profile sections for the kept nodes of a finalized game: two
 /// passes per profile.
 pub fn sections(
@@ -623,13 +650,14 @@ pub fn sections(
     shape: &Shape,
     kept: &[Kept],
     combos: &[Vec<u16>; 2],
-    root_weights: &[Vec<f32>; 2],
+    roots: &[ProfileRoot],
     min_combo_reach: f32,
     profiles: &[Profile],
 ) -> Result<Vec<ProfileSection>, String> {
     let keep: HashSet<Vec<usize>> = kept.iter().map(|k| k.history.clone()).collect();
     let mut out = Vec::with_capacity(profiles.len());
-    for profile in profiles {
+    for (profile, root) in profiles.iter().zip(roots) {
+        let root_weights = &root.weights;
         let t0 = std::time::Instant::now();
         let passes: Vec<HashMap<Vec<usize>, Recorded>> = (0..2)
             .map(|bot| {
@@ -640,6 +668,7 @@ pub fn sections(
                     bot,
                     responder: Responder::Best,
                     keep: Some(&keep),
+                    bot_root: root.bot_root(bot),
                 }
                 .run()
                 .0
@@ -704,6 +733,7 @@ pub fn sections(
             id: profile.id.clone(),
             profile: profile.to_toml(),
             ev_scale,
+            root_ranges: root.quantized.clone(),
             nodes,
         });
     }
@@ -885,6 +915,7 @@ mod tests {
                 bot,
                 responder: Responder::Reference,
                 keep: Some(&keep),
+                bot_root: None,
             }
             .run();
             for h in &hist {
@@ -950,6 +981,7 @@ mod tests {
                 bot,
                 responder: Responder::Best,
                 keep: None,
+                bot_root: None,
             }
             .reach();
             assert_eq!(mass.len(), hist.len(), "flop and turn decisions only");
@@ -988,6 +1020,7 @@ mod tests {
             bot: 1,
             responder: Responder::Best,
             keep: None,
+            bot_root: None,
         }
         .run();
 

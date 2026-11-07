@@ -17,6 +17,7 @@ check_every = 10
 compression = true
 prune_reach_pct = 1.0
 min_combo_reach = 0.01
+profile_seed = 0.0001
 
 [trees.small]
 flop = ["50%", ""]

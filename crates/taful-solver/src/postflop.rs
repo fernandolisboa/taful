@@ -12,6 +12,7 @@ use taful_core::config::{Chips, GameConfig};
 use taful_core::engine::{GameState, Phase};
 use taful_core::iso::{Flop, SuitPerm};
 use taful_core::position::Position;
+use taful_core::profile::Profile;
 use taful_core::range::HandClass;
 
 use crate::format::{Branch, Child, Domain, FormatError, LibraryFile, Node, ProfileSection};
@@ -106,6 +107,18 @@ pub fn geometry(config: &GameConfig, line: &Line) -> Result<SpotGeometry, String
 /// Combo weights (0..=1) of `pos` after playing its part of `line` in the
 /// chart: the product of its frequencies along the line.
 pub fn line_range(chart: &PreflopChart, line: &Line, pos: Position) -> Result<Vec<f32>, String> {
+    profile_line_range(chart, line, pos, None)
+}
+
+/// [`line_range`] when `pos` plays bot profile `profile` preflop (`None` =
+/// the reference): the product of the profile's frequencies along the line
+/// (#48).
+pub fn profile_line_range(
+    chart: &PreflopChart,
+    line: &Line,
+    pos: Position,
+    profile: Option<&Profile>,
+) -> Result<Vec<f32>, String> {
     let mut reach = [1.0f32; HandClass::COUNT];
     let mut at = Lookup::Node(chart.root());
     for (i, &(p, action)) in line.0.iter().enumerate() {
@@ -123,8 +136,22 @@ pub fn line_range(chart: &PreflopChart, line: &Line, pos: Position) -> Result<Ve
             .action_index(action)
             .ok_or_else(|| format!("{p} {action} is not in the chart"))?;
         if p == pos {
-            for (c, w) in reach.iter_mut().enumerate() {
-                *w *= node.strategy(c).map_or(0.0, |s| s[a]);
+            match profile {
+                None => {
+                    for (c, w) in reach.iter_mut().enumerate() {
+                        *w *= node.strategy(c).map_or(0.0, |s| s[a]);
+                    }
+                }
+                Some(prof) => {
+                    let k = node.actions.len();
+                    let s = chart.profile_strategy(id, prof);
+                    // A class the chart has no data for stays out, as
+                    // for the reference (the profile would play it
+                    // uniformly).
+                    for (c, w) in reach.iter_mut().enumerate() {
+                        *w *= node.strategy(c).map_or(0.0, |_| s[c * k + a]);
+                    }
+                }
             }
         }
         at = chart.step(id, action);
@@ -325,6 +352,27 @@ impl PostflopFile {
         )
     }
 
+    /// Root range of `pos` in real-card space when bot profile `index`
+    /// plays it (#48): the profile's own preflop range along the line, or
+    /// the reference range for a section that stores none (v3).
+    pub fn profile_root_range(
+        &self,
+        index: usize,
+        pos: Position,
+        real_perm: &SuitPerm,
+    ) -> Option<Vec<f32>> {
+        let section = self.file.profiles.get(index)?;
+        let Some((_, r)) = section.root_ranges.iter().find(|(p, _)| *p == pos) else {
+            return self.root_range(pos, real_perm);
+        };
+        let table = real_perm.combo_table();
+        Some(
+            (0..NUM_COMBOS)
+                .map(|h| f32::from(r[usize::from(table[h])]) / 255.0)
+                .collect(),
+        )
+    }
+
     /// Multiply `reach` (real-card space) of the player acting at `c` by the
     /// frequency of action `a`. Combos not stored at the node get 0.
     pub fn apply_action_reach(&self, c: &Cursor, a: usize, reach: &mut [f32]) {
@@ -369,6 +417,36 @@ mod tests {
         let total = |r: &[f32]| r.iter().sum::<f32>();
         assert!(total(&btn) > 300.0 && total(&btn) < 900.0);
         assert!(total(&bb) > 300.0);
+    }
+
+    #[test]
+    fn loose_profiles_widen_the_line_range() {
+        let c = chart();
+        let line: Line = "UTG:f,HJ:f,CO:f,BTN:r250,SB:r950,BB:f,BTN:c"
+            .parse()
+            .unwrap();
+        let bots = concat!(env!("CARGO_MANIFEST_DIR"), "/../../content/bots");
+        let load = |id: &str| {
+            Profile::from_toml(&std::fs::read_to_string(format!("{bots}/{id}.toml")).unwrap())
+                .unwrap()
+        };
+        let total = |r: &[f32]| r.iter().sum::<f32>();
+        let reference = line_range(&c, &line, Position::Btn).unwrap();
+        // The reference is a profile-free line range.
+        assert_eq!(
+            profile_line_range(&c, &line, Position::Btn, None).unwrap(),
+            reference
+        );
+        let station =
+            profile_line_range(&c, &line, Position::Btn, Some(&load("calling-station"))).unwrap();
+        let nit = profile_line_range(&c, &line, Position::Btn, Some(&load("nit"))).unwrap();
+        assert!(total(&station) > 1.2 * total(&reference));
+        assert!(total(&nit) < total(&reference));
+        // The station plays combos the reference never brings here.
+        assert!(
+            (0..NUM_COMBOS).any(|h| station[h] > 0.01 && reference[h] == 0.0),
+            "no off-reference combos"
+        );
     }
 
     #[test]

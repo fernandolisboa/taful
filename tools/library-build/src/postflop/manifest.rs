@@ -45,6 +45,16 @@ pub struct Solve {
     /// Store a combo at a node only if the actor plays its line to the node
     /// at least this often (0..1).
     pub min_combo_reach: f32,
+    /// With profiles: the weight at which the solve seeds every combo a
+    /// profile brings to the flop that the reference never does, so the
+    /// solve plays it and the profile's best responses start from the
+    /// profile's own preflop range (#48). Tiny, so the reference barely
+    /// moves; it costs memory and time in proportion to the wider ranges
+    /// (docs/spikes.md). Without it the best responses still start from
+    /// the profile's range, restricted to the reference's combos, and a
+    /// bot holding another combo leaves the library (`bot-off-range`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_seed: Option<f32>,
 }
 
 pub use taful_solver::postflop::TreeSpec as Tree;
@@ -86,6 +96,9 @@ impl Manifest {
         }
         if !(0.0..100.0).contains(&s.prune_reach_pct) || !(0.0..1.0).contains(&s.min_combo_reach) {
             return Err("solve: prune_reach_pct in [0, 100), min_combo_reach in [0, 1)".into());
+        }
+        if s.profile_seed.is_some_and(|x| !(x > 0.0 && x <= 0.01)) {
+            return Err("solve: profile_seed in (0, 0.01]".into());
         }
         let mut ids = std::collections::HashSet::new();
         for spot in &self.spots {

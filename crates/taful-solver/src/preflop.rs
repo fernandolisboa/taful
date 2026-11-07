@@ -5,6 +5,7 @@ use taful_core::action::{Action, Line};
 use taful_core::cards::Hand;
 use taful_core::config::{BB_CHIPS, GameConfig};
 use taful_core::position::Position;
+use taful_core::profile::Profile;
 use taful_core::range::HandClass;
 
 use crate::format::{Child, Domain, FormatError, LibraryFile, Node};
@@ -167,6 +168,24 @@ impl PreflopChart {
             at = p;
         }
         r
+    }
+
+    /// Bot profile `profile`'s strategy at `id` for every hand class,
+    /// row-major `169 × actions` (its transform of the reference, D8). The
+    /// app's profiled bots and the build tool both call this, so they lock
+    /// the very same strategy.
+    pub fn profile_strategy(&self, id: NodeId, profile: &Profile) -> Vec<f32> {
+        let n = self.node(id);
+        let k = n.actions.len();
+        let scale = self.file.header.ev_scale;
+        let mut strategy = Vec::with_capacity(HandClass::COUNT * k);
+        let mut ev = Vec::with_capacity(HandClass::COUNT * k);
+        for c in 0..HandClass::COUNT {
+            strategy.extend(n.strategy(c).unwrap_or_else(|| vec![0.0; k]));
+            ev.extend(n.ev(c, scale).unwrap_or_else(|| vec![0.0; k]));
+        }
+        let actions: Vec<Action> = n.actions.iter().map(|a| a.action).collect();
+        profile.preflop_strategy(&actions, &strategy, &ev, &self.acting_range(id))
     }
 
     /// Range of the player to act at `id`, as combo weights per class

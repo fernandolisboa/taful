@@ -24,7 +24,7 @@ use taful_core::action::Line;
 use taful_core::cards::Hand;
 use taful_core::config::GameConfig;
 use taful_core::iso::Flop;
-use taful_solver::postflop::{SpotGeometry, geometry, line_range};
+use taful_solver::postflop::{SpotGeometry, geometry, line_range, profile_line_range};
 use taful_solver::preflop::PreflopChart;
 
 use manifest::{Manifest, Spot, Tree};
@@ -56,9 +56,32 @@ pub struct Job<'a> {
     pub tree: &'a Tree,
     pub line: Line,
     pub geometry: SpotGeometry,
-    /// Combo weights at the flop, OOP and IP.
+    /// Combo weights at the flop, OOP and IP: the reference ranges.
     pub ranges: [Vec<f32>; 2],
     pub flop: Flop,
+    /// Per listed profile (same order), its own ranges at the flop, OOP
+    /// and IP (#48). Empty = the profiles start from the reference ranges.
+    pub profile_ranges: Vec<[Vec<f32>; 2]>,
+    /// Weight given in the solve to a combo some profile brings to the flop
+    /// but the reference never does, so the solve has a strategy for it
+    /// (`solve.profile_seed`; 0 with no profile ranges).
+    pub seed: f32,
+}
+
+impl Job<'_> {
+    /// The ranges the solver starts from: the reference, plus every combo a
+    /// profile brings to the flop at weight `seed` (#48).
+    pub fn solve_ranges(&self) -> [Vec<f32>; 2] {
+        let mut out = self.ranges.clone();
+        for (side, r) in out.iter_mut().enumerate() {
+            for (h, w) in r.iter_mut().enumerate() {
+                if *w == 0.0 && self.profile_ranges.iter().any(|p| p[side][h] > 0.0) {
+                    *w = self.seed;
+                }
+            }
+        }
+        out
+    }
 }
 
 pub fn bet_sizes(pair: &[String; 2]) -> Result<BetSizeOptions, String> {
@@ -98,8 +121,9 @@ pub fn build_game(job: &Job) -> Result<PostFlopGame, String> {
         force_allin_threshold: t.force_allin_threshold,
         merging_threshold: t.merging_threshold,
     };
+    let ranges = job.solve_ranges();
     let cards = CardConfig {
-        range: [solver_range(&job.ranges[0]), solver_range(&job.ranges[1])],
+        range: [solver_range(&ranges[0]), solver_range(&ranges[1])],
         flop: job.flop.cards().map(|c| c.index()),
         turn: NOT_DEALT,
         river: NOT_DEALT,
@@ -228,14 +252,26 @@ pub fn run(manifest_path: &Path, out: &Path, opt: &Options) -> Result<(), String
         .filter(|s| opt.only.is_empty() || opt.only.contains(&s.id))
         .collect();
 
-    // Ranges and geometry per spot, from the chart.
+    let profiles = m.load_profiles(manifest_path.parent().unwrap_or(Path::new(".")))?;
+    // Ranges and geometry per spot, from the chart; with profiles, each
+    // profile's own ranges too (it plays its preflop range to the flop).
     let mut prepared = Vec::new();
     for s in &spots {
         let line = s.line()?;
-        let g = geometry(&config, &line).map_err(|e| format!("spot {}: {e}", s.id))?;
-        let oop = line_range(&chart, &line, g.oop).map_err(|e| format!("spot {}: {e}", s.id))?;
-        let ip = line_range(&chart, &line, g.ip).map_err(|e| format!("spot {}: {e}", s.id))?;
-        prepared.push((*s, line, g, [oop, ip]));
+        let err = |e: String| format!("spot {}: {e}", s.id);
+        let g = geometry(&config, &line).map_err(|e| err(e.to_string()))?;
+        let oop = line_range(&chart, &line, g.oop).map_err(err)?;
+        let ip = line_range(&chart, &line, g.ip).map_err(err)?;
+        let profile_ranges = profiles
+            .iter()
+            .map(|p| {
+                Ok([
+                    profile_line_range(&chart, &line, g.oop, Some(p)).map_err(err)?,
+                    profile_line_range(&chart, &line, g.ip, Some(p)).map_err(err)?,
+                ])
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        prepared.push((*s, line, g, [oop, ip], profile_ranges));
     }
 
     if let Some(t) = opt.threads {
@@ -248,7 +284,6 @@ pub fn run(manifest_path: &Path, out: &Path, opt: &Options) -> Result<(), String
         lower_priority();
     }
     std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
-    let profiles = m.load_profiles(manifest_path.parent().unwrap_or(Path::new(".")))?;
     let manifest_hash = m.hash(&profiles);
     if !profiles.is_empty() {
         let ids: Vec<&str> = profiles.iter().map(|p| p.id.as_str()).collect();
@@ -265,7 +300,7 @@ pub fn run(manifest_path: &Path, out: &Path, opt: &Options) -> Result<(), String
 
     // Flop-major: a partial run covers every spot on the first flops.
     for (fi, &flop) in order[..n_flops].iter().enumerate() {
-        for (spot, line, g, ranges) in &prepared {
+        for (spot, line, g, ranges, profile_ranges) in &prepared {
             let rel = file_path(&config, &spot.id, flop);
             let path = out.join(&rel);
             if path.exists() {
@@ -281,6 +316,8 @@ pub fn run(manifest_path: &Path, out: &Path, opt: &Options) -> Result<(), String
                 geometry: g.clone(),
                 ranges: ranges.clone(),
                 flop,
+                profile_ranges: profile_ranges.clone(),
+                seed: m.solve.profile_seed.unwrap_or(0.0),
             };
             let mut game = build_game(&job)?;
             let (_, mem16) = game.memory_usage();

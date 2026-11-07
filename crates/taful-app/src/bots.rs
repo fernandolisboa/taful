@@ -71,18 +71,7 @@ impl ProfiledBot {
     /// The profile's strategy at `node` for every hand class, row-major
     /// `169 × actions`.
     pub fn node_strategy(&self, chart: &PreflopChart, node: NodeId) -> Vec<f32> {
-        let n = chart.node(node);
-        let k = n.actions.len();
-        let scale = chart.file().header.ev_scale;
-        let mut strategy = Vec::with_capacity(HandClass::COUNT * k);
-        let mut ev = Vec::with_capacity(HandClass::COUNT * k);
-        for c in 0..HandClass::COUNT {
-            strategy.extend(n.strategy(c).unwrap_or_else(|| vec![0.0; k]));
-            ev.extend(n.ev(c, scale).unwrap_or_else(|| vec![0.0; k]));
-        }
-        let actions: Vec<Action> = n.actions.iter().map(|a| a.action).collect();
-        self.profile
-            .preflop_strategy(&actions, &strategy, &ev, &chart.acting_range(node))
+        chart.profile_strategy(node, &self.profile)
     }
 }
 
