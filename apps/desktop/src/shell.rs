@@ -60,6 +60,8 @@ pub struct Shell {
     pub(crate) tour_seen: String,
     /// Set by Settings' "show tours again" until the screen changes.
     pub(crate) tour_reset_done: bool,
+    /// Bumped on every screen change so the screen fades in again.
+    screen_visit: usize,
     _ticker: Task<()>,
     _subscriptions: Vec<Subscription>,
 }
@@ -74,6 +76,10 @@ impl Shell {
             .ok()
             .and_then(|id| taful_app::layout::Layout::builtin(&id))
             .unwrap_or_else(|| app.active_layout().1);
+        crate::motion::set(crate::motion::Motion::from_setting(
+            app.string_setting(taful_app::keys::UI_ANIMATIONS)
+                .as_deref(),
+        ));
         let auto_replay =
             app.string_setting(taful_app::keys::TABLE_REPLAY).as_deref() != Some("off");
         let table = cx.new(|cx| TableScreen::new(ui.clone(), trainers, layout, auto_replay, cx));
@@ -129,6 +135,7 @@ impl Shell {
             tour: None,
             tour_seen: String::new(),
             tour_reset_done: false,
+            screen_visit: 0,
             table,
             _ticker: ticker,
             _subscriptions: subscriptions,
@@ -218,6 +225,7 @@ impl Shell {
     pub(crate) fn select(&mut self, screen: Screen, window: &mut Window, cx: &mut Context<Self>) {
         if self.screen != screen {
             self.tour_reset_done = false;
+            self.screen_visit += 1;
             // Leaving mid-tour counts as skipping it (before calc_leave,
             // which would otherwise be undone by the tour's resume).
             self.tour_end();
@@ -544,6 +552,8 @@ impl Shell {
             window.request_animation_frame();
         }
         let last = i + 1 == steps.len();
+        // Each step fades in.
+        let fade_id = gpui::ElementId::Name(format!("tour_{}_{i}", screen.id()).into());
         let card = div()
             .id("tour_card")
             .occlude()
@@ -604,7 +614,7 @@ impl Shell {
                     ),
             );
         let Some(b) = bounds else {
-            return Some(
+            return Some(crate::motion::fade_in(
                 div()
                     .absolute()
                     .top_0()
@@ -613,9 +623,9 @@ impl Shell {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child(card.relative())
-                    .into_any_element(),
-            );
+                    .child(card.relative()),
+                fade_id,
+            ));
         };
         let (bx, by) = (f32::from(b.origin.x), f32::from(b.origin.y));
         let (bw, bh) = (f32::from(b.size.width), f32::from(b.size.height));
@@ -650,16 +660,16 @@ impl Shell {
             Some(y) => card.left(px(x)).top(px(clamp_y(y))),
             None => card.left(px(x)).bottom(px(vh - by + GAP)),
         };
-        Some(
+        Some(crate::motion::fade_in(
             div()
                 .absolute()
                 .top_0()
                 .left_0()
                 .size_full()
                 .child(ring)
-                .child(card)
-                .into_any_element(),
-        )
+                .child(card),
+            fade_id,
+        ))
     }
 
     /// Screen title plus a one-line "what is this screen" subtitle.
@@ -742,7 +752,7 @@ impl Shell {
                 .flex_col()
                 .overflow_y_scroll()
                 .track_scroll(&self.scroll)
-                .child(
+                .child(crate::motion::fade_in(
                     div()
                         .flex()
                         .flex_col()
@@ -751,7 +761,8 @@ impl Shell {
                         .p(px(xxl))
                         .child(self.header(cx))
                         .child(body),
-                )
+                    ("screen_fade", self.screen_visit),
+                ))
                 .into_any_element();
         }
         let viewport = f32::from(window.viewport_size().width);
@@ -773,7 +784,7 @@ impl Shell {
             .items_center()
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
-            .child(
+            .child(crate::motion::fade_in(
                 div()
                     .flex()
                     .flex_col()
@@ -786,8 +797,20 @@ impl Shell {
                     .p(px(xxl))
                     .child(self.header(cx))
                     .child(body),
-            )
+                ("screen_fade", self.screen_visit),
+            ))
             .into_any_element()
+    }
+
+    /// Stores and applies the animation level (settings).
+    pub(crate) fn set_motion(&mut self, m: crate::motion::Motion) {
+        crate::motion::set(m);
+        if let Err(e) = self
+            .app
+            .set_string_setting(taful_app::keys::UI_ANIMATIONS, m.setting())
+        {
+            eprintln!("taful: storing the animation setting failed: {e}");
+        }
     }
 }
 

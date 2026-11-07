@@ -9,6 +9,7 @@ use taful_app::model::Grade;
 use taful_app::preflop::{Action, BB_CHIPS, Card, Chips, GameState, Position, Seat};
 
 use crate::Ui;
+use crate::motion;
 use crate::theme::Palette;
 
 pub const FELT_W: f32 = 640.;
@@ -118,7 +119,7 @@ pub fn table_scaled(
     reveal: bool,
     s: f32,
 ) -> Div {
-    table_tagged(ui, p, state, hero, reveal, s, &[])
+    table_tagged(ui, p, state, hero, reveal, s, SeatExtras::default())
 }
 
 /// Seat tags for [`table_tagged`]: each bot profile's name (none for hero
@@ -133,6 +134,15 @@ pub fn seat_tags(ui: &Ui, profiles: &[Option<String>]) -> Vec<Option<String>> {
         .collect()
 }
 
+/// What [`table_tagged`] adds to the seats.
+#[derive(Default, Clone, Copy)]
+pub struct SeatExtras<'a> {
+    /// A tag per seat (`None` = no tag).
+    pub tags: &'a [Option<String>],
+    /// Chips each winner took, slid from the pot once the hand is over.
+    pub wins: &'a [(Seat, Chips)],
+}
+
 /// [`table_scaled`] with a tag over each seat that has one (the bot
 /// profile a seat plays, #28).
 pub fn table_tagged(
@@ -142,8 +152,9 @@ pub fn table_tagged(
     hero: Seat,
     reveal: bool,
     s: f32,
-    tags: &[Option<String>],
+    extra: SeatExtras<'_>,
 ) -> Div {
+    let SeatExtras { tags, wins } = extra;
     let (t, i18n) = (&ui.theme, &ui.i18n);
     let n = state.players().len();
     let (felt_w, felt_h, pad) = (FELT_W * s, FELT_H * s, PAD * s);
@@ -154,11 +165,24 @@ pub fn table_tagged(
         felt_w / 2. - seat_w / 2. + 8. * s,
         felt_h / 2. - seat_h / 2. + 18. * s,
     );
+    // Hero sits at the bottom; the others clockwise from hero's left.
+    let seat_angle = |seat: Seat| {
+        let k = (seat + n - hero) % n;
+        std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::TAU / n as f32
+    };
+    // Changes with every deal, so a new hand's blinds, pot and cards
+    // animate even where they equal the last hand's.
+    let deal = {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        for pl in state.players() {
+            pl.hole.hash(&mut h);
+        }
+        h.finish()
+    };
     let to_act = state.to_act();
     let seats = (0..n).map(|seat| {
-        // Hero sits at the bottom; the others clockwise from hero's left.
-        let k = (seat + n - hero) % n;
-        let angle = std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::TAU / n as f32;
+        let angle = seat_angle(seat);
         let (x, y) = (cx0 + rx * angle.cos(), cy0 + ry * angle.sin());
         let pl = &state.players()[seat];
         let pos = state.position(seat);
@@ -214,7 +238,16 @@ pub fn table_tagged(
                 div()
                     .flex()
                     .gap(px(2. * s))
-                    .children(cards.into_iter().map(|c| card(ui, p, c, s))),
+                    .children(cards.into_iter().enumerate().map(|(i, c)| {
+                        // Keyed by the real card: a new hand deals again,
+                        // turning hero's or a showdown hand face up does not.
+                        let real = pl.hole.cards()[i];
+                        motion::deal_in(
+                            card(ui, p, c, s),
+                            anim_id(format!("deal_{deal}_{seat}_{i}_{real}")),
+                            14. * s,
+                        )
+                    })),
             )
             .when_some(last, |d, l| {
                 d.child(div().text_size(px(sm)).text_color(p.text_muted).child(l))
@@ -225,8 +258,7 @@ pub fn table_tagged(
     let tag_h = sm * 0.85 + 6. * s;
     let tag_els = (0..n).filter_map(|seat| {
         let tag = tags.get(seat)?.as_ref()?;
-        let k = (seat + n - hero) % n;
-        let angle = std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::TAU / n as f32;
+        let angle = seat_angle(seat);
         let (x, y) = (cx0 + rx * angle.cos(), cy0 + ry * angle.sin());
         let top = if angle.sin() >= 0. {
             y - seat_h / 2. - tag_h - 2. * s
@@ -255,19 +287,19 @@ pub fn table_tagged(
         )
     });
     // Chips in front of each seat on this street, between seat and pot.
+    // (Not once the winners' takes are shown: those sit on the same rays.)
     let bets = (0..n).filter_map(|seat| {
         let c = state.players()[seat].street_commit;
-        if c == 0 {
+        if c == 0 || !wins.is_empty() {
             return None;
         }
-        let k = (seat + n - hero) % n;
-        let angle = std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::TAU / n as f32;
+        let angle = seat_angle(seat);
         let (x, y) = (cx0 + rx * 0.55 * angle.cos(), cy0 + ry * 0.5 * angle.sin());
-        Some(
+        let (sx, sy) = (cx0 + rx * angle.cos(), cy0 + ry * angle.sin());
+        let street = state.street();
+        Some(motion::slide(
             div()
                 .absolute()
-                .left(px(x - 28. * s))
-                .top(px(y - 10. * s))
                 .w(px(56. * s))
                 .flex()
                 .justify_center()
@@ -280,6 +312,35 @@ pub fn table_tagged(
                         .text_color(p.accent)
                         .child(bb(ui, c)),
                 ),
+            // From the seat toward the pot, again on every new amount.
+            anim_id(format!("bet_{deal}_{seat}_{street:?}_{c}")),
+            (sx - 28. * s, sy - 10. * s),
+            (x - 28. * s, y - 10. * s),
+        ))
+    });
+    // What each winner took, slid from the pot to the seat.
+    let win_els = wins.iter().map(|&(seat, c)| {
+        let angle = seat_angle(seat);
+        let (x, y) = (cx0 + rx * 0.62 * angle.cos(), cy0 + ry * 0.58 * angle.sin());
+        motion::slide(
+            div()
+                .absolute()
+                .w(px(72. * s))
+                .flex()
+                .justify_center()
+                .child(
+                    div()
+                        .px(px(t.spacing.sm * s))
+                        .rounded(px(t.radii.pill))
+                        .bg(p.accent)
+                        .text_size(px(sm))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(p.on_accent)
+                        .child(format!("+{}", bb(ui, c))),
+                ),
+            anim_id(format!("win_{deal}_{seat}_{c}")),
+            (cx0 - 36. * s, cy0 - 10. * s),
+            (x - 36. * s, y - 10. * s),
         )
     });
     let board = state.board().to_vec();
@@ -304,7 +365,7 @@ pub fn table_tagged(
                 .items_center()
                 .justify_center()
                 .gap(px(t.spacing.sm * s))
-                .child(
+                .child(motion::fade_in(
                     div()
                         .text_size(px(md))
                         .font_weight(FontWeight::SEMIBOLD)
@@ -312,19 +373,28 @@ pub fn table_tagged(
                         .child(
                             i18n.tr_args("table-pot", &[("amount", bb(ui, state.pot()).into())]),
                         ),
-                )
+                    anim_id(format!("pot_{deal}_{}", state.pot())),
+                ))
                 .when(!board.is_empty(), |d| {
-                    d.child(
-                        div()
-                            .flex()
-                            .gap(px(t.spacing.xs * s))
-                            .children(board.iter().map(|&c| card(ui, p, Some(c), s))),
-                    )
+                    d.child(div().flex().gap(px(t.spacing.xs * s)).children(
+                        board.iter().enumerate().map(|(i, &c)| {
+                            motion::deal_in(
+                                card(ui, p, Some(c), s),
+                                anim_id(format!("board_{deal}_{i}_{c}")),
+                                14. * s,
+                            )
+                        }),
+                    ))
                 }),
         )
         .children(bets)
         .children(seats)
         .children(tag_els)
+        .children(win_els)
+}
+
+fn anim_id(s: String) -> gpui::ElementId {
+    gpui::ElementId::Name(s.into())
 }
 
 /// The numbers of one graded decision (spec §8 explanation payload).

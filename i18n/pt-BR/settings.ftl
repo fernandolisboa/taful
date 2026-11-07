@@ -59,3 +59,10 @@ settings-library-folder = Pasta: { $path }
 settings-library-ok = Instalada: { $count } configurações pós-flop.
 settings-library-missing = Não instalada nesta pasta.
 settings-library-change = Trocar pasta…
+
+# Animations (#59).
+settings-animations = Animações
+settings-animations-body = Transição entre telas, cartas sendo distribuídas e fichas indo para o pote. Reduzidas mantém só as transições suaves.
+settings-animations-on = Ligadas
+settings-animations-reduced = Reduzidas
+settings-animations-off = Desligadas

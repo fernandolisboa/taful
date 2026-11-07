@@ -22,7 +22,7 @@ use taful_app::model::{
     DrillSpot, FullHand, HandEnd, LeakBucket, LeftReason, SpotContext, Street, Trainers,
 };
 use taful_app::postflop::{PostflopError, SpotRequest};
-use taful_app::preflop::{Action, GameState, GradedDecision, SpotKind};
+use taful_app::preflop::{Action, Chips, GameState, GradedDecision, Seat, SpotKind};
 use taful_app::story::{Story, StoryEvent};
 use taful_app::template::{street_id, texture_label_keys};
 
@@ -1288,6 +1288,21 @@ impl TableScreen {
             self.actions_bar(&h.state, &h.hero_actions(&t.preflop), cx)
         };
         let panel = panel.children(self.story_panel(h.hero, cx));
+        // Winners' takes (their pot shares after rake), slid from the pot
+        // once the hand is settled.
+        let mut wins: Vec<(Seat, Chips)> = Vec::new();
+        if let (Some(HandEnd::Settled(st)), true) = (&h.end, over) {
+            for pot in &st.pots {
+                let share = (pot.amount - pot.rake) / pot.winners.len().max(1) as Chips;
+                for &w in &pot.winners {
+                    match wins.iter_mut().find(|(s, _)| *s == w) {
+                        Some((_, c)) => *c += share,
+                        None => wins.push((w, share)),
+                    }
+                }
+            }
+            wins.retain(|(_, c)| *c > 0);
+        }
         Parts {
             table: felt::table_tagged(
                 &self.ui,
@@ -1296,7 +1311,10 @@ impl TableScreen {
                 h.hero,
                 over,
                 scale,
-                &felt::seat_tags(&self.ui, &h.seat_profiles),
+                felt::SeatExtras {
+                    tags: &felt::seat_tags(&self.ui, &h.seat_profiles),
+                    wins: &wins,
+                },
             ),
             actions,
             panel,
