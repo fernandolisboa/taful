@@ -168,6 +168,11 @@ mod tests {
         let m = Manifest::parse(include_str!("../../manifests/postflop-6max-100bb.toml")).unwrap();
         assert_eq!(m.spots.len(), 5);
         assert_eq!(m.flop_count, 49);
+        // The production run (#31) solves against every shipped profile,
+        // seeded from their own preflop ranges (D15).
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("manifests");
+        assert_eq!(m.load_profiles(&dir).unwrap().len(), 4);
+        assert_eq!(m.solve.profile_seed, Some(0.0001));
     }
 
     #[test]

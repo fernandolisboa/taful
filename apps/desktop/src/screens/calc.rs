@@ -17,6 +17,9 @@ pub struct CalcView {
     pub kind: Option<ExerciseKind>,
     pub round: Option<CalcRound>,
     pub outcome: Option<CalcOutcome>,
+    /// When the user left the screen mid-question: the clock is paused
+    /// until they come back.
+    pub left_at: Option<i64>,
 }
 
 impl CalcView {
@@ -250,8 +253,22 @@ pub fn outcome_view(round: &CalcRound, o: &CalcOutcome, ui: &Ui, p: &Palette) ->
 
 impl Shell {
     pub(crate) fn calc_enter(&mut self) {
+        if let Some(left) = self.calc.left_at.take()
+            && self.calc.running()
+            && let Some(round) = &mut self.calc.round
+        {
+            // Time spent on other screens does not count.
+            round.started_at += (self.app.now() - left).max(0);
+        }
         if self.calc.round.is_none() {
             self.calc_new_round();
+        }
+    }
+
+    /// Pauses a running question's clock when the user leaves the screen.
+    pub(crate) fn calc_leave(&mut self) {
+        if self.calc.running() {
+            self.calc.left_at = Some(self.app.now());
         }
     }
 

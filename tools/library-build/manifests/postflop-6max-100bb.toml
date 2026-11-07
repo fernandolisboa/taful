@@ -15,6 +15,7 @@ check_every = 10
 compression = true
 prune_reach_pct = 0.1
 min_combo_reach = 0.001
+profile_seed = 0.0001          # D15: profiles start from their own preflop range
 
 # Trees as measured in spike §9.2.
 [trees.medium]
@@ -57,3 +58,10 @@ tree = "large"
 id = "co-btn-3bp"
 line = "UTG:f,HJ:f,CO:r250,BTN:r750,SB:f,BB:f,CO:c"
 tree = "large"
+
+# Bot profiles (#27, #31): every solve also stores each profile's strategy
+# and hero's best-response EVs. Part of the hash: editing a profile means
+# rebuilding into a fresh output folder.
+[profiles]
+dir = "../../../content/bots"
+ids = ["nit", "calling-station", "maniac", "tag"]
