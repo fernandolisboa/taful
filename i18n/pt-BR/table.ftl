@@ -121,3 +121,19 @@ table-hand-next-mixed = A próxima mão é na mesa mista.
 
 table-row-mode = Modo
 table-row-spot = Situação
+
+## Como a mão chegou aqui (#53)
+
+table-story-title = Como a mão chegou aqui
+table-story-you = { $position } (você)
+table-replay-auto = Replay automático
+table-replay-playing = Repassando a mão…
+table-replay-skip = Pular replay
+table-replay-again = Rever a ação
+table-tl-folds = { $positions } fold
+table-tl-open = Open { $amount }
+table-tl-nbet = { $n }-bet { $amount }
+table-replay-earlier = Você está vendo um momento anterior da mão.
+table-replay-back = Voltar para a sua vez
+table-tl-pot = pote { $amount }
+table-replay-panel = A mesa está repassando como a mão chegou até a sua vez. Clique numa linha do histórico para ver aquele momento.

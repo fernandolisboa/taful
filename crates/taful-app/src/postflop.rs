@@ -883,6 +883,41 @@ mod tests {
         .expect("fixture library opens")
     }
 
+    /// Postflop spots' stories (#53) rebuild the preflop line, deal the
+    /// flop (and turn) as events and end on hero's decision.
+    #[test]
+    fn spot_stories_deal_the_board() {
+        use crate::story::{Story, StoryEvent};
+        let t = trainer();
+        let mut checked = 0;
+        for seed in 0..30 {
+            let Ok(s) = t.generate(&SpotRequest::default(), seed) else {
+                continue;
+            };
+            checked += 1;
+            let story = Story::of(&s.state).expect("story");
+            let last = story.last();
+            assert_eq!(last.players(), s.state.players(), "seed {seed}");
+            assert_eq!(last.board(), s.state.board(), "seed {seed}");
+            assert_eq!(last.history(), s.state.history(), "seed {seed}");
+            let dealt: Vec<usize> = story
+                .events
+                .iter()
+                .filter_map(|e| match e {
+                    StoryEvent::Dealt { cards, .. } => Some(cards.len()),
+                    StoryEvent::Action(_) => None,
+                })
+                .collect();
+            let want: Vec<usize> = match s.state.board().len() {
+                3 => vec![3],
+                4 => vec![3, 1],
+                _ => vec![3, 1, 1],
+            };
+            assert_eq!(dealt, want, "seed {seed}");
+        }
+        assert!(checked > 0, "the fixture deals postflop spots");
+    }
+
     fn flop_of(s: &PostflopSpot) -> Flop {
         Flop::new([s.board[0], s.board[1], s.board[2]])
             .unwrap()

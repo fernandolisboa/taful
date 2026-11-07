@@ -70,7 +70,7 @@ pub fn action_short(ui: &Ui, a: Action) -> String {
 }
 
 /// One card face (or a back for `None`), `s` times the normal size.
-fn card(ui: &Ui, p: &Palette, c: Option<Card>, s: f32) -> Div {
+pub fn card(ui: &Ui, p: &Palette, c: Option<Card>, s: f32) -> Div {
     let t = &ui.theme;
     let base = div()
         .w(px(CARD_W * s))

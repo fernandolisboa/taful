@@ -32,6 +32,7 @@ pub mod preflop;
 pub mod review;
 pub mod review_session;
 pub mod services;
+pub mod story;
 pub mod template;
 pub mod theme;
 pub mod training;
