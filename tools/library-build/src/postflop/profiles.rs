@@ -184,7 +184,11 @@ struct Ctx<'a> {
     num_combinations: f64,
     half_pot: f64,
     compressed: bool,
+    /// Reach-only walk (`Pass::reach`): flop and turn only, no values.
+    reach_only: bool,
     out: Mutex<HashMap<Vec<usize>, Recorded>>,
+    /// Reach-only: combo-pair mass reaching each decision node.
+    mass: Mutex<HashMap<Vec<usize>, f64>>,
 }
 
 /// Where the walk is.
@@ -303,6 +307,11 @@ impl Ctx<'_> {
     fn visit(&self, node: &PostFlopNode, at: &At, bot: &[f32], hero_ref: &[f32]) -> Vec<f32> {
         let g = self.p.game;
         let hero = self.hero;
+        // Reach-only walks stop where the library does: the river (or an
+        // all-in runout past the turn card) is never stored.
+        if self.reach_only && (node.is_terminal() || (node.is_chance() && at.board_len >= 4)) {
+            return Vec::new();
+        }
         if node.is_terminal() {
             return evaluate(g, node, hero, bot);
         }
@@ -331,6 +340,9 @@ impl Ctx<'_> {
             } else {
                 (0..k).map(child).collect()
             };
+            if self.reach_only {
+                return Vec::new();
+            }
             let n = g.num_private_hands(hero);
             let mut sum = vec![0.0f64; n];
             for v in &vals {
@@ -374,6 +386,23 @@ impl Ctx<'_> {
         };
         let ref_strategy = self.strategy(node, k, n);
         let keep = self.keep(&at.hist);
+        if self.reach_only {
+            // Combo pairs (bot under the profile × responder under the
+            // reference) that reach the node, unscaled by chance factors:
+            // the profile's counterpart of the solver's normalized weights.
+            let b = self.p.bot;
+            let compat = self.compat(b, hero_ref, at.board);
+            let mass: f64 = (0..bot.len())
+                .filter(|&h| !self.dead(b, h, at.board))
+                .map(|h| f64::from(bot[h]) * compat[h])
+                .sum::<f64>()
+                * at.scale
+                * at.scale;
+            self.mass
+                .lock()
+                .expect("not poisoned")
+                .insert(at.hist.clone(), mass);
+        }
 
         if player == self.p.bot {
             // Lock the profile here.
@@ -422,6 +451,9 @@ impl Ctx<'_> {
             } else {
                 (0..k).map(child).collect()
             };
+            if self.reach_only {
+                return Vec::new();
+            }
             if keep {
                 let reach = weights
                     .iter()
@@ -457,6 +489,9 @@ impl Ctx<'_> {
         } else {
             (0..k).map(child).collect()
         };
+        if self.reach_only {
+            return Vec::new();
+        }
         if keep {
             let norm = self.compat(hero, bot, at.board);
             let offset = self.half_pot + f64::from(at.total[hero]);
@@ -490,6 +525,21 @@ impl Pass<'_> {
     /// Runs the pass; the game must be solved (`finalize`d). Returns the
     /// recorded nodes by history and the responder's root values.
     pub fn run(&self) -> (HashMap<Vec<usize>, Recorded>, Vec<f32>) {
+        let (ctx, v) = self.walk(false);
+        (ctx.out.into_inner().expect("not poisoned"), v)
+    }
+
+    /// A reach-only walk of the flop and turn (`keep` and `responder` are
+    /// ignored): the combo-pair mass that reaches each decision node when
+    /// the bot plays the profile and the responder the reference, on the
+    /// scale of the solver's normalized weights (what the export prunes
+    /// on, #45).
+    pub fn reach(&self) -> HashMap<Vec<usize>, f64> {
+        let (ctx, _) = self.walk(true);
+        ctx.mass.into_inner().expect("not poisoned")
+    }
+
+    fn walk(&self, reach_only: bool) -> (Ctx<'_>, Vec<f32>) {
         let g = self.game;
         let hero = self.bot ^ 1;
         let cards = [g.private_cards(0), g.private_cards(1)];
@@ -535,7 +585,9 @@ impl Pass<'_> {
             num_combinations,
             half_pot: f64::from(g.tree_config().starting_pot) / 2.0,
             compressed: g.is_compression_enabled(),
+            reach_only,
             out: Mutex::new(HashMap::new()),
+            mass: Mutex::new(HashMap::new()),
         };
         let at = At {
             hist: Vec::new(),
@@ -549,7 +601,7 @@ impl Pass<'_> {
             scale: 1.0,
         };
         let v = ctx.visit(&g.root(), &at, w[self.bot], w[hero]);
-        (ctx.out.into_inner().expect("not poisoned"), v)
+        (ctx, v)
     }
 }
 
@@ -567,16 +619,15 @@ pub struct Kept {
 /// The v3 profile sections for the kept nodes of a finalized game: two
 /// passes per profile.
 pub fn sections(
-    game: &mut PostFlopGame,
+    game: &PostFlopGame,
+    shape: &Shape,
     kept: &[Kept],
     combos: &[Vec<u16>; 2],
     root_weights: &[Vec<f32>; 2],
     min_combo_reach: f32,
     profiles: &[Profile],
 ) -> Result<Vec<ProfileSection>, String> {
-    let shape = Shape::of(game)?;
     let keep: HashSet<Vec<usize>> = kept.iter().map(|k| k.history.clone()).collect();
-    let game: &PostFlopGame = game;
     let mut out = Vec::with_capacity(profiles.len());
     for profile in profiles {
         let t0 = std::time::Instant::now();
@@ -584,7 +635,7 @@ pub fn sections(
             .map(|bot| {
                 Pass {
                     game,
-                    shape: &shape,
+                    shape,
                     profile,
                     bot,
                     responder: Responder::Best,
@@ -874,6 +925,50 @@ mod tests {
         assert!(checked > 1000, "{checked}");
         // Chips; the pot is 2,000.
         assert!(max_diff < 0.05, "max EV difference {max_diff} chips");
+    }
+
+    /// With a neutral profile the reach-only pass measures what the export
+    /// prunes on for the reference: at every flop and turn node, its mass
+    /// equals the sum of the solver's normalized weights (#45).
+    #[test]
+    fn neutral_reach_matches_the_solver_normalized_weights() {
+        let mut g = game(
+            "Td9d6h",
+            BoardState::Flop,
+            (2000, 9050),
+            20,
+            Some(["QQ+,AK,T9s,JTs,A5s,Td9d", "JJ-88,AQs,KQs,98s,T8s,AJo"]),
+        );
+        let hist = flop_turn_histories(&mut g);
+        let shape = Shape::of(&mut g).unwrap();
+        let p = neutral();
+        for bot in 0..2 {
+            let mass = Pass {
+                game: &g,
+                shape: &shape,
+                profile: &p,
+                bot,
+                responder: Responder::Best,
+                keep: None,
+            }
+            .reach();
+            assert_eq!(mass.len(), hist.len(), "flop and turn decisions only");
+            for h in &hist {
+                g.apply_history(h);
+                g.cache_normalized_weights();
+                let theirs: f64 = g
+                    .normalized_weights(g.current_player())
+                    .iter()
+                    .map(|&x| f64::from(x))
+                    .sum();
+                let mine = mass[h];
+                assert!(
+                    (mine - theirs).abs() <= 1e-4 * theirs.max(1.0),
+                    "{h:?}: {mine} vs {theirs}"
+                );
+            }
+        }
+        g.back_to_root();
     }
 
     /// The acceptance check (#27): on a river subgame the pass's best

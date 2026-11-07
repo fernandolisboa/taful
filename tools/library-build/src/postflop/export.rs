@@ -3,6 +3,8 @@
 //! (turn cards, with suit-isomorphic turns stored as mirrors), turn
 //! decisions, and `End` where the river would be dealt.
 
+use std::collections::HashMap;
+
 use postflop_solver::{Action as SAction, PostFlopGame};
 use taful_core::action::Action;
 use taful_core::cards::{Card, Hand, NUM_COMBOS};
@@ -46,7 +48,13 @@ struct Ex<'a> {
     /// Interpreter history of each node.
     histories: Vec<Vec<usize>>,
     chance: Vec<ChanceNode>,
+    /// Per node history: the largest combo-pair mass any profile (bot
+    /// under the profile, responder under the reference) brings to it, on
+    /// the normalized weights' scale; empty without profiles (#45).
+    profile_mass: HashMap<Vec<usize>, f64>,
     pruned: usize,
+    /// Nodes kept only because a profile reaches them.
+    kept_for_profiles: usize,
 }
 
 pub(crate) fn map_action(a: SAction) -> Result<Action, String> {
@@ -89,9 +97,20 @@ impl Ex<'_> {
         game.cache_normalized_weights();
         let p = game.current_player();
         let normalized: f32 = game.normalized_weights(p).iter().sum();
-        if !history.is_empty() && 100.0 * normalized < self.prune_reach_pct * self.root_total[p] {
-            self.pruned += 1;
-            return Ok(Child::Pruned);
+        // A node stays when the reference or any profile reaches it (#45):
+        // lines a profile takes far more often than the reference (a
+        // maniac's raises) must be in the library to be dealt against it.
+        let threshold = self.prune_reach_pct * self.root_total[p];
+        if !history.is_empty() && 100.0 * normalized < threshold {
+            let by_profile = self
+                .profile_mass
+                .get(history.as_slice())
+                .is_some_and(|&m| 100.0 * m as f32 >= threshold);
+            if !by_profile {
+                self.pruned += 1;
+                return Ok(Child::Pruned);
+            }
+            self.kept_for_profiles += 1;
         }
         let idx = self.nodes.len();
         self.nodes.push(None);
@@ -229,6 +248,34 @@ pub fn export(
     });
     let root_weights = [game.weights(0).to_vec(), game.weights(1).to_vec()];
     let root_total = [0, 1].map(|p| game.normalized_weights(p).iter().sum::<f32>());
+    // With profiles, a reach-only pass per profile and side decides, with
+    // the reference reach, which nodes are kept (#45).
+    let shape = if profiles.is_empty() {
+        None
+    } else {
+        Some(super::profiles::Shape::of(game)?)
+    };
+    let mut profile_mass: HashMap<Vec<usize>, f64> = HashMap::new();
+    if let Some(shape) = &shape {
+        for profile in profiles {
+            for bot in 0..2 {
+                let pass = super::profiles::Pass {
+                    game,
+                    shape,
+                    profile,
+                    bot,
+                    responder: super::profiles::Responder::Best,
+                    keep: None,
+                };
+                for (h, m) in pass.reach() {
+                    let e = profile_mass.entry(h).or_insert(0.0);
+                    *e = e.max(m);
+                }
+            }
+        }
+        game.back_to_root();
+        game.cache_normalized_weights();
+    }
     let mut ex = Ex {
         job,
         prune_reach_pct: m.solve.prune_reach_pct,
@@ -240,20 +287,28 @@ pub fn export(
         nodes: Vec::new(),
         histories: Vec::new(),
         chance: Vec::new(),
+        profile_mass,
         pruned: 0,
+        kept_for_profiles: 0,
     };
     let mut history = Vec::new();
     ex.visit(game, &mut history)?;
     game.back_to_root();
+    if !profiles.is_empty() {
+        eprintln!(
+            "    {} nodes, {} kept only for profiles, {} pruned",
+            ex.nodes.len(),
+            ex.kept_for_profiles,
+            ex.pruned
+        );
+    }
 
     let raw: Vec<RawNode> = ex
         .nodes
         .into_iter()
         .map(|n| n.ok_or("unfinished node"))
         .collect::<Result<_, _>>()?;
-    let sections = if profiles.is_empty() {
-        Vec::new()
-    } else {
+    let sections = if let Some(shape) = &shape {
         let kept: Vec<super::profiles::Kept> = raw
             .iter()
             .zip(&ex.histories)
@@ -266,12 +321,15 @@ pub fn export(
             .collect();
         super::profiles::sections(
             game,
+            shape,
             &kept,
             &ex.combos,
             &ex.root_weights,
             m.solve.min_combo_reach,
             profiles,
         )?
+    } else {
+        Vec::new()
     };
     let max_ev = raw
         .iter()
@@ -355,6 +413,14 @@ mod tests {
         flop: &str,
         profiles: &[taful_core::profile::Profile],
     ) -> (PostFlopGame, LibraryFile, Flop) {
+        solved_pruned(flop, profiles, 0.0)
+    }
+
+    fn solved_pruned(
+        flop: &str,
+        profiles: &[taful_core::profile::Profile],
+        prune_reach_pct: f32,
+    ) -> (PostFlopGame, LibraryFile, Flop) {
         let chart = PreflopChart::decode(include_bytes!(
             "../../../../library/v1/c1c6782d353382947a3bbcf1493b6a17155b2e63a7218bf8f54cc38be59cf37f/preflop.tafl"
         ))
@@ -375,7 +441,7 @@ mod tests {
         };
         let mut m =
             Manifest::parse(include_str!("../../manifests/postflop-6max-100bb.toml")).unwrap();
-        m.solve.prune_reach_pct = 0.0;
+        m.solve.prune_reach_pct = prune_reach_pct;
         m.solve.min_combo_reach = 0.0;
         m.solve.max_iterations = 60;
         let mut game = build_game(&job).unwrap();
@@ -544,6 +610,153 @@ mod tests {
         assert!(
             max_diff <= ev_scale * 0.5 + 1e-4,
             "{max_diff} vs scale {ev_scale}"
+        );
+    }
+
+    /// #45 acceptance: a line the reference prunes but a profile plays
+    /// often (the maniac's bets and raises) is kept, with the profile's
+    /// data, and the profile build keeps every node the reference keeps.
+    #[test]
+    fn a_profile_keeps_the_lines_it_plays_often() {
+        use taful_core::action::Action;
+        use taful_solver::format::Child;
+
+        let maniac = taful_core::profile::Profile::from_toml(include_str!(
+            "../../../../content/bots/maniac.toml"
+        ))
+        .unwrap();
+        let (_, reference, _) = solved_pruned("Td9d6h", &[], 1.0);
+        let (_, with, flop) = solved_pruned("Td9d6h", std::slice::from_ref(&maniac), 1.0);
+        assert!(reference.nodes.len() < with.nodes.len());
+
+        /// One move from the root: an action or a stored turn card.
+        #[derive(Clone, Copy)]
+        enum Move {
+            Act(Action),
+            Deal(Card),
+        }
+        /// Walks both trees side by side; collects the nodes only `with`
+        /// keeps (the first of each such subtree) with the action into it
+        /// and the moves from the root.
+        struct Rescued {
+            node: u32,
+            into: Action,
+            line: Vec<Move>,
+        }
+        fn pair(
+            r: Child,
+            w: Child,
+            into: Action,
+            line: Vec<Move>,
+            files: (&LibraryFile, &LibraryFile),
+            out: &mut Vec<Rescued>,
+        ) {
+            match (r, w) {
+                (Child::Node(i), Child::Node(j)) => nodes(Some(i), j, line, files, out),
+                (Child::Pruned, Child::Node(j)) => {
+                    out.push(Rescued {
+                        node: j,
+                        into,
+                        line,
+                    });
+                }
+                (Child::Chance(i), Child::Chance(j)) => {
+                    let (rb, wb) = (
+                        &files.0.chance[i as usize].branches,
+                        &files.1.chance[j as usize].branches,
+                    );
+                    assert_eq!(rb.len(), wb.len());
+                    for ((rc, r), (wc, w)) in rb.iter().zip(wb) {
+                        assert_eq!(rc, wc);
+                        let mut line = line.clone();
+                        line.push(Move::Deal(*wc));
+                        match (r, w) {
+                            (Branch::Node(i), Branch::Node(j)) => {
+                                nodes(Some(*i), *j, line, files, out);
+                            }
+                            (Branch::Pruned, Branch::Node(j)) => out.push(Rescued {
+                                node: *j,
+                                into,
+                                line,
+                            }),
+                            (Branch::Mirror { .. }, Branch::Mirror { .. })
+                            | (Branch::Pruned, Branch::Pruned | Branch::Mirror { .. }) => {}
+                            (r, w) => panic!("reference kept {r:?}, profile build {w:?}"),
+                        }
+                    }
+                }
+                (Child::End, Child::End) | (Child::Pruned, Child::Pruned) => {}
+                (r, w) => panic!("reference {r:?}, profile build {w:?}"),
+            }
+        }
+        fn nodes(
+            r: Option<u32>,
+            w: u32,
+            line: Vec<Move>,
+            files: (&LibraryFile, &LibraryFile),
+            out: &mut Vec<Rescued>,
+        ) {
+            let r = r.expect("both kept");
+            let (rn, wn) = (&files.0.nodes[r as usize], &files.1.nodes[w as usize]);
+            assert_eq!(rn.actions.len(), wn.actions.len());
+            for (ra, wa) in rn.actions.iter().zip(&wn.actions) {
+                assert_eq!(ra.action, wa.action);
+                let mut next = line.clone();
+                next.push(Move::Act(wa.action));
+                pair(ra.child, wa.child, wa.action, next, files, out);
+            }
+        }
+        let mut rescued = Vec::new();
+        nodes(Some(0), 0, Vec::new(), (&reference, &with), &mut rescued);
+        assert!(!rescued.is_empty(), "nothing kept for the maniac");
+        let aggressive = |a: Action| matches!(a, Action::Bet(_) | Action::Raise(_) | Action::AllIn);
+        assert!(
+            rescued.iter().any(|r| aggressive(r.into)),
+            "no line kept after a bet or raise"
+        );
+        let section = &with.profiles[0];
+        for r in &rescued {
+            let node = &section.nodes[r.node as usize];
+            assert!(
+                !node.ev.is_empty() || !node.live.is_empty(),
+                "node {} kept without profile data",
+                r.node
+            );
+        }
+
+        // The app reaches each kept node after a bet or raise and reads the
+        // profile's data there.
+        let pf = PostflopFile::decode(&with.encode()).unwrap();
+        let idx = pf.profile_index("maniac").unwrap();
+        for r in rescued.iter().filter(|r| aggressive(r.into)) {
+            let mut c = pf.root(flop).unwrap();
+            let mut chance = None;
+            for &m in &r.line {
+                let step = match (m, chance.take()) {
+                    (Move::Act(a), None) => pf.step(&c, a),
+                    (Move::Deal(card), Some((k, perm))) => pf.deal(k, perm, card),
+                    _ => panic!("move out of order"),
+                };
+                match step {
+                    Step::Node(next) => c = next,
+                    Step::Chance(k, perm) => chance = Some((k, perm)),
+                    _ => panic!("left the library on the way to node {}", r.node),
+                }
+            }
+            assert_eq!(c.node, r.node);
+            let stored = (0..taful_core::cards::NUM_COMBOS)
+                .filter_map(Hand::from_combo)
+                .filter(|&h| {
+                    pf.profile_ev(&c, idx, h).is_some() || pf.profile_strategy(&c, idx, h).is_some()
+                })
+                .count();
+            assert!(stored > 0, "no profile rows at node {}", r.node);
+        }
+        eprintln!(
+            "{} nodes reference-only, {} with the maniac, {} subtrees kept for it",
+            reference.nodes.len(),
+            with.nodes.len(),
+            rescued.len()
         );
     }
 }
