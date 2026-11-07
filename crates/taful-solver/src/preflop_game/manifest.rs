@@ -254,8 +254,10 @@ mod tests {
 
     #[test]
     fn shipped_manifest_parses() {
-        let m =
-            Manifest::from_toml(include_str!("../../manifests/preflop-6max-100bb.toml")).unwrap();
+        let m = Manifest::from_toml(include_str!(
+            "../../../../tools/library-build/manifests/preflop-6max-100bb.toml"
+        ))
+        .unwrap();
         assert_eq!(m.game_config(), GameConfig::cash(6, 100));
         assert_eq!(m.round_chips(2.5), 250);
         assert_eq!(m.round_chips(9.375), 950);
@@ -266,7 +268,8 @@ mod tests {
             ..m.clone()
         };
         assert_eq!(m.hash(), no_profiles.hash());
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("manifests");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tools/library-build/manifests");
         let profiles = m.load_profiles(&dir).unwrap();
         assert_eq!(profiles.len(), 4);
         let mut edited = profiles.clone();

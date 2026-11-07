@@ -8,6 +8,7 @@
 //! product gives an EV per hand. Card removal is exact between two players
 //! and treated as independent across three or more (spec §6 abstraction).
 
+#[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use taful_core::config::BB_CHIPS;
 
@@ -24,6 +25,7 @@ const BETA: f64 = 0.0;
 const GAMMA: f64 = 2.0;
 
 /// Below this tree depth, children are walked in parallel.
+#[cfg(feature = "parallel")]
 const PAR_DEPTH: usize = 4;
 
 #[derive(Clone, Copy)]
@@ -78,9 +80,13 @@ fn current_strategy(regrets: &[f32], k: usize) -> Vec<f32> {
 }
 
 /// Normalized strategy sum; falls back to regret matching for classes that
-/// never reached the node.
+/// never reached the node. On a tree without the solver's tables (the
+/// app's best-response tree drops them) it is uniform.
 pub fn average_strategy(d: &Decision) -> Vec<f32> {
     let k = d.actions.len();
+    if d.strategy_sum.is_empty() || d.regrets.is_empty() {
+        return vec![1.0 / k as f32; k * N];
+    }
     let cur = current_strategy(&d.regrets, k);
     let mut s = vec![0.0f32; k * N];
     for h in 0..N {
@@ -188,6 +194,7 @@ impl Ctx<'_> {
                 assert_eq!(d.locked.len(), k * N, "profile locked at every node");
                 d.locked.clone()
             }
+            Mode::Profiled(_) if !d.reference.is_empty() => d.reference.clone(),
             _ => average_strategy(d),
         };
         let br_self = matches!(mode, Mode::BestResponse(q) | Mode::Profiled(q) if q == p);
@@ -195,7 +202,8 @@ impl Ctx<'_> {
         // The best responder's own reach follows its average strategy too:
         // its values do not depend on it, but the multiway renormalization
         // does, and it must match the evaluation pass (same payoffs). Against
-        // a profile the responder's reach stays the reference's as well.
+        // a profile the responder's reach stays the reference's as well (the
+        // published rows, `Decision::reference`, when they are set).
         let child_inputs = |a: usize| -> (Vec<V>, Vec<V>) {
             let mut r = reach.to_vec();
             let mut mm = m.to_vec();
@@ -223,11 +231,14 @@ impl Ctx<'_> {
             }
             v
         };
+        #[cfg(feature = "parallel")]
         let child_vals: Vec<Vec<V>> = if depth < PAR_DEPTH {
             d.children.par_iter_mut().enumerate().map(run).collect()
         } else {
             d.children.iter_mut().enumerate().map(run).collect()
         };
+        #[cfg(not(feature = "parallel"))]
+        let child_vals: Vec<Vec<V>> = d.children.iter_mut().enumerate().map(run).collect();
 
         let mut out = vec![ZERO; self.seats];
         for (q, o) in out.iter_mut().enumerate() {
@@ -380,6 +391,19 @@ impl Solver<'_> {
         for p in 0..seats {
             ctx.walk(&mut self.tree.root, &reach, &m, Mode::Profiled(p), 0);
         }
+    }
+
+    /// One seat's best-response EVs against every other seat playing its
+    /// locked strategy (`Decision::locked` set at the other seats' nodes).
+    pub fn best_response_for(&mut self, seat: usize) {
+        let (compat, sizes, seats) = self.ctx();
+        let ctx = Ctx {
+            compat: &compat,
+            sizes,
+            seats,
+        };
+        let (reach, m) = self.root_inputs();
+        ctx.walk(&mut self.tree.root, &reach, &m, Mode::Profiled(seat), 0);
     }
 
     /// Fill EVs and per-node exploitability from the average strategy, and

@@ -63,6 +63,9 @@ pub struct TableScreen {
     kind: SpotKind,
     /// Spot mode's opponent: `None` = the reference bot, else a profile id.
     opponent: Option<String>,
+    /// Full-hand mode's table, one entry per bot seat clockwise from hero's
+    /// left (#29); `None` = every bot plays [`Self::opponent`].
+    seats: Option<Vec<Option<String>>>,
     /// Seeds for spots and hands; bumped for every new deal.
     seed: u64,
     /// Postflop configuration filter (`None` = all).
@@ -150,6 +153,7 @@ impl TableScreen {
             mode: Mode::Spot,
             kind: SpotKind::Rfi,
             opponent: None,
+            seats: None,
             seed,
             postflop_spot: None,
             drill: None,
@@ -182,6 +186,21 @@ impl TableScreen {
                 .as_ref()
                 .is_ok_and(|t| t.preflop.profile(id).is_some())
         });
+        // TAFUL_TABLE_SEATS=<id>,<id>,… (one per bot seat from hero's left;
+        // `reference` for a reference bot): a mixed table (#29).
+        if let (Ok(list), Ok(t)) = (std::env::var("TAFUL_TABLE_SEATS"), &s.trainers) {
+            let bots: Vec<Option<String>> = list
+                .split(',')
+                .map(|id| (id != "reference").then(|| id.to_string()))
+                .collect();
+            let known = bots
+                .iter()
+                .flatten()
+                .all(|id| t.preflop.profile(id).is_some());
+            if known && bots.len() + 1 == usize::from(t.preflop.config().table_size) {
+                s.seats = Some(bots);
+            }
+        }
         if let Ok(seed) = std::env::var("TAFUL_TABLE_SEED").map(|v| v.parse::<u64>()) {
             s.seed = seed.unwrap_or(s.seed);
         }
@@ -243,14 +262,12 @@ impl TableScreen {
             Mode::Hand => {
                 self.hand = None;
                 self.hand_sent = false;
-                // The table profile (#28): every bot seat plays it.
-                let opponent = self.opponent.clone();
+                // The table (#28, #29): one profile for every bot seat, or
+                // one per seat.
+                let bots = self.table_bots(&t);
                 // A new hand starts by the button so every seat comes up.
                 self.run(Busy::Dealing, cx, move || {
-                    Done::Hand(
-                        FullHand::against(&t.preflop, t.post(), None, seed, opponent.as_deref())
-                            .ok(),
-                    )
+                    Done::Hand(FullHand::at_table(&t.preflop, t.post(), None, seed, &bots).ok())
                 });
             }
         }
@@ -344,6 +361,48 @@ impl TableScreen {
         cx.notify();
     }
 
+    /// The bots of the next hand, clockwise from hero's left.
+    fn table_bots(&self, t: &Trainers) -> Vec<Option<String>> {
+        let n = usize::from(t.preflop.config().table_size) - 1;
+        self.seats
+            .clone()
+            .unwrap_or_else(|| vec![self.opponent.clone(); n])
+    }
+
+    /// Switches between one profile for the whole table and one per seat
+    /// (#29). Per seat starts from the current table profile.
+    fn set_per_seat(&mut self, per_seat: bool, cx: &mut Context<Self>) {
+        let Ok(t) = self.trainers.clone() else { return };
+        self.seats = per_seat.then(|| self.table_bots(&t));
+        self.table_changed(cx);
+    }
+
+    /// Seat `i` (from hero's left) plays the next option: the reference,
+    /// then each profile in order.
+    fn cycle_seat(&mut self, i: usize, cx: &mut Context<Self>) {
+        let Ok(t) = self.trainers.clone() else { return };
+        let Some(seats) = &mut self.seats else { return };
+        let options: Vec<Option<String>> = std::iter::once(None)
+            .chain(
+                t.preflop
+                    .profiles()
+                    .iter()
+                    .map(|p| Some(p.bot.profile().id.clone())),
+            )
+            .collect();
+        let at = options.iter().position(|o| *o == seats[i]).unwrap_or(0);
+        seats[i] = options[(at + 1) % options.len()].clone();
+        self.table_changed(cx);
+    }
+
+    /// A hand in progress plays on; the next one sits the new table.
+    fn table_changed(&mut self, cx: &mut Context<Self>) {
+        if self.hand.as_ref().is_none_or(|h| h.end.is_some()) {
+            self.deal(cx);
+        }
+        cx.notify();
+    }
+
     fn set_kind(&mut self, kind: SpotKind, cx: &mut Context<Self>) {
         self.kind = kind;
         self.mode = Mode::Spot;
@@ -373,7 +432,8 @@ impl TableScreen {
                 }
             }
             _ => {
-                // Grading reads the spot's strategy: no solve here.
+                // Grading reads the spot's strategy: no solve here (a
+                // mixed table's best response was computed with the deal).
                 if self.answer.is_none()
                     && let Some(q) = &self.question
                 {
@@ -469,13 +529,23 @@ impl TableScreen {
             )));
         }
         if let Some(id) = opponent {
-            d = d.child(self.message(i18n.tr_args(
-                "table-vs-profile-prompt",
-                &[
-                    ("profile", i18n.tr(&format!("bot-profile-{id}")).into()),
-                    ("about", i18n.tr(&format!("bot-profile-{id}-about")).into()),
-                ],
-            )));
+            // A review or drill of a mixed-table decision (#29) is against
+            // the table its key names.
+            let line = if taful_app::mixed::is_table_key(id) {
+                i18n.tr_args(
+                    "table-vs-table-prompt",
+                    &[("table", i18n.opponent(id).into())],
+                )
+            } else {
+                i18n.tr_args(
+                    "table-vs-profile-prompt",
+                    &[
+                        ("profile", i18n.tr(&format!("bot-profile-{id}")).into()),
+                        ("about", i18n.tr(&format!("bot-profile-{id}-about")).into()),
+                    ],
+                )
+            };
+            d = d.child(self.message(line));
         }
         d
     }
@@ -567,7 +637,8 @@ impl TableScreen {
                     LeftReason::BotOffRange => "table-hand-over-bot-range",
                 };
                 let profile = h
-                    .table_profile()
+                    .remaining_bot_profile()
+                    .or(h.table_profile())
                     .map(|id| i18n.tr(&format!("bot-profile-{id}")))
                     .unwrap_or_default();
                 i18n.tr_args(
@@ -617,6 +688,8 @@ impl TableScreen {
                     ("about", i18n.tr(&format!("bot-profile-{id}-about")).into()),
                 ],
             )));
+        } else if h.is_mixed() {
+            panel = panel.child(self.message(i18n.tr("table-hand-vs-mixed")));
         }
         if let Some(id) = &h.fallback
             && h.walk().is_some()
@@ -626,12 +699,16 @@ impl TableScreen {
                 &[("profile", name(id).into())],
             )));
         }
-        if !over && self.opponent.as_deref() != h.table_profile() {
-            let next = self.opponent.as_deref().unwrap_or("reference");
-            panel =
-                panel.child(self.message(
-                    i18n.tr_args("table-hand-next-table", &[("profile", name(next).into())]),
-                ));
+        let next = self.table_bots(t);
+        if !over && next != h.bots() {
+            let first = next.first().cloned().flatten();
+            let line = if next.iter().all(|b| *b == first) {
+                let next = first.as_deref().unwrap_or("reference");
+                i18n.tr_args("table-hand-next-table", &[("profile", name(next).into())])
+            } else {
+                i18n.tr("table-hand-next-mixed")
+            };
+            panel = panel.child(self.message(line));
         }
         if let Some(d) = h.decisions.last() {
             panel = panel.child(felt::explanation(&self.ui, p, &Explain::of(&d.graded)));
@@ -779,6 +856,54 @@ impl TableScreen {
                 this.set_opponent(Some(id.clone()), cx)
             }));
         }
+        // Full hands: one profile for the whole table, or one per seat (#29).
+        let per_seat = self.mode == Mode::Hand && self.seats.is_some();
+        if self.mode == Mode::Hand {
+            opponents.push(self.chip(
+                "seats_same",
+                i18n.tr("table-seats-same"),
+                !per_seat,
+                cx,
+                |this, cx| this.set_per_seat(false, cx),
+            ));
+            opponents.push(self.chip(
+                "seats_each",
+                i18n.tr("table-seats-each"),
+                per_seat,
+                cx,
+                |this, cx| this.set_per_seat(true, cx),
+            ));
+        }
+        if per_seat {
+            // Every chip but the per-seat ones is a whole-table profile.
+            opponents.drain(..opponents.len() - 2);
+            opponents.push(
+                div()
+                    .id("seats_from_left")
+                    .text_size(px(th.text_size.sm))
+                    .text_color(p.text_muted)
+                    .child(i18n.tr("table-seats-from-left")),
+            );
+            for (i, bot) in self
+                .seats
+                .clone()
+                .unwrap_or_default()
+                .into_iter()
+                .enumerate()
+            {
+                let profile = i18n.tr(&format!(
+                    "bot-profile-{}",
+                    bot.as_deref().unwrap_or("reference")
+                ));
+                let label = format!(
+                    "{} {profile}",
+                    i18n.tr_args("table-seat-left", &[("n", (i + 1).into())])
+                );
+                opponents.push(self.chip(("seat", i), label, false, cx, move |this, cx| {
+                    this.cycle_seat(i, cx)
+                }));
+            }
+        }
         if matches!(self.mode, Mode::Spot | Mode::Postflop | Mode::Hand) {
             modes = modes.child(
                 div()
@@ -899,10 +1024,7 @@ impl TableScreen {
         let opponent = taful_app::template::opponent_id(b.opponent.as_deref());
         parts.push(i18n.tr_args(
             "leak-vs-profile",
-            &[(
-                "profile",
-                i18n.tr(&format!("bot-profile-{opponent}")).into(),
-            )],
+            &[("profile", i18n.opponent(opponent).into())],
         ));
         parts.join(" · ")
     }

@@ -3,6 +3,7 @@
 //!
 //! ```text
 //! taful-library-build preflop <manifest.toml> <out-dir>
+//! taful-library-build preflop-mixed-bench <manifest.toml> <out-dir>
 //! taful-library-build summary <chart.tafl> [max-depth]
 //! taful-library-build flops <out-file>
 //! taful-library-build postflop <manifest.toml> <out-dir> [--only a,b] [--flops N] [--flop-list F,F]
@@ -21,6 +22,7 @@ use std::process::ExitCode;
 fn usage() -> ExitCode {
     eprintln!(
         "usage: taful-library-build preflop <manifest.toml> <out-dir>\n\
+                taful-library-build preflop-mixed-bench <manifest.toml> <out-dir>\n\
                 taful-library-build summary <chart.tafl> [max-depth]\n\
                 taful-library-build flops <out-file>\n\
                 taful-library-build postflop <manifest.toml> <out-dir> [--only a,b] [--flops N] [--flop-list F,F]\n\
@@ -44,6 +46,9 @@ fn main() -> ExitCode {
                     ExitCode::FAILURE
                 }
             }
+        }
+        [cmd, manifest, out] if cmd == "preflop-mixed-bench" => {
+            report(preflop::bench_mixed(Path::new(manifest), Path::new(out)))
         }
         [cmd, chart, rest @ ..] if cmd == "summary" && rest.len() <= 1 => {
             let depth = rest.first().and_then(|d| d.parse().ok()).unwrap_or(3);

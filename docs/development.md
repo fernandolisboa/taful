@@ -15,7 +15,7 @@ See [spec §4](spec.md#4-workspace). In short:
 | `tools/arch-check` | Dependency-direction and license checks over `cargo metadata`. |
 | `tools/content-check` | Runs the content checks over `content/`. |
 | `tools/library-build` | Offline library build: preflop solver (M3), postflop batch (M4). The only crate allowed to link `postflop-solver` (pinned git rev, no default features). |
-| `library/` | Built library files in the static layout of spec §7.6 (`v1/<config key>/…`). In git: the preflop chart (embedded by `taful-app`) and `flops.txt`. The postflop files are too big for git and live in the app's library folder. |
+| `library/` | Built library files in the static layout of spec §7.6 (`v1/<config key>/…`). In git: the preflop charts (embedded by `taful-app`) and `flops.txt`. The postflop files are too big for git and live in the app's library folder. |
 | `content/` | Bot profiles (`bots/*.toml`), themes, `skill-tree.toml`, lessons (`lessons/<locale>/*.md`), quizzes (`quizzes/*.toml`) and their render snapshots (`.snapshots/`). Embedded into `taful-app` by its `build.rs`. |
 | `config/` | Tunable numbers loaded at runtime: `grading.toml` (D3 thresholds), `calc.toml` (trainer tolerances and target times). Tests pin them to the code defaults. |
 | `i18n/<locale>/*.ftl` | Fluent strings. en-US is the source, pt-BR ships. |
@@ -83,6 +83,8 @@ cargo run --release -p taful-library-build -- summary library/v1/*/preflop.tafl 
 About 5 minutes on 4 vCPU (the 169×169 equity table is cached in `library/cache/`, which is git-ignored). A test fails if the committed chart was built from a different manifest. Model and format details: spec §6 and §7.5.
 
 The same run writes one best-response chart per bot profile listed in the manifest's `[profiles]` (`preflop-<id>.tafl`, spec §9). Edit a profile in `content/bots/` → rerun the command above: the reference chart comes out byte-identical (profiles are not in its hash) and only the profile charts change; a test fails if a profile changed without a rebuild. A new profile also needs its `bot-profile-<id>` and `bot-profile-<id>-about` messages and an entry in `BUILTIN_PROFILE_CHARTS` (`crates/taful-app/src/preflop.rs`).
+
+It also writes `preflop-full.tafl` (the chart without pruning) and `preflop-equity.bin` (the equity table the tree was built on), which the app embeds to compute mixed tables' best responses on demand (#29, spec §9). Commit them with the chart. `cargo run --release -p taful-library-build -- preflop-mixed-bench tools/library-build/manifests/preflop-6max-100bb.toml <scratch dir>` re-solves the manifest and times those best responses.
 
 The desktop table screen opens directly with `TAFUL_SCREEN=table` (any `nav-<id>` works). `TAFUL_THEME=<id>` and `TAFUL_LAYOUT=<preset>` override the saved theme and layout (screenshots).
 

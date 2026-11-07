@@ -45,6 +45,11 @@ pub struct Decision {
     /// A bot profile's strategy at this node, `[action][class]` (empty until
     /// a profile is locked; spec §9).
     pub locked: Vec<f32>,
+    /// The published reference strategy at this node, `[action][class]`
+    /// (chart rows, set with the locks): the best responder's reach follows
+    /// it, so the build and the app (which only has the charts) walk the
+    /// same game. Empty = the solver's average strategy.
+    pub reference: Vec<f32>,
     /// The actor's best-response EV against the locked profile at every
     /// other seat, `[action][class]` in chips.
     pub br_ev: Vec<f32>,
@@ -293,6 +298,7 @@ impl Builder<'_> {
                     value: 0.0,
                     value_weight: 0.0,
                     locked: Vec::new(),
+                    reference: Vec::new(),
                     br_ev: Vec::new(),
                 }))
             }

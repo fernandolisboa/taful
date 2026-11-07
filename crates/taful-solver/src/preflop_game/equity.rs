@@ -7,6 +7,7 @@
 
 use rand::{RngExt, SeedableRng};
 use rand_chacha::ChaCha8Rng;
+#[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use taful_core::cards::{Card, Hand};
 use taful_core::eval::Accum;
@@ -29,6 +30,19 @@ pub struct ClassTables {
 /// Combos per class.
 pub fn class_sizes() -> [f32; N] {
     std::array::from_fn(|i| HandClass::from_index(i).expect("< 169").num_combos() as f32)
+}
+
+/// The card-removal counts (exact, cheap).
+fn compat_table() -> Vec<f32> {
+    let classes: Vec<HandClass> = HandClass::all().collect();
+    let mut compat = vec![0.0f32; N * N];
+    for (a, &ca) in classes.iter().enumerate() {
+        let h = representative(ca);
+        for (b, &cb) in classes.iter().enumerate() {
+            compat[a * N + b] = compat_count(h, cb) as f32;
+        }
+    }
+    compat
 }
 
 fn representative(c: HandClass) -> Hand {
@@ -81,18 +95,15 @@ impl ClassTables {
     /// whatever the thread count: each class pair has its own RNG stream.
     pub fn compute(samples: u32, seed: u64) -> ClassTables {
         let classes: Vec<HandClass> = HandClass::all().collect();
-        let mut compat = vec![0.0f32; N * N];
-        for (a, &ca) in classes.iter().enumerate() {
-            let h = representative(ca);
-            for (b, &cb) in classes.iter().enumerate() {
-                compat[a * N + b] = compat_count(h, cb) as f32;
-            }
-        }
+        let compat = compat_table();
         let pairs: Vec<(usize, usize)> = (0..N)
             .flat_map(|a| ((a + 1)..N).map(move |b| (a, b)))
             .collect();
-        let eqs: Vec<f64> = pairs
-            .par_iter()
+        #[cfg(feature = "parallel")]
+        let it = pairs.par_iter();
+        #[cfg(not(feature = "parallel"))]
+        let it = pairs.iter();
+        let eqs: Vec<f64> = it
             .map(|&(a, b)| {
                 let mut rng = ChaCha8Rng::seed_from_u64(
                     seed ^ ((a * N + b) as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15),
@@ -122,24 +133,43 @@ impl ClassTables {
     pub fn cached(dir: &std::path::Path, samples: u32, seed: u64) -> std::io::Result<ClassTables> {
         let path = dir.join(Self::file_name(samples, seed));
         if let Ok(bytes) = std::fs::read(&path)
-            && bytes.len() == N * N * 4
+            && let Some(t) = ClassTables::from_equity_bytes(&bytes, samples, seed)
         {
-            let equity = bytes
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .map(|c| f32::from_le_bytes(*c))
-                .collect();
-            let mut t = ClassTables::compute(0, seed);
-            t.equity = equity;
-            t.samples = samples;
             return Ok(t);
         }
         let t = ClassTables::compute(samples, seed);
         std::fs::create_dir_all(dir)?;
-        let bytes: Vec<u8> = t.equity.iter().flat_map(|e| e.to_le_bytes()).collect();
-        std::fs::write(&path, bytes)?;
+        std::fs::write(&path, t.equity_bytes())?;
         Ok(t)
+    }
+
+    /// The equity table as little-endian `f32`s (`preflop-equity.bin`).
+    pub fn equity_bytes(&self) -> Vec<u8> {
+        self.equity.iter().flat_map(|e| e.to_le_bytes()).collect()
+    }
+
+    /// Tables from [`equity_bytes`](Self::equity_bytes) (the card-removal
+    /// counts are exact and cheap, so they are recomputed); `None` if the
+    /// bytes are not a 169×169 table.
+    pub fn from_equity_bytes(bytes: &[u8], samples: u32, seed: u64) -> Option<ClassTables> {
+        if bytes.len() != N * N * 4 {
+            return None;
+        }
+        let equity: Vec<f32> = bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|c| f32::from_le_bytes(*c))
+            .collect();
+        if equity.iter().any(|e| !(0.0..=1.0).contains(e)) {
+            return None;
+        }
+        Some(ClassTables {
+            compat: compat_table(),
+            equity,
+            samples,
+            seed,
+        })
     }
 
     pub fn eq(&self, a: usize, b: usize) -> f32 {

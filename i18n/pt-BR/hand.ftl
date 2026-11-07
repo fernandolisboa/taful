@@ -64,3 +64,4 @@ hand-review-summary = { $hand } · resultado { $net } bb · EV perdido { $loss }
 hand-review-no-decisions = Você não teve decisão nesta mão.
 hand-review-recent = Mãos recentes
 hand-review-table = Mesa: { $profile } em todos os assentos dos bots
+hand-review-mixed = Mesa mista: o perfil de cada bot aparece no assento dele.

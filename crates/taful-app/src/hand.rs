@@ -10,6 +10,11 @@
 //! of the chart, postflop the library's profile data and the locked river),
 //! and every hero decision is graded on hero's best-response EVs against
 //! it. Without a profile the hand is exactly the reference hand of M5.
+//!
+//! Each bot seat can also play its own profile (a mixed table, #29): every
+//! bot samples its own seat's strategy, preflop decisions are graded against
+//! the opponents still in the hand (on demand when they differ,
+//! `crate::mixed`) and postflop ones against the remaining bot.
 
 use rand::seq::IndexedRandom;
 use rand::{RngExt, SeedableRng};
@@ -101,6 +106,8 @@ pub enum HandError {
     Engine(EngineError),
     NotHeroTurn,
     NotInTree(Action),
+    /// A table needs one entry per bot seat; this many were given.
+    Table(usize),
 }
 
 impl std::fmt::Display for HandError {
@@ -111,6 +118,7 @@ impl std::fmt::Display for HandError {
             HandError::Engine(e) => write!(f, "engine: {e}"),
             HandError::NotHeroTurn => f.write_str("not hero's turn"),
             HandError::NotInTree(a) => write!(f, "action {a} is not in the tree"),
+            HandError::Table(n) => write!(f, "a table of {n} bots does not fit the seats"),
         }
     }
 }
@@ -160,11 +168,9 @@ pub struct FullHand {
     /// Who sits at each seat: `None` for hero and for reference bots,
     /// `Some(id)` for a bot playing that profile.
     pub seat_profiles: Vec<Option<String>>,
-    /// The profile every bot seat plays (`None` = the reference).
-    table: Option<String>,
-    /// The table plays a profile, but the postflop library file has no data
-    /// for it: postflop is against the reference (graded and filed so), and
-    /// this holds the profile id for the message.
+    /// The remaining bot plays a profile, but the postflop library file has
+    /// no data for it: postflop is against the reference (graded and filed
+    /// so), and this holds the profile id for the message.
     pub fallback: Option<String>,
     tree: Option<Tree>,
     pub decisions: Vec<HandDecision>,
@@ -198,24 +204,46 @@ impl FullHand {
         seed: u64,
         profile: Option<&str>,
     ) -> Result<FullHand, HandError> {
-        if let Some(id) = profile
-            && pre.profile(id).is_none()
-        {
-            return Err(PreflopError::UnknownProfile(id.into()).into());
+        let bots = vec![profile.map(str::to_owned); usize::from(pre.config().table_size) - 1];
+        FullHand::at_table(pre, post, hero, seed, &bots)
+    }
+
+    /// As [`new`](Self::new), with one profile per bot seat (#29): `bots[i]`
+    /// sits `i + 1` seats to hero's left (`None` = the reference). The deal
+    /// is the same for every table under one seed.
+    pub fn at_table(
+        pre: &PreflopTrainer,
+        post: Option<&PostflopTrainer>,
+        hero: Option<Seat>,
+        seed: u64,
+        bots: &[Option<String>],
+    ) -> Result<FullHand, HandError> {
+        let seats = usize::from(pre.config().table_size);
+        if bots.len() != seats - 1 {
+            return Err(HandError::Table(bots.len()));
+        }
+        if let Some(id) = bots.iter().flatten().find(|id| pre.profile(id).is_none()) {
+            return Err(PreflopError::UnknownProfile(id.clone()).into());
+        }
+        // A mixed table grades on the on-demand best response: make sure
+        // it can be computed before the hand starts, not at hero's turn.
+        if bots.iter().any(|b| *b != bots[0]) {
+            pre.check_mixed()?;
         }
         let mut rng = ChaCha8Rng::seed_from_u64(seed);
-        let seats = usize::from(pre.config().table_size);
         let hero = hero.unwrap_or_else(|| rng.random_range(0..seats)) % seats;
         let state = GameState::new(pre.config().clone(), BUTTON, rng.random())?;
         let seat_profiles = (0..seats)
-            .map(|s| profile.filter(|_| s != hero).map(str::to_owned))
+            .map(|s| {
+                let left = (s + seats - hero) % seats;
+                (left > 0).then(|| bots[left - 1].clone()).flatten()
+            })
             .collect();
         let mut h = FullHand {
             seed,
             hero,
             state,
             seat_profiles,
-            table: profile.map(str::to_owned),
             fallback: None,
             tree: Some(Tree::Preflop(pre.chart().root())),
             decisions: Vec::new(),
@@ -232,9 +260,35 @@ impl FullHand {
         self.state.players()[self.hero].hole
     }
 
-    /// The profile the bots play (`None` = the reference).
+    /// The profile every bot plays (`None` = the reference, or a mixed
+    /// table: see [`is_mixed`](Self::is_mixed)).
     pub fn table_profile(&self) -> Option<&str> {
-        self.table.as_deref()
+        crate::mixed::uniform_profile(&self.seat_profiles, self.hero)
+    }
+
+    /// Whether the bots play different profiles (#29).
+    pub fn is_mixed(&self) -> bool {
+        crate::mixed::is_mixed(&self.seat_profiles, self.hero)
+    }
+
+    /// The bots clockwise from hero's left (`None` = the reference), the
+    /// order [`at_table`](Self::at_table) takes them in.
+    pub fn bots(&self) -> Vec<Option<String>> {
+        crate::mixed::bots_from_left(&self.seat_profiles, self.hero)
+            .map(|p| p.map(str::to_owned))
+            .collect()
+    }
+
+    /// The profile of the one bot still in the hand with hero (postflop is
+    /// heads-up), if exactly one is.
+    pub fn remaining_bot_profile(&self) -> Option<&str> {
+        let mut live = (0..self.seat_profiles.len())
+            .filter(|&s| s != self.hero && !self.state.players()[s].folded);
+        let seat = live.next()?;
+        if live.next().is_some() {
+            return None;
+        }
+        self.seat_profiles[seat].as_deref()
     }
 
     fn hero_turn(&self) -> bool {
@@ -280,7 +334,15 @@ impl FullHand {
                     .node(*node)
                     .action_index(action)
                     .ok_or(HandError::NotInTree(action))?;
-                let graded = pre.grade_vs(*node, hand, chosen, self.table.as_deref())?;
+                // The opponents still in the hand (#29, `crate::mixed`).
+                let opponent = pre.opponent_at(*node, &self.seat_profiles, self.hero);
+                let graded = pre.grade_at(
+                    *node,
+                    hand,
+                    chosen,
+                    opponent.as_deref(),
+                    Some(&self.seat_profiles),
+                )?;
                 let line = pre.chart().line(*node);
                 let kind = SpotKind::classify(&line, position);
                 HandDecision {
@@ -292,7 +354,7 @@ impl FullHand {
                             postflop: Vec::new(),
                             texture: None,
                             hero: position,
-                            opponent: self.table.clone(),
+                            opponent,
                         },
                         street: Street::Preflop,
                         node_type: NodeType::Preflop(kind),
@@ -448,13 +510,14 @@ impl FullHand {
         let n = self.state.players().len();
         let pos = walk.positions();
         let seats = [seat_of(n, pos[0]), seat_of(n, pos[1])];
-        if let Some(id) = &self.table {
-            // Heads-up from here on: the bot is the side hero is not.
-            let hero_side = usize::from(seats[1] == self.hero);
-            match walk.clone().against(id, hero_side ^ 1)? {
+        // Heads-up from here on: the bot is the side hero is not, and it
+        // plays its own seat's profile.
+        let hero_side = usize::from(seats[1] == self.hero);
+        if let Some(id) = self.seat_profiles[seats[hero_side ^ 1]].clone() {
+            match walk.clone().against(&id, hero_side ^ 1)? {
                 Some(w) => walk = w,
                 // A reference-only library: postflop vs the reference.
-                None => self.fallback = Some(id.clone()),
+                None => self.fallback = Some(id),
             }
         }
         self.state = self.state.deal_board(&flop.cards())?;
@@ -645,7 +708,7 @@ impl Replay {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::path::Path;
 
     use taful_core::config::GameConfig;
@@ -757,10 +820,21 @@ mod tests {
         profile: Option<&str>,
         want: usize,
     ) -> Vec<FullHand> {
+        let bots = vec![profile.map(str::to_owned); 5];
+        library_hands_at(pre, post, &bots, want)
+    }
+
+    /// As [`library_hands`], at a table of `bots` (from hero's left).
+    fn library_hands_at(
+        pre: &PreflopTrainer,
+        post: &PostflopTrainer,
+        bots: &[Option<String>],
+        want: usize,
+    ) -> Vec<FullHand> {
         let mut out = Vec::new();
         for seed in 0..20_000 {
             let hero = [0, 1][(seed % 2) as usize]; // BTN or SB
-            let mut h = FullHand::against(pre, Some(post), Some(hero), seed, profile).unwrap();
+            let mut h = FullHand::at_table(pre, Some(post), Some(hero), seed, bots).unwrap();
             // Steer hero along the fixture line when the chart allows it.
             while h.end.is_none() && h.walk().is_none() {
                 let acts = h.hero_actions(pre);
@@ -939,6 +1013,131 @@ mod tests {
         }
         assert!(streets.contains(&Street::Flop), "{streets:?}");
         assert!(streets.contains(&Street::River), "{streets:?}");
+    }
+
+    /// The key's own table (folded seats on the reference) and the hand's
+    /// whole table give the same EVs at the node, up to float rounding.
+    pub(crate) fn assert_close(a: &[f32], b: &[f32]) {
+        assert_eq!(a.len(), b.len());
+        for (x, y) in a.iter().zip(b) {
+            assert!((x - y).abs() < 1e-3, "{a:?} vs {b:?}");
+        }
+    }
+
+    /// The demo table of #29: two nits, a maniac and two TAGs.
+    fn mixed_bots() -> Vec<Option<String>> {
+        ["nit", "nit", "maniac", "tag", "tag"]
+            .iter()
+            .map(|id| Some(id.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn a_mixed_table_seats_each_profile_and_keeps_the_deal() {
+        let pre = pre();
+        let bots = mixed_bots();
+        for seed in 0..100 {
+            let r = FullHand::new(&pre, None, None, seed).unwrap();
+            let mut m = FullHand::at_table(&pre, None, None, seed, &bots).unwrap();
+            assert_eq!(r.hero, m.hero);
+            assert_eq!(
+                r.state.players().iter().map(|p| p.hole).collect::<Vec<_>>(),
+                m.state.players().iter().map(|p| p.hole).collect::<Vec<_>>()
+            );
+            assert_eq!(m.bots(), bots);
+            assert_eq!(m.seat_profiles[m.hero], None);
+            for (i, b) in bots.iter().enumerate() {
+                assert_eq!(&m.seat_profiles[(m.hero + 1 + i) % 6], b);
+            }
+            assert!(m.is_mixed());
+            assert_eq!(m.table_profile(), None);
+            play_best(&mut m, &pre, None);
+            bots_follow_their_profile(&m, &pre);
+        }
+        // A single-profile table is not mixed.
+        let n = FullHand::against(&pre, None, None, 1, Some("nit")).unwrap();
+        assert!(!n.is_mixed());
+        assert_eq!(n.bots(), vec![Some("nit".to_string()); 5]);
+        assert!(matches!(
+            FullHand::at_table(&pre, None, None, 0, &bots[..4]),
+            Err(HandError::Table(4))
+        ));
+        let mut unknown = bots.clone();
+        unknown[2] = Some("nobody".into());
+        assert!(matches!(
+            FullHand::at_table(&pre, None, None, 0, &unknown),
+            Err(HandError::Preflop(PreflopError::UnknownProfile(_)))
+        ));
+    }
+
+    /// #29: preflop decisions are graded and filed against the opponents
+    /// still in the hand (on the on-demand best response when they differ),
+    /// postflop ones against the remaining bot's profile.
+    #[test]
+    fn mixed_table_hands_grade_against_the_opponents_in_the_hand() {
+        let (pre, post) = (pre(), post_profiles());
+        let bots = mixed_bots();
+        let mut table_keys = 0;
+        let mut postflop = std::collections::HashSet::new();
+        // Preflop-only hands from every seat: plenty of multiway nodes.
+        for seed in 0..60 {
+            let mut h = FullHand::at_table(&pre, None, None, seed, &bots).unwrap();
+            play_best(&mut h, &pre, None);
+            for d in &h.decisions {
+                let key = pre.opponent_at(d.graded.node, &h.seat_profiles, h.hero);
+                assert_eq!(d.context.template.opponent, key, "seed {seed}");
+                let vs = d.graded.vs_profile.as_ref().map(|v| v.profile.clone());
+                assert_eq!(vs, key, "seed {seed}");
+                if let Some(k) = key.as_deref().filter(|k| crate::mixed::is_table_key(k)) {
+                    table_keys += 1;
+                    let evs = pre.table_evs(k, d.graded.node, d.graded.hand).unwrap();
+                    assert_close(&d.graded.hand_evs, &evs);
+                }
+            }
+        }
+        assert!(table_keys >= 20, "{table_keys} decisions against a table");
+        // Hands into the fixture's configuration: the remaining bot plays
+        // its own seat's profile postflop.
+        let hands = library_hands_at(&pre, &post, &bots, 6);
+        assert!(hands.len() >= 3, "found {}", hands.len());
+        for mut h in hands {
+            let bot = (0..6)
+                .find(|&s| s != h.hero && !h.state.players()[s].folded)
+                .unwrap();
+            let profile = h.seat_profiles[bot].clone();
+            assert_eq!(h.remaining_bot_profile(), profile.as_deref());
+            assert_eq!(h.walk().unwrap().vs_profile(), profile.as_deref());
+            play_best(&mut h, &pre, Some(&post));
+            for d in h
+                .decisions
+                .iter()
+                .filter(|d| d.context.street != Street::Preflop)
+            {
+                postflop.insert(profile.clone());
+                assert_eq!(d.context.template.opponent, profile);
+                assert_eq!(
+                    d.graded.vs_profile.as_ref().map(|v| v.profile.clone()),
+                    profile
+                );
+            }
+        }
+        assert!(!postflop.is_empty());
+    }
+
+    #[test]
+    fn same_seed_same_mixed_hand() {
+        let pre = pre();
+        let bots = mixed_bots();
+        for seed in 0..20 {
+            let hero = Some((seed % 6) as usize);
+            let mut a = FullHand::at_table(&pre, None, hero, seed, &bots).unwrap();
+            play_best(&mut a, &pre, None);
+            let mut b = FullHand::at_table(&pre, None, hero, seed, &bots).unwrap();
+            play_best(&mut b, &pre, None);
+            assert_eq!(a.state, b.state);
+            assert_eq!(a.decisions, b.decisions);
+            assert_eq!(a.end, b.end);
+        }
     }
 
     #[test]

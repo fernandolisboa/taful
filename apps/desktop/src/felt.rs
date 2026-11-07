@@ -465,13 +465,19 @@ pub fn explanation(ui: &Ui, p: &Palette, d: &Explain<'_>) -> Div {
             .flex_col()
             .gap(px(t.spacing.xs))
             .text_size(px(t.text_size.sm))
-            .child(div().text_color(p.text_muted).child(i18n.tr_args(
-                "table-vs-profile",
-                &[(
-                    "profile",
-                    i18n.tr(&format!("bot-profile-{}", v.profile)).into(),
-                )],
-            )))
+            .child(div().text_color(p.text_muted).child(
+                if taful_app::mixed::is_table_key(&v.profile) {
+                    i18n.tr_args(
+                        "table-vs-table",
+                        &[("table", i18n.opponent(&v.profile).into())],
+                    )
+                } else {
+                    i18n.tr_args(
+                        "table-vs-profile",
+                        &[("profile", i18n.opponent(&v.profile).into())],
+                    )
+                },
+            ))
             .child(line("table-exploit-line", v.exploit))
             .child(line("table-gto-line", v.gto))
             .child(i18n.tr_args(

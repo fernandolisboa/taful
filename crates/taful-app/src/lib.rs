@@ -24,6 +24,7 @@ pub mod i18n;
 pub mod layout;
 pub mod layout_edit;
 pub mod lessons;
+pub mod mixed;
 pub mod model;
 pub mod optimizer;
 pub mod postflop;

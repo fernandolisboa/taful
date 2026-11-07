@@ -675,7 +675,7 @@ pub struct BucketStats {
     pub street: String,
     pub node_type: String,
     pub texture: Option<String>,
-    /// `reference` or a bot profile id.
+    /// `reference`, a bot profile id, or a mixed table's key (#29).
     pub opponent: String,
     pub decisions: u32,
     pub total_ev_loss: f64,

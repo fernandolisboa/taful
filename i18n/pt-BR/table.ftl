@@ -107,3 +107,14 @@ table-profile-fallback = Esta biblioteca ainda não tem dados de { $profile }, e
 table-hand-vs-profile = Todos os bots jogam como { $profile }. { $about } Avaliado pelo EV contra esses bots.
 table-hand-profile-fallback = Esta biblioteca ainda não tem dados de { $profile }, então o pós-flop é contra o oponente de referência. Reconstrua a biblioteca com perfis para jogar o pós-flop contra { $profile }.
 table-hand-next-table = A próxima mão é contra { $profile }.
+
+## Mixed tables (#29): one profile per bot seat.
+bot-table = Mesa ({ $seats })
+table-vs-table = Avaliado contra { $table }: EV contra esses bots.
+table-vs-table-prompt = Oponentes: { $table }. Avaliado pelo EV contra esses bots.
+table-seats-same = Igual para todos
+table-seats-each = Por assento
+table-seat-left = { $n }º
+table-seats-from-left = À sua esquerda:
+table-hand-vs-mixed = Mesa mista: cada bot joga o próprio perfil. O pré-flop é avaliado contra os oponentes ainda na mão, o pós-flop contra o bot que sobrou.
+table-hand-next-mixed = A próxima mão é na mesa mista.
