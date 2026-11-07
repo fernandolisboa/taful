@@ -1,4 +1,4 @@
-# Tour guiado (#58): balões mostrados na primeira visita a cada tela.
+# Guided tour (#58): coach marks shown on the first visit to each screen.
 
 tour-step = { $n } de { $total }
 tour-next = Próximo

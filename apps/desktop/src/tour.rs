@@ -2,18 +2,14 @@
 //! point at its main parts. Steps are data ([`steps`]); each names an
 //! anchor that the screen paints with [`anchor`] and its title and body
 //! strings (`i18n/*/tour.ftl`). Seen screens are kept in the `tour.seen`
-//! setting.
+//! setting (`taful_app::keys::TOUR_SEEN`).
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
 use gpui::{Bounds, Pixels, canvas, div, prelude::*};
 
 use crate::screen::Screen;
-
-/// Setting holding the ids of screens whose tour was finished or skipped,
-/// comma-separated.
-pub const SEEN_KEY: &str = "tour.seen";
 
 /// One coach mark.
 pub struct Step {
@@ -148,15 +144,9 @@ pub fn steps(screen: Screen) -> &'static [Step] {
     }
 }
 
-/// The id a screen is stored under in [`SEEN_KEY`].
-pub fn screen_id(screen: Screen) -> &'static str {
-    // Same id as `Screen::from_id` (`nav-<id>`).
-    screen.nav_key().split_once('-').map_or("", |(_, id)| id)
-}
-
 /// Whether `screen`'s tour is in the comma-separated `seen` list.
 pub fn is_seen(seen: &str, screen: Screen) -> bool {
-    seen.split(',').any(|s| s == screen_id(screen))
+    seen.split(',').any(|s| s == screen.id())
 }
 
 /// `seen` with `screen` added.
@@ -164,7 +154,7 @@ pub fn with_seen(seen: &str, screen: Screen) -> String {
     if is_seen(seen, screen) {
         return seen.to_owned();
     }
-    let id = screen_id(screen);
+    let id = screen.id();
     if seen.is_empty() {
         id.to_owned()
     } else {
@@ -173,17 +163,19 @@ pub fn with_seen(seen: &str, screen: Screen) -> String {
 }
 
 thread_local! {
-    /// Where each anchor was laid out on the last frame (window coords).
-    static ANCHORS: RefCell<HashMap<&'static str, Bounds<Pixels>>> =
+    /// Where each anchor was laid out, and on which frame (window coords).
+    static ANCHORS: RefCell<HashMap<&'static str, (u64, Bounds<Pixels>)>> =
         RefCell::new(HashMap::new());
-    /// Set when an anchor's rect changed since the last [`take_moved`].
-    static MOVED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// The frame being built (see [`begin_frame`]).
+    static FRAME: Cell<u64> = const { Cell::new(0) };
+    /// The step a missing anchor already asked one more frame for.
+    static RETRIED: Cell<Option<(Screen, usize)>> = const { Cell::new(None) };
 }
 
-/// Whether any anchor moved since the last call (the shell's ticker
-/// repaints an open tour then).
-pub fn take_moved() -> bool {
-    MOVED.with(|m| m.replace(false))
+/// Starts a frame; call once at the top of the root view's render, before
+/// any [`anchor_bounds`].
+pub fn begin_frame() {
+    FRAME.with(|f| f.set(f.get() + 1));
 }
 
 /// An invisible layer that records its parent's bounds under `id`. The
@@ -191,11 +183,13 @@ pub fn take_moved() -> bool {
 pub fn anchor(id: &'static str) -> impl IntoElement {
     div().absolute().top_0().left_0().size_full().child(
         canvas(
-            move |bounds, _, _| {
-                let old = ANCHORS.with(|a| a.borrow_mut().insert(id, bounds));
-                // A tour drawn from the old rect must render again.
-                if old != Some(bounds) {
-                    MOVED.with(|m| m.set(true));
+            move |bounds, window, _| {
+                let frame = FRAME.with(Cell::get);
+                let old = ANCHORS.with(|a| a.borrow_mut().insert(id, (frame, bounds)));
+                // A tour drawn from the old rect must render again (scroll,
+                // resize, first paint).
+                if old.map(|(_, b)| b) != Some(bounds) {
+                    window.request_animation_frame();
                 }
             },
             |_, _, _, _| {},
@@ -204,15 +198,30 @@ pub fn anchor(id: &'static str) -> impl IntoElement {
     )
 }
 
-/// Bounds of `id` from the last frame, if it was painted.
+/// Bounds of `id` if it was painted on the last frame. An anchor that
+/// stopped painting (a button that went away) is not returned.
 pub fn anchor_bounds(id: &'static str) -> Option<Bounds<Pixels>> {
-    ANCHORS.with(|a| a.borrow().get(id).copied())
+    let frame = FRAME.with(Cell::get);
+    ANCHORS.with(|a| {
+        a.borrow()
+            .get(id)
+            .filter(|(f, _)| *f + 1 == frame)
+            .map(|(_, b)| *b)
+    })
+}
+
+/// Whether a step whose anchor is missing should ask for one more frame
+/// (true once per step: the anchor may paint on this frame; if it does
+/// not, the step stays centered without redrawing every frame).
+pub fn retry_once(screen: Screen, step: usize) -> bool {
+    RETRIED.with(|r| r.replace(Some((screen, step))) != Some((screen, step)))
 }
 
 /// Forgets every anchor (called on screen changes so a stale rect from
 /// the previous screen is never pointed at).
 pub fn clear_anchors() {
     ANCHORS.with(|a| a.borrow_mut().clear());
+    RETRIED.with(|r| r.set(None));
 }
 
 #[cfg(test)]

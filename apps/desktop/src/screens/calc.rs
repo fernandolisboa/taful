@@ -270,7 +270,8 @@ impl Shell {
 
     /// Pauses a running question's clock when the user leaves the screen.
     pub(crate) fn calc_leave(&mut self) {
-        if self.calc.running() {
+        // Already paused (a tour): keep the time it stopped at.
+        if self.calc.running() && self.calc.left_at.is_none() {
             self.calc.left_at = Some(self.app.now());
         }
     }
@@ -385,7 +386,8 @@ impl Shell {
                 .child(round_view(
                     round,
                     &self.input,
-                    self.app.now(),
+                    // A paused clock (tour open) shows the time it stopped at.
+                    self.calc.left_at.unwrap_or_else(|| self.app.now()),
                     round
                         .exercise
                         .target(self.app.calc_settings())

@@ -768,7 +768,7 @@ impl Shell {
                             }),
                         ),
                     )
-                    .when(self.tour_seen.is_empty(), |c| {
+                    .when(self.tour_reset_done, |c| {
                         c.child(muted(ui.i18n.tr("tour-reset-done"), &ui, &p))
                     }),
             )

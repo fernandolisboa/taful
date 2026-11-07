@@ -58,6 +58,8 @@ pub struct Shell {
     tour: Option<(Screen, usize)>,
     /// Screens whose tour was finished or skipped (`tour.seen`).
     pub(crate) tour_seen: String,
+    /// Set by Settings' "show tours again" until the screen changes.
+    pub(crate) tour_reset_done: bool,
     _ticker: Task<()>,
     _subscriptions: Vec<Subscription>,
 }
@@ -89,8 +91,7 @@ impl Shell {
                     if add_use && let Err(e) = shell.app.note_use(USE_STEP.as_millis() as i64) {
                         eprintln!("taful: backup failed: {e}");
                     }
-                    let tour_moved = crate::tour::take_moved() && shell.tour.is_some();
-                    if shell.timer_running() || tour_moved {
+                    if shell.timer_running() {
                         cx.notify();
                     }
                 });
@@ -127,13 +128,14 @@ impl Shell {
             leaks: None,
             tour: None,
             tour_seen: String::new(),
+            tour_reset_done: false,
             table,
             _ticker: ticker,
             _subscriptions: subscriptions,
         };
         shell.tour_seen = shell
             .app
-            .string_setting(crate::tour::SEEN_KEY)
+            .string_setting(taful_app::keys::TOUR_SEEN)
             .unwrap_or_default();
         shell.maybe_start_tour();
         // Dev override (screenshots): TAFUL_REVIEW_START=1 deals the first review.
@@ -215,13 +217,15 @@ impl Shell {
 
     pub(crate) fn select(&mut self, screen: Screen, window: &mut Window, cx: &mut Context<Self>) {
         if self.screen != screen {
+            self.tour_reset_done = false;
+            // Leaving mid-tour counts as skipping it (before calc_leave,
+            // which would otherwise be undone by the tour's resume).
+            self.tour_end();
             if self.screen == Screen::Calc {
                 self.calc_leave();
             }
             self.screen = screen;
             crate::tour::clear_anchors();
-            self.tour = None;
-            self.maybe_start_tour();
             self.input.clear();
             self.scroll_to_top();
             if screen == Screen::Review {
@@ -233,6 +237,7 @@ impl Shell {
             if screen == Screen::HandReview {
                 self.hand_review_enter();
             }
+            self.maybe_start_tour();
             if screen == Screen::Home {
                 self.leaks = None;
             }
@@ -275,8 +280,13 @@ impl Shell {
     }
 
     fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if self.tour.is_some() && ev.keystroke.key == "escape" {
-            self.tour_end();
+        if self.tour.is_some() {
+            // The tour owns the keyboard: no answer is typed behind it.
+            match ev.keystroke.key.as_str() {
+                "escape" => self.tour_end(),
+                "enter" => self.tour_next(cx),
+                _ => {}
+            }
             cx.notify();
             return;
         }
@@ -465,7 +475,16 @@ impl Shell {
             return;
         }
         if !crate::tour::is_seen(&self.tour_seen, self.screen) {
-            self.tour = Some((self.screen, 0));
+            self.tour_start();
+        }
+    }
+
+    /// Opens the current screen's tour at its first step. A timed
+    /// question's clock is paused while the tour is open.
+    fn tour_start(&mut self) {
+        self.tour = Some((self.screen, 0));
+        if self.screen == Screen::Calc {
+            self.calc_leave();
         }
     }
 
@@ -485,10 +504,13 @@ impl Shell {
         let Some((screen, _)) = self.tour.take() else {
             return;
         };
+        if screen == Screen::Calc && self.screen == Screen::Calc {
+            self.calc_enter();
+        }
         self.tour_seen = crate::tour::with_seen(&self.tour_seen, screen);
         if let Err(e) = self
             .app
-            .set_string_setting(crate::tour::SEEN_KEY, &self.tour_seen)
+            .set_string_setting(taful_app::keys::TOUR_SEEN, &self.tour_seen)
         {
             eprintln!("taful: saving the tour state failed: {e}");
         }
@@ -497,7 +519,8 @@ impl Shell {
     /// Forgets every seen tour; each screen shows its tour again.
     pub(crate) fn tour_reset(&mut self) {
         self.tour_seen.clear();
-        if let Err(e) = self.app.set_string_setting(crate::tour::SEEN_KEY, "") {
+        self.tour_reset_done = true;
+        if let Err(e) = self.app.set_string_setting(taful_app::keys::TOUR_SEEN, "") {
             eprintln!("taful: resetting the tours failed: {e}");
         }
     }
@@ -507,6 +530,8 @@ impl Shell {
     fn tour_overlay(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         const CARD_W: f32 = 360.;
         const GAP: f32 = 12.;
+        // Room kept for the card (its height is known only after layout).
+        const CARD_H: f32 = 260.;
         let (screen, i) = self.tour?;
         let steps = crate::tour::steps(screen);
         let step = steps.get(i)?;
@@ -514,8 +539,8 @@ impl Shell {
         let vp = window.viewport_size();
         let (vw, vh) = (f32::from(vp.width), f32::from(vp.height));
         let bounds = crate::tour::anchor_bounds(step.anchor);
-        if bounds.is_none() {
-            // The anchor paints this frame; point at it on the next one.
+        if bounds.is_none() && crate::tour::retry_once(screen, i) {
+            // The anchor may paint this frame; point at it on the next one.
             window.request_animation_frame();
         }
         let last = i + 1 == steps.len();
@@ -604,18 +629,26 @@ impl Shell {
             .border_2()
             .border_color(p.accent);
         let clamp_x = |x: f32| x.clamp(GAP, (vw - CARD_W - GAP).max(GAP));
+        // The card always stays inside the window, even when the anchor
+        // is scrolled out of view (e.g. the quiz button under a long text).
+        let clamp_y = |y: f32| y.clamp(GAP, (vh - CARD_H - GAP).max(GAP));
         // Tall anchors (nav, felt): beside them; others: below, or above
         // when there is no room below.
-        let card = if bh > vh * 0.5 && bx + bw + GAP + CARD_W < vw {
-            card.left(px(bx + bw + GAP))
-                .top(px((by + 40.).min(vh - 260.)))
+        // `None`: above the anchor, the card's bottom edge on its top.
+        let (x, top) = if bh > vh * 0.5 && bx + bw + GAP + CARD_W < vw {
+            (bx + bw + GAP, Some(by + 40.))
         } else if bh > vh * 0.5 && bx > CARD_W + GAP {
-            card.left(px(bx - CARD_W - GAP))
-                .top(px((by + 40.).min(vh - 260.)))
-        } else if by + bh + 240. < vh {
-            card.left(px(clamp_x(bx))).top(px(by + bh + GAP))
+            (bx - CARD_W - GAP, Some(by + 40.))
+        } else if by + bh + GAP + CARD_H < vh {
+            (clamp_x(bx), Some(by + bh + GAP))
+        } else if by - GAP - CARD_H >= GAP && by <= vh {
+            (clamp_x(bx), None)
         } else {
-            card.left(px(clamp_x(bx))).bottom(px(vh - by + GAP))
+            (clamp_x(bx), Some(by - GAP - CARD_H))
+        };
+        let card = match top {
+            Some(y) => card.left(px(x)).top(px(clamp_y(y))),
+            None => card.left(px(x)).bottom(px(vh - by + GAP)),
         };
         Some(
             div()
@@ -641,7 +674,6 @@ impl Shell {
                 | Screen::Review
                 | Screen::Settings
         );
-        let screen = self.screen;
         div()
             .relative()
             .flex()
@@ -670,8 +702,8 @@ impl Shell {
                             .text_color(p.text_muted)
                             .cursor_pointer()
                             .hover(|s| s.border_color(p.accent).text_color(p.text))
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.tour = Some((screen, 0));
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.tour_start();
                                 cx.notify();
                             }))
                             .child(format!("? {}", i18n.tr("tour-replay"))),
@@ -761,6 +793,7 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        crate::tour::begin_frame();
         let content = self.content(window, cx);
         let nav = self.nav(cx);
         let tour = self.tour_overlay(window, cx);
