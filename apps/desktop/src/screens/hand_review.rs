@@ -90,7 +90,7 @@ impl Shell {
                 &p,
             )
             // Same width as the review screen's cards.
-            .w(px(760.))
+            .w(px(crate::screens::review::REVIEW_CARD_WIDTH))
             .child(
                 button("hr_play", ui.i18n.tr("hand-review-play"), true, &ui, &p).on_click(
                     cx.listener(|this, _, window, cx| {

@@ -15,7 +15,7 @@ use crate::widgets::{button, card, muted};
 
 /// Calc and quiz review cards keep a definite width (wrapped text measures
 /// at it) that still fits the default window.
-const REVIEW_CARD_WIDTH: f32 = 760.;
+pub(crate) const REVIEW_CARD_WIDTH: f32 = 760.;
 
 #[derive(Default)]
 pub struct ReviewView {
@@ -298,8 +298,9 @@ impl Shell {
                 .child(ui.i18n.tr_args("review-due", &[("count", due.into())]))
                 .child(self.review_next_button("review-start", cx))
                 .into_any_element(),
-            // Nothing due (before or after a session): say when the next
-            // item is due and offer the two places that fill the queue.
+            // The queue is empty (or a session ended with items it could not
+            // deal): say what fills it and when the next item is due, and
+            // offer to restart while anything is still due.
             _ if !self.review.loaded || self.review.prompt.is_none() => {
                 let next = self
                     .app
@@ -307,33 +308,51 @@ impl Shell {
                     .next_due_after(self.app.now())
                     .ok()
                     .flatten();
-                let body = match next {
-                    Some(when) => ui.i18n.tr_args(
-                        "review-next-at",
-                        &[("when", fmt::datetime(when, loc).into())],
-                    ),
-                    None => ui.i18n.tr("review-empty-body"),
-                };
-                crate::widgets::empty_state(ui.i18n.tr("review-empty"), body, &ui, &p)
-                    .child(
-                        div()
-                            .flex()
-                            .gap(px(t.spacing.sm))
-                            .pt(px(t.spacing.sm))
-                            .child(
-                                button("rv_table", ui.i18n.tr("hand-review-play"), true, &ui, &p)
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.select(Screen::Table, window, cx)
-                                    })),
-                            )
-                            .child(
-                                button("rv_calc", ui.i18n.tr("review-go-calc"), false, &ui, &p)
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.select(Screen::Calc, window, cx)
-                                    })),
+                crate::widgets::empty_state(
+                    ui.i18n.tr("review-empty"),
+                    ui.i18n.tr("review-empty-body"),
+                    &ui,
+                    &p,
+                )
+                .when(due == 0, |d| {
+                    d.when_some(next, |d, when| {
+                        d.child(muted(
+                            ui.i18n.tr_args(
+                                "review-next-at",
+                                &[("when", fmt::datetime(when, loc).into())],
                             ),
-                    )
-                    .into_any_element()
+                            &ui,
+                            &p,
+                        ))
+                    })
+                })
+                .when(due > 0, |d| {
+                    d.child(muted(
+                        ui.i18n.tr_args("review-due", &[("count", due.into())]),
+                        &ui,
+                        &p,
+                    ))
+                    .child(self.review_next_button("review-start", cx))
+                })
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(t.spacing.sm))
+                        .pt(px(t.spacing.sm))
+                        .child(
+                            button("rv_table", ui.i18n.tr("hand-review-play"), true, &ui, &p)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.select(Screen::Table, window, cx)
+                                })),
+                        )
+                        .child(
+                            button("rv_calc", ui.i18n.tr("review-go-calc"), false, &ui, &p)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.select(Screen::Calc, window, cx)
+                                })),
+                        ),
+                )
+                .into_any_element()
             }
             (Some(ReviewPrompt::Calc { round, .. }), None) => card(&ui, &p)
                 .child(round_view(

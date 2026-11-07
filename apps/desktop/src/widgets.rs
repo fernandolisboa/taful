@@ -397,12 +397,7 @@ pub fn empty_state(
     card(ui, p)
         .gap(px(t.spacing.sm))
         .py(px(t.spacing.xxl))
-        .child(
-            div()
-                .text_size(px(t.text_size.lg))
-                .font_weight(FontWeight::SEMIBOLD)
-                .child(title_text.into()),
-        )
+        .child(title(title_text, ui))
         .child(muted(body, ui, p))
 }
 

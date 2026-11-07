@@ -65,4 +65,4 @@ calc-desc-mdf = How often to defend against a bet.
 calc-desc-alpha = How many folds a bluff needs.
 calc-desc-spr = Effective stack divided by the pot.
 calc-desc-equity_vs_range = Your equity against a range on the board.
-calc-how-title = How it works
+calc-how-title = Pick an exercise and start

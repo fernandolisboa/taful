@@ -65,4 +65,4 @@ calc-desc-mdf = Com que frequência defender contra uma aposta.
 calc-desc-alpha = Quantos folds um blefe precisa.
 calc-desc-spr = Stack efetivo dividido pelo pote.
 calc-desc-equity_vs_range = Sua equity contra um range no board.
-calc-how-title = Como funciona
+calc-how-title = Escolha um exercício e comece

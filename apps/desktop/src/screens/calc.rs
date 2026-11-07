@@ -428,7 +428,6 @@ impl Shell {
                     &ui,
                     &p,
                 ))
-                .child(muted(ui.i18n.tr("calc-intro"), &ui, &p))
                 .child(
                     button("calc-start", ui.i18n.tr("calc-start"), true, &ui, &p).on_click(
                         cx.listener(|this, _, window, cx| {
@@ -447,6 +446,8 @@ impl Shell {
             .gap(px(t.spacing.lg))
             .child(picker)
             .child(card(&ui, &p).child(body))
+            // How answers are rated stays on screen while drilling.
+            .child(muted(ui.i18n.tr("calc-intro"), &ui, &p))
             .when_some(stats.filter(|s| s.attempts > 0), |d, s| {
                 d.child(muted(
                     ui.i18n.tr_args(
