@@ -225,6 +225,11 @@ impl FullHand {
         if let Some(id) = bots.iter().flatten().find(|id| pre.profile(id).is_none()) {
             return Err(PreflopError::UnknownProfile(id.clone()).into());
         }
+        // A mixed table grades on the on-demand best response: make sure
+        // it can be computed before the hand starts, not at hero's turn.
+        if bots.iter().any(|b| *b != bots[0]) {
+            pre.check_mixed()?;
+        }
         let mut rng = ChaCha8Rng::seed_from_u64(seed);
         let hero = hero.unwrap_or_else(|| rng.random_range(0..seats)) % seats;
         let state = GameState::new(pre.config().clone(), BUTTON, rng.random())?;
@@ -258,25 +263,19 @@ impl FullHand {
     /// The profile every bot plays (`None` = the reference, or a mixed
     /// table: see [`is_mixed`](Self::is_mixed)).
     pub fn table_profile(&self) -> Option<&str> {
-        if self.is_mixed() {
-            return None;
-        }
-        self.bot_profiles().next().flatten()
+        crate::mixed::uniform_profile(&self.seat_profiles, self.hero)
     }
 
     /// Whether the bots play different profiles (#29).
     pub fn is_mixed(&self) -> bool {
-        let mut bots = self.bot_profiles();
-        let first = bots.next().flatten();
-        bots.any(|p| p != first)
+        crate::mixed::is_mixed(&self.seat_profiles, self.hero)
     }
 
     /// The bots clockwise from hero's left (`None` = the reference), the
     /// order [`at_table`](Self::at_table) takes them in.
     pub fn bots(&self) -> Vec<Option<String>> {
-        let n = self.seat_profiles.len();
-        (1..n)
-            .map(|i| self.seat_profiles[(self.hero + i) % n].clone())
+        crate::mixed::bots_from_left(&self.seat_profiles, self.hero)
+            .map(|p| p.map(str::to_owned))
             .collect()
     }
 
@@ -290,11 +289,6 @@ impl FullHand {
             return None;
         }
         self.seat_profiles[seat].as_deref()
-    }
-
-    fn bot_profiles(&self) -> impl Iterator<Item = Option<&str>> {
-        let n = self.seat_profiles.len();
-        (1..n).map(move |i| self.seat_profiles[(self.hero + i) % n].as_deref())
     }
 
     fn hero_turn(&self) -> bool {
@@ -342,7 +336,13 @@ impl FullHand {
                     .ok_or(HandError::NotInTree(action))?;
                 // The opponents still in the hand (#29, `crate::mixed`).
                 let opponent = pre.opponent_at(*node, &self.seat_profiles, self.hero);
-                let graded = pre.grade_vs(*node, hand, chosen, opponent.as_deref())?;
+                let graded = pre.grade_at(
+                    *node,
+                    hand,
+                    chosen,
+                    opponent.as_deref(),
+                    Some(&self.seat_profiles),
+                )?;
                 let line = pre.chart().line(*node);
                 let kind = SpotKind::classify(&line, position);
                 HandDecision {
@@ -708,7 +708,7 @@ impl Replay {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::path::Path;
 
     use taful_core::config::GameConfig;
@@ -1015,6 +1015,15 @@ mod tests {
         assert!(streets.contains(&Street::River), "{streets:?}");
     }
 
+    /// The key's own table (folded seats on the reference) and the hand's
+    /// whole table give the same EVs at the node, up to float rounding.
+    pub(crate) fn assert_close(a: &[f32], b: &[f32]) {
+        assert_eq!(a.len(), b.len());
+        for (x, y) in a.iter().zip(b) {
+            assert!((x - y).abs() < 1e-3, "{a:?} vs {b:?}");
+        }
+    }
+
     /// The demo table of #29: two nits, a maniac and two TAGs.
     fn mixed_bots() -> Vec<Option<String>> {
         ["nit", "nit", "maniac", "tag", "tag"]
@@ -1082,7 +1091,7 @@ mod tests {
                 if let Some(k) = key.as_deref().filter(|k| crate::mixed::is_table_key(k)) {
                     table_keys += 1;
                     let evs = pre.table_evs(k, d.graded.node, d.graded.hand).unwrap();
-                    assert_eq!(d.graded.hand_evs, evs);
+                    assert_close(&d.graded.hand_evs, &evs);
                 }
             }
         }

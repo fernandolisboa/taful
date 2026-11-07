@@ -80,15 +80,14 @@ fn current_strategy(regrets: &[f32], k: usize) -> Vec<f32> {
 }
 
 /// Normalized strategy sum; falls back to regret matching for classes that
-/// never reached the node (uniform once the regrets are dropped, as in the
-/// app's best-response tree).
+/// never reached the node. On a tree without the solver's tables (the
+/// app's best-response tree drops them) it is uniform.
 pub fn average_strategy(d: &Decision) -> Vec<f32> {
     let k = d.actions.len();
-    let cur = if d.regrets.is_empty() {
-        vec![1.0 / k as f32; k * N]
-    } else {
-        current_strategy(&d.regrets, k)
-    };
+    if d.strategy_sum.is_empty() || d.regrets.is_empty() {
+        return vec![1.0 / k as f32; k * N];
+    }
+    let cur = current_strategy(&d.regrets, k);
     let mut s = vec![0.0f32; k * N];
     for h in 0..N {
         let total: f32 = (0..k).map(|a| d.strategy_sum[a * N + h]).sum();

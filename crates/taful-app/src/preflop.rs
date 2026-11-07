@@ -372,9 +372,9 @@ impl PreflopTrainer {
     /// a table key whose every profile is loaded (the reference always).
     pub fn knows_opponent(&self, opponent: &str) -> bool {
         match crate::mixed::parse_table_key(opponent) {
-            Some(seats) => seats
-                .iter()
-                .all(|(_, id)| id.as_deref().is_none_or(|id| self.profile(id).is_some())),
+            Some(_) => self
+                .seats_of_key(opponent)
+                .is_some_and(|seats| seats.iter().flatten().all(|id| self.profile(id).is_some())),
             None => {
                 !crate::mixed::is_table_key(opponent)
                     && (opponent == taful_core::profile::REFERENCE
@@ -394,6 +394,20 @@ impl PreflopTrainer {
         crate::mixed::opponent_at(&self.chart, node, seat_profiles, hero)
     }
 
+    /// What each seat plays at a table key's table: the named positions'
+    /// profiles, the reference elsewhere (those seats have folded). `None`
+    /// if the key is malformed or names a position this table lacks.
+    pub fn seats_of_key(&self, key: &str) -> Option<Vec<Option<String>>> {
+        let n = usize::from(self.config().table_size);
+        let positions = Position::by_button_offset(n);
+        let mut seats = vec![None; n];
+        for (pos, id) in crate::mixed::parse_table_key(key)? {
+            let offset = positions.iter().position(|&p| p == pos)?;
+            seats[(BUTTON + offset) % n] = id;
+        }
+        Some(seats)
+    }
+
     /// Hero's best-response EVs at `node` for `hand` against a table key's
     /// table (seats it does not name play the reference: they have folded).
     pub(crate) fn table_evs(
@@ -402,15 +416,41 @@ impl PreflopTrainer {
         node: NodeId,
         hand: Hand,
     ) -> Result<Vec<f32>, PreflopError> {
-        let seats_named = crate::mixed::parse_table_key(key)
+        let seats = self
+            .seats_of_key(key)
             .ok_or_else(|| PreflopError::UnknownProfile(key.into()))?;
-        let mut seats = vec![None; usize::from(self.config().table_size)];
-        for (pos, id) in seats_named {
-            seats[self.seat_of(pos)] = id;
-        }
+        self.table_evs_at(&seats, node, hand)
+    }
+
+    /// Hero's best-response EVs at `node` for `hand` with seat `s` playing
+    /// `seats[s]` (`None` = the reference; hero's entry is ignored).
+    fn table_evs_at(
+        &self,
+        seats: &[Option<String>],
+        node: NodeId,
+        hand: Hand,
+    ) -> Result<Vec<f32>, PreflopError> {
         let hero = self.seat_of(self.chart.node(node).player);
-        let br = self.mixed.best_response(self, hero, &seats)?;
+        let br = self.mixed.best_response(self, hero, seats)?;
         br.ev(node, hand).ok_or(PreflopError::NoData)
+    }
+
+    /// Builds the tree mixed tables need (once; the first call takes about
+    /// a tenth of a second). Call it off the UI thread before a mixed table
+    /// plays, so a missing or broken tree fails the deal, not a decision.
+    pub fn check_mixed(&self) -> Result<(), PreflopError> {
+        self.mixed.ready(self)
+    }
+
+    /// Computes (and caches) the best response a table key is graded on,
+    /// so the answer does not wait for it: deals run in the background,
+    /// answers on the UI thread.
+    pub fn warm_table(&self, key: &str, node: NodeId) -> Result<(), PreflopError> {
+        let seats = self
+            .seats_of_key(key)
+            .ok_or_else(|| PreflopError::UnknownProfile(key.into()))?;
+        let hero = self.seat_of(self.chart.node(node).player);
+        self.mixed.best_response(self, hero, &seats).map(|_| ())
     }
 
     pub(crate) fn chart_arc(&self) -> Arc<PreflopChart> {
@@ -492,6 +532,21 @@ impl PreflopTrainer {
         chosen: usize,
         opponent: Option<&str>,
     ) -> Result<GradedDecision, PreflopError> {
+        self.grade_at(node, hand, chosen, opponent, None)
+    }
+
+    /// As [`grade_vs`](Self::grade_vs) at a full-hand table: against a
+    /// table key the best response is computed for the whole `table` (one
+    /// entry per seat), which gives the same EVs at this node as the key's
+    /// own table and is shared by every decision of the hand.
+    pub fn grade_at(
+        &self,
+        node: NodeId,
+        hand: Hand,
+        chosen: usize,
+        opponent: Option<&str>,
+        table: Option<&[Option<String>]>,
+    ) -> Result<GradedDecision, PreflopError> {
         let c = &self.chart;
         let n = c.node(node);
         let freqs = c.strategy(node, hand).ok_or(PreflopError::NoData)?;
@@ -500,7 +555,10 @@ impl PreflopTrainer {
             None => (reference_evs, None),
             Some(id) => {
                 let evs = if crate::mixed::is_table_key(id) {
-                    self.table_evs(id, node, hand)?
+                    match table {
+                        Some(seats) => self.table_evs_at(seats, node, hand)?,
+                        None => self.table_evs(id, node, hand)?,
+                    }
                 } else {
                     let p = self
                         .profile(id)
@@ -589,14 +647,14 @@ impl PreflopTrainer {
         seed: u64,
     ) -> Result<Spot, PreflopError> {
         let mut rng = ChaCha8Rng::seed_from_u64(seed);
-        let table = opponent.and_then(|key| {
-            let named = crate::mixed::parse_table_key(key)?;
-            let mut seats = vec![None; usize::from(self.config().table_size)];
-            for (pos, id) in named {
-                seats[self.seat_of(pos)] = id;
-            }
-            Some((key, seats))
-        });
+        let table = match opponent.filter(|k| crate::mixed::is_table_key(k)) {
+            Some(key) => Some((
+                key,
+                self.seats_of_key(key)
+                    .ok_or_else(|| PreflopError::UnknownProfile(key.into()))?,
+            )),
+            None => None,
+        };
         let fits = |node: NodeId| match &table {
             None => true,
             Some((key, seats)) => {

@@ -432,7 +432,8 @@ impl TableScreen {
                 }
             }
             _ => {
-                // Grading reads the spot's strategy: no solve here.
+                // Grading reads the spot's strategy: no solve here (a
+                // mixed table's best response was computed with the deal).
                 if self.answer.is_none()
                     && let Some(q) = &self.question
                 {
@@ -528,13 +529,23 @@ impl TableScreen {
             )));
         }
         if let Some(id) = opponent {
-            d = d.child(self.message(i18n.tr_args(
-                "table-vs-profile-prompt",
-                &[
-                    ("profile", i18n.tr(&format!("bot-profile-{id}")).into()),
-                    ("about", i18n.tr(&format!("bot-profile-{id}-about")).into()),
-                ],
-            )));
+            // A review or drill of a mixed-table decision (#29) is against
+            // the table its key names.
+            let line = if taful_app::mixed::is_table_key(id) {
+                i18n.tr_args(
+                    "table-vs-table-prompt",
+                    &[("table", i18n.opponent(id).into())],
+                )
+            } else {
+                i18n.tr_args(
+                    "table-vs-profile-prompt",
+                    &[
+                        ("profile", i18n.tr(&format!("bot-profile-{id}")).into()),
+                        ("about", i18n.tr(&format!("bot-profile-{id}-about")).into()),
+                    ],
+                )
+            };
+            d = d.child(self.message(line));
         }
         d
     }

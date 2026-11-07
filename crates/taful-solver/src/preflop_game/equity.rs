@@ -32,6 +32,19 @@ pub fn class_sizes() -> [f32; N] {
     std::array::from_fn(|i| HandClass::from_index(i).expect("< 169").num_combos() as f32)
 }
 
+/// The card-removal counts (exact, cheap).
+fn compat_table() -> Vec<f32> {
+    let classes: Vec<HandClass> = HandClass::all().collect();
+    let mut compat = vec![0.0f32; N * N];
+    for (a, &ca) in classes.iter().enumerate() {
+        let h = representative(ca);
+        for (b, &cb) in classes.iter().enumerate() {
+            compat[a * N + b] = compat_count(h, cb) as f32;
+        }
+    }
+    compat
+}
+
 fn representative(c: HandClass) -> Hand {
     c.combos()[0]
 }
@@ -82,13 +95,7 @@ impl ClassTables {
     /// whatever the thread count: each class pair has its own RNG stream.
     pub fn compute(samples: u32, seed: u64) -> ClassTables {
         let classes: Vec<HandClass> = HandClass::all().collect();
-        let mut compat = vec![0.0f32; N * N];
-        for (a, &ca) in classes.iter().enumerate() {
-            let h = representative(ca);
-            for (b, &cb) in classes.iter().enumerate() {
-                compat[a * N + b] = compat_count(h, cb) as f32;
-            }
-        }
+        let compat = compat_table();
         let pairs: Vec<(usize, usize)> = (0..N)
             .flat_map(|a| ((a + 1)..N).map(move |b| (a, b)))
             .collect();
@@ -157,10 +164,12 @@ impl ClassTables {
         if equity.iter().any(|e| !(0.0..=1.0).contains(e)) {
             return None;
         }
-        let mut t = ClassTables::compute(0, seed);
-        t.equity = equity;
-        t.samples = samples;
-        Some(t)
+        Some(ClassTables {
+            compat: compat_table(),
+            equity,
+            samples,
+            seed,
+        })
     }
 
     pub fn eq(&self, a: usize, b: usize) -> f32 {

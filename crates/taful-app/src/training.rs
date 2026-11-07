@@ -14,6 +14,7 @@ use taful_core::srs::Rating;
 use taful_store::{DecisionContext, DecisionRow, HandRow, NewDecision, NewHand};
 
 use crate::hand::{FullHand, HandEnd, Replay};
+use crate::mixed::is_table_key;
 use crate::postflop::{
     LocalDir, PostflopError, PostflopSpot, PostflopTrainer, SpotRequest, default_library_dir,
 };
@@ -109,6 +110,13 @@ impl Trainers {
                 .preflop
                 .spot_at(node, seed)
                 .map_err(|_| TemplateError::Unavailable)?;
+            // Deals run in the background, answers on the UI thread: a
+            // table's best response is computed now.
+            if let Some(key) = t.opponent.as_deref().filter(|k| is_table_key(k)) {
+                self.preflop
+                    .warm_table(key, node)
+                    .map_err(|_| TemplateError::Unavailable)?;
+            }
             return Ok(DrillSpot::Preflop(Box::new(
                 spot.against(t.opponent.as_deref()),
             )));
@@ -156,11 +164,18 @@ impl Trainers {
             let NodeType::Preflop(kind) = b.node_type else {
                 return Err(PostflopError::Empty);
             };
-            return self
+            let spot = self
                 .preflop
                 .spot_against(kind, b.opponent.as_deref(), seed)
-                .map(|s| DrillSpot::Preflop(Box::new(s.against(b.opponent.as_deref()))))
-                .map_err(|_| PostflopError::Empty);
+                .map_err(|_| PostflopError::Empty)?;
+            if let Some(key) = b.opponent.as_deref().filter(|k| is_table_key(k)) {
+                self.preflop
+                    .warm_table(key, spot.node)
+                    .map_err(|_| PostflopError::Empty)?;
+            }
+            return Ok(DrillSpot::Preflop(Box::new(
+                spot.against(b.opponent.as_deref()),
+            )));
         }
         let post = self.postflop.as_ref().map_err(Clone::clone)?;
         let s = post.generate(
@@ -1463,7 +1478,7 @@ mod tests {
                         .preflop
                         .table_evs(&k, d.graded.node, d.graded.hand)
                         .unwrap();
-                    assert_eq!(d.graded.hand_evs, evs);
+                    crate::hand::tests::assert_close(&d.graded.hand_evs, &evs);
                     assert_eq!(d.graded.vs_profile.as_ref().unwrap().profile, k);
                     against_table.push(d.clone());
                 }

@@ -271,26 +271,12 @@ impl Shell {
     }
 }
 
-/// The profile every bot seat played, when they all played the same one.
 /// Whether the bots played different profiles (a mixed table, #29).
 fn is_mixed(h: &HandReview) -> bool {
-    let mut bots = h
-        .seat_profiles
-        .iter()
-        .enumerate()
-        .filter(|&(s, _)| s != h.hero)
-        .map(|(_, p)| p.as_deref());
-    let first = bots.next().flatten();
-    bots.any(|p| p != first)
+    taful_app::mixed::is_mixed(&h.seat_profiles, h.hero)
 }
 
+/// The profile every bot seat played, when they all played the same one.
 fn table_profile(h: &HandReview) -> Option<&str> {
-    let mut bots = h
-        .seat_profiles
-        .iter()
-        .enumerate()
-        .filter(|&(s, _)| s != h.hero)
-        .map(|(_, p)| p.as_deref());
-    let first = bots.next()??;
-    bots.all(|p| p == Some(first)).then_some(first)
+    taful_app::mixed::uniform_profile(&h.seat_profiles, h.hero)
 }

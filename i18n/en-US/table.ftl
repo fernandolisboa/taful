@@ -111,6 +111,7 @@ table-hand-next-table = The next hand is against { $profile }.
 ## Mixed tables (#29): one profile per bot seat.
 bot-table = Table ({ $seats })
 table-vs-table = Graded against { $table }: EV against these bots.
+table-vs-table-prompt = Opponents: { $table }. Graded by EV against these bots.
 table-seats-same = Same for all
 table-seats-each = Per seat
 table-seat-left = #{ $n }

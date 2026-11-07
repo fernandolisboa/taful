@@ -32,8 +32,10 @@ use crate::preflop::{PreflopError, PreflopTrainer};
 /// Prefix of a table key.
 pub const TABLE_PREFIX: &str = "table:";
 
-/// Tables whose best response stays cached (a session plays one table, so
-/// one entry per hero position and per live-opponent subset is plenty).
+/// Tables whose best response stays cached. A full hand computes one for
+/// its whole table (every decision of the hand reads it), so a table needs
+/// at most one entry per hero seat; reviews and drills add one per table
+/// key.
 const CACHE: usize = 32;
 
 /// Whether `opponent` is a table key.
@@ -88,6 +90,32 @@ pub fn opponent_at(
         .map(|(p, id)| format!("{p}={}", id.as_deref().unwrap_or(REFERENCE)))
         .collect();
     Some(format!("{TABLE_PREFIX}{}", parts.join(",")))
+}
+
+/// The bots of a table clockwise from hero's left (`seat_profiles` has one
+/// entry per seat, hero's included; `None` = the reference).
+pub fn bots_from_left(
+    seat_profiles: &[Option<String>],
+    hero: Seat,
+) -> impl Iterator<Item = Option<&str>> {
+    let n = seat_profiles.len();
+    (1..n).map(move |i| seat_profiles[(hero + i) % n].as_deref())
+}
+
+/// Whether the bots play different profiles.
+pub fn is_mixed(seat_profiles: &[Option<String>], hero: Seat) -> bool {
+    let mut bots = bots_from_left(seat_profiles, hero);
+    let first = bots.next().flatten();
+    bots.any(|p| p != first)
+}
+
+/// The profile every bot plays (`None` for the reference or a mixed
+/// table).
+pub fn uniform_profile(seat_profiles: &[Option<String>], hero: Seat) -> Option<&str> {
+    if is_mixed(seat_profiles, hero) {
+        return None;
+    }
+    bots_from_left(seat_profiles, hero).next().flatten()
 }
 
 /// What the app needs to rebuild the preflop tree (all embedded).
@@ -164,6 +192,15 @@ impl MixedTables {
             cache.remove(0);
         }
         Ok(br)
+    }
+
+    /// Builds the tree if needed; the error if it cannot be built.
+    pub fn ready(&self, trainer: &PreflopTrainer) -> Result<(), PreflopError> {
+        let mut game = self.game.lock().unwrap_or_else(|e| e.into_inner());
+        match game.get_or_insert_with(|| self.build(trainer)) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(PreflopError::NoTableGame(e.clone())),
+        }
     }
 
     fn cached(&self, id: &TableId) -> Option<Arc<TableBestResponse>> {
@@ -297,6 +334,55 @@ mod tests {
             let step = shipped.file().header.ev_scale;
             assert!(worst <= step, "{id}: {worst} bb (step {step})");
         }
+    }
+
+    #[test]
+    fn table_keys_must_fit_the_table() {
+        let t = trainer();
+        assert!(t.knows_opponent("table:BTN=nit,BB=tag"));
+        assert!(t.knows_opponent("table:BTN=reference,BB=tag"));
+        // No lojack at 6-max, no such profile, not a key.
+        assert!(!t.knows_opponent("table:LJ=nit,BB=tag"));
+        assert!(!t.knows_opponent("table:BTN=nit,BB=nobody"));
+        assert!(!t.knows_opponent("table:"));
+        assert_eq!(t.seats_of_key("table:LJ=nit,BB=tag"), None);
+        assert_eq!(
+            t.seats_of_key("table:BTN=nit,BB=tag").unwrap(),
+            seats(["nit", "", "tag", "", "", ""])
+        );
+        assert!(
+            t.spot_against(
+                crate::preflop::SpotKind::VsOpen,
+                Some("table:LJ=nit,BB=tag"),
+                1
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn a_mixed_table_needs_the_tree() {
+        let t = trainer();
+        let bots: Vec<Option<String>> = ["nit", "tag", "tag", "tag", "tag"]
+            .iter()
+            .map(|id| Some(id.to_string()))
+            .collect();
+        assert!(t.check_mixed().is_ok());
+        // A chart shipped without the unpruned tree cannot seat one: the
+        // deal fails instead of a decision.
+        let mut bare = PreflopTrainer::new(t.chart().clone(), t.thresholds().clone());
+        for p in t.profiles() {
+            bare.add_profile(p.bot.profile().clone(), (*p.chart).clone())
+                .unwrap();
+        }
+        assert!(matches!(
+            crate::hand::FullHand::at_table(&bare, None, None, 1, &bots),
+            Err(crate::hand::HandError::Preflop(PreflopError::NoTableGame(
+                _
+            )))
+        ));
+        let uniform = vec![Some("nit".to_string()); 5];
+        assert!(crate::hand::FullHand::at_table(&bare, None, None, 1, &uniform).is_ok());
     }
 
     #[test]

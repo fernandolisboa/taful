@@ -111,6 +111,7 @@ table-hand-next-table = A próxima mão é contra { $profile }.
 ## Mixed tables (#29): one profile per bot seat.
 bot-table = Mesa ({ $seats })
 table-vs-table = Avaliado contra { $table }: EV contra esses bots.
+table-vs-table-prompt = Oponentes: { $table }. Avaliado pelo EV contra esses bots.
 table-seats-same = Igual para todos
 table-seats-each = Por assento
 table-seat-left = { $n }º
