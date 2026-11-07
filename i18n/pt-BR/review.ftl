@@ -1,6 +1,5 @@
 # Sessão de revisão (spec §13) e tela inicial.
 
-review-intro = Sua fila de repetição espaçada: spots que você errou, perguntas de quiz erradas e cálculos lentos ou errados, numa sessão só.
 review-due = { $count ->
     [0] Nada para revisar agora.
     [one] 1 item para revisar.
@@ -30,3 +29,7 @@ home-continue-title = Continue de onde parou
 home-start-lesson = Começar lição
 home-calc-short = Treine pot odds, outs e equity contra o relógio.
 home-due-short = esperando por você agora
+
+review-empty-body = Spots que você errar na mesa, quizzes errados e cálculos lentos entram aqui sozinhos.
+
+review-go-calc = Treinar cálculo mental

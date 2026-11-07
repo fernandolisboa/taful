@@ -53,7 +53,7 @@ review-from-spot = Spot de um erro anterior: { $spot }
 
 ## Hand review
 
-hand-review-empty = Nenhuma mão ainda. Jogue mãos completas na mesa e elas aparecem aqui.
+hand-review-empty = Jogue mãos completas na mesa: cada uma aparece aqui com a nota de cada decisão e o replay passo a passo.
 hand-review-play = Jogar uma mão
 hand-review-first = ⏮
 hand-review-prev = ◀
@@ -65,3 +65,5 @@ hand-review-no-decisions = Você não teve decisão nesta mão.
 hand-review-recent = Mãos recentes
 hand-review-table = Mesa: { $profile } em todos os assentos dos bots
 hand-review-mixed = Mesa mista: o perfil de cada bot aparece no assento dele.
+
+hand-review-empty-title = Nenhuma mão ainda

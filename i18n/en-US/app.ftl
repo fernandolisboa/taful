@@ -29,7 +29,7 @@ screen-lesson-body = Lessons with glossary tooltips and a quiz at the end.
 screen-table-body = Spot mode and full hands against the reference bot, with every decision graded by EV loss.
 screen-hand-review-body = Every decision of a hand with its grade, and a step-by-step replay.
 screen-calc-body = Timed pot-odds, equity and combo exercises, with the exact calculation next to the shortcut.
-screen-review-body = Your spaced-repetition queue: mistakes, quizzes and calc exercises in one session.
+screen-review-body = Your spaced-repetition queue: spots you misplayed, missed quiz questions and slow or wrong calc answers, in one session.
 screen-settings-body = Language, layout, theme, backups and the strategy library.
 screen-coming-in = Coming in { $milestone }.
 
