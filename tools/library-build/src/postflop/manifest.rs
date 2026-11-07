@@ -132,11 +132,18 @@ impl Manifest {
 
     /// BLAKE3 of the manifest's canonical TOML and, when it lists
     /// profiles, each one's canonical TOML (`profiles` = what
-    /// [`load_profiles`](Self::load_profiles) returned). Without profiles
-    /// this is the hash of the first-slice files.
+    /// [`load_profiles`](Self::load_profiles) returned), plus a tag for how
+    /// profile sections are built. Without profiles this is the hash of the
+    /// first-slice files.
     pub fn hash(&self, profiles: &[Profile]) -> [u8; 32] {
         let mut h = blake3::Hasher::new();
         h.update(toml::to_string(self).expect("serializable").as_bytes());
+        if !profiles.is_empty() {
+            // How profile sections are built, so a build resumed across a
+            // change never mixes files: v2 = best responses from each
+            // profile's own root range, stored in v4 sections (#48).
+            h.update(b"\nprofile-sections-v2");
+        }
         for p in profiles {
             h.update(b"\n");
             h.update(p.to_toml().as_bytes());

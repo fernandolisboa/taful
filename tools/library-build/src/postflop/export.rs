@@ -229,19 +229,6 @@ fn quantize_range(weights: &[f32]) -> Vec<u8> {
         .collect()
 }
 
-/// A profile's root range for its section (v4): like the header's, but a
-/// combo the profile plays at all keeps a nonzero weight, so the app's
-/// reach never loses a hand the profile can hold.
-fn quantize_profile_range(weights: &[f32]) -> Vec<u8> {
-    weights
-        .iter()
-        .map(|&w| {
-            let q = (w.clamp(0.0, 1.0) * 255.0).round() as u8;
-            if w > 0.0 { q.max(1) } else { q }
-        })
-        .collect()
-}
-
 /// Exports a finalized game; with `profiles`, also runs their inline best
 /// responses (`super::profiles`) and stores them as v3 sections.
 pub fn export(
@@ -312,7 +299,7 @@ pub fn export(
                             })
                             .collect();
                         let pos = [job.geometry.oop, job.geometry.ip][p];
-                        (pos, quantize_profile_range(&held))
+                        (pos, quantize_range(&held))
                     })
                     .into(),
             },
@@ -349,13 +336,13 @@ pub fn export(
                 let mass = pass.reach();
                 // As a share of the profile's own mass at the root (its
                 // range may be wider than the reference's, #48).
+                // A profile that never takes the line has no mass anywhere:
+                // its nodes are measured at 0.
                 let at_root = mass.get(&Vec::new()).copied().unwrap_or(0.0);
-                if at_root <= 0.0 {
-                    continue;
-                }
                 for (h, m) in mass {
+                    let share = if at_root > 0.0 { m / at_root } else { 0.0 };
                     let e = profile_mass.entry(h).or_insert(0.0);
-                    *e = e.max(m / at_root);
+                    *e = e.max(share);
                 }
             }
         }
