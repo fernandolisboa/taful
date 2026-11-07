@@ -104,3 +104,6 @@ table-gto-line = Linha GTO: { $action }
 table-ev-gap = Diferença de EV: { $amount } bb
 table-vs-profile-prompt = Oponente: { $profile }. { $about } Avaliado pelo EV contra este bot.
 table-profile-fallback = Esta biblioteca ainda não tem dados de { $profile }, então este spot é contra o oponente de referência. Reconstrua a biblioteca com perfis para jogar o pós-flop contra { $profile }.
+table-hand-vs-profile = Todos os bots jogam como { $profile }. { $about } Avaliado pelo EV contra esses bots.
+table-hand-profile-fallback = Esta biblioteca ainda não tem dados de { $profile }, então o pós-flop é contra o oponente de referência. Reconstrua a biblioteca com perfis para jogar o pós-flop contra { $profile }.
+table-hand-next-table = A próxima mão é contra { $profile }.

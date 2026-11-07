@@ -243,9 +243,14 @@ impl TableScreen {
             Mode::Hand => {
                 self.hand = None;
                 self.hand_sent = false;
+                // The table profile (#28): every bot seat plays it.
+                let opponent = self.opponent.clone();
                 // A new hand starts by the button so every seat comes up.
                 self.run(Busy::Dealing, cx, move || {
-                    Done::Hand(FullHand::new(&t.preflop, t.post(), None, seed).ok())
+                    Done::Hand(
+                        FullHand::against(&t.preflop, t.post(), None, seed, opponent.as_deref())
+                            .ok(),
+                    )
                 });
             }
         }
@@ -323,9 +328,17 @@ impl TableScreen {
 
     fn set_opponent(&mut self, opponent: Option<String>, cx: &mut Context<Self>) {
         self.opponent = opponent;
-        // Preflop and postflop spots both have an opponent (#27).
-        if self.mode != Mode::Postflop {
-            self.mode = Mode::Spot;
+        // Preflop and postflop spots and full hands all have an opponent
+        // (#27, #28). A hand in progress plays on; the next one sits the
+        // new table.
+        match self.mode {
+            Mode::Postflop | Mode::Spot => {}
+            Mode::Hand if self.hand.as_ref().is_some_and(|h| h.end.is_none()) => {
+                cx.notify();
+                return;
+            }
+            Mode::Hand => {}
+            Mode::Drill => self.mode = Mode::Spot,
         }
         self.deal(cx);
         cx.notify();
@@ -551,8 +564,19 @@ impl TableScreen {
                     LeftReason::Unsolved => "table-hand-over-unsolved",
                     LeftReason::OffTree => "table-hand-over-left",
                     LeftReason::NotInRange => "table-hand-over-range",
+                    LeftReason::BotOffRange => "table-hand-over-bot-range",
                 };
-                i18n.tr_args(key, &[("line", history.to_string().into())])
+                let profile = h
+                    .table_profile()
+                    .map(|id| i18n.tr(&format!("bot-profile-{id}")))
+                    .unwrap_or_default();
+                i18n.tr_args(
+                    key,
+                    &[
+                        ("line", history.to_string().into()),
+                        ("profile", profile.into()),
+                    ],
+                )
             }
         })
     }
@@ -583,6 +607,31 @@ impl TableScreen {
         let mut panel = div().flex().flex_col().gap(px(th.spacing.lg));
         if h.decisions.is_empty() && !over {
             panel = panel.child(self.message(i18n.tr("table-spot-prompt")));
+        }
+        let name = |id: &str| i18n.tr(&format!("bot-profile-{id}"));
+        if let Some(id) = h.table_profile() {
+            panel = panel.child(self.message(i18n.tr_args(
+                "table-hand-vs-profile",
+                &[
+                    ("profile", name(id).into()),
+                    ("about", i18n.tr(&format!("bot-profile-{id}-about")).into()),
+                ],
+            )));
+        }
+        if let Some(id) = &h.fallback
+            && h.walk().is_some()
+        {
+            panel = panel.child(self.message(i18n.tr_args(
+                "table-hand-profile-fallback",
+                &[("profile", name(id).into())],
+            )));
+        }
+        if !over && self.opponent.as_deref() != h.table_profile() {
+            let next = self.opponent.as_deref().unwrap_or("reference");
+            panel =
+                panel.child(self.message(
+                    i18n.tr_args("table-hand-next-table", &[("profile", name(next).into())]),
+                ));
         }
         if let Some(d) = h.decisions.last() {
             panel = panel.child(felt::explanation(&self.ui, p, &Explain::of(&d.graded)));
@@ -652,7 +701,15 @@ impl TableScreen {
             self.actions_bar(&h.state, &h.hero_actions(&t.preflop), cx)
         };
         Parts {
-            table: felt::table_scaled(&self.ui, p, &h.state, h.hero, over, scale),
+            table: felt::table_tagged(
+                &self.ui,
+                p,
+                &h.state,
+                h.hero,
+                over,
+                scale,
+                &felt::seat_tags(&self.ui, &h.seat_profiles),
+            ),
             actions,
             panel,
         }
@@ -722,7 +779,7 @@ impl TableScreen {
                 this.set_opponent(Some(id.clone()), cx)
             }));
         }
-        if matches!(self.mode, Mode::Spot | Mode::Postflop) {
+        if matches!(self.mode, Mode::Spot | Mode::Postflop | Mode::Hand) {
             modes = modes.child(
                 div()
                     .flex()

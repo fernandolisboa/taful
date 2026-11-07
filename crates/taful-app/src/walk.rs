@@ -286,6 +286,29 @@ impl Walk {
         }
     }
 
+    /// Frequencies the acting player plays with `hand`: the profile's
+    /// strategy when the actor is the bot of a walk against a profile (the
+    /// file's on the flop and turn, the locked river strategy on the river),
+    /// the reference otherwise. `None` when the hand has no data there.
+    pub fn actor_strategy(&self, hand: Hand) -> Option<Vec<f32>> {
+        let node = self.node()?;
+        let Some(vs) = self.vs.as_ref().filter(|v| v.bot == node.side) else {
+            return self.strategy(hand);
+        };
+        match &self.tree {
+            Tree::Library(c) => self.file.profile_strategy(c, vs.index, hand),
+            Tree::River { sol, node, vs: rv } => {
+                let table = &rv.as_ref()?.strategy[*node];
+                let n = &sol.nodes[*node];
+                let i = sol.hand_index(n.player, hand)?;
+                let len = sol.hands[n.player].len();
+                let row: Vec<f32> = (0..n.actions.len()).map(|a| table[a * len + i]).collect();
+                let total: f32 = row.iter().sum();
+                (total > 0.0).then(|| row.into_iter().map(|x| x / total).collect())
+            }
+        }
+    }
+
     /// EV of each action for the acting player's `hand`, in bb.
     pub fn ev_bb(&self, hand: Hand) -> Option<Vec<f32>> {
         if self.pending.is_some() {

@@ -586,6 +586,9 @@ pub struct NewHand<'a> {
     pub config_toml: &'a str,
     pub seed: u64,
     pub hero_seat: u32,
+    /// Who sits at each seat, one entry per seat (`"hero"`, `"reference"` or
+    /// a bot profile id). Hands stored before #28 hold `["reference"]`: every
+    /// bot played the reference.
     pub bot_ids: Value,
     pub library_format_version: Option<u32>,
     /// The hand as data for replay (JSON), once known.
@@ -637,6 +640,8 @@ pub struct HandRow {
     pub total_ev_loss: Option<f64>,
     pub hero_net: Option<f64>,
     pub replay: Option<Value>,
+    /// Who sat at the table (JSON array, see [`NewHand::bot_ids`]).
+    pub bot_ids: Value,
 }
 
 /// A stored decision.
@@ -679,7 +684,7 @@ pub struct BucketStats {
 }
 
 const HAND_COLS: &str = "id, created_at, mode, config_key, config_toml, seed, hero_seat, \
-    ended_reason, total_ev_loss, hero_net, replay";
+    ended_reason, total_ev_loss, hero_net, replay, bot_ids";
 
 fn hand_row(r: &Row<'_>) -> rusqlite::Result<HandRow> {
     let replay: Option<String> = r.get(10)?;
@@ -695,6 +700,7 @@ fn hand_row(r: &Row<'_>) -> rusqlite::Result<HandRow> {
         total_ev_loss: r.get(8)?,
         hero_net: r.get(9)?,
         replay: replay.and_then(|s| serde_json::from_str(&s).ok()),
+        bot_ids: serde_json::from_str(&r.get::<_, String>(11)?).unwrap_or(Value::Null),
     })
 }
 

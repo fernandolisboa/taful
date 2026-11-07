@@ -18,7 +18,7 @@ use crate::postflop::{
     LocalDir, PostflopError, PostflopSpot, PostflopTrainer, SpotRequest, default_library_dir,
 };
 use crate::preflop::{
-    Action, GameState, GradedDecision, Hand, PreflopError, PreflopTrainer, Seat, Spot,
+    Action, GameState, GradedDecision, Hand, PreflopError, PreflopTrainer, Seat, Spot, VsProfile,
 };
 use crate::review::{ItemKind, Source};
 use crate::template::{
@@ -300,6 +300,9 @@ pub struct ReviewedDecision {
     pub pot_bb: f64,
     pub ev_loss_bb: f64,
     pub grade: Grade,
+    /// Graded against a bot profile: `hand_evs` are hero's best-response
+    /// EVs against it, and this holds the reference EVs and both lines.
+    pub vs_profile: Option<VsProfile>,
 }
 
 /// A stored hand, ready to step through (spec §15.1 #5).
@@ -307,6 +310,9 @@ pub struct ReviewedDecision {
 pub struct HandReview {
     pub summary: HandSummary,
     pub hero: Seat,
+    /// Who sat at each seat: `None` for hero and reference bots, `Some(id)`
+    /// for a bot profile (#28).
+    pub seat_profiles: Vec<Option<String>>,
     /// Every table state, from the deal to the end.
     pub states: Vec<GameState>,
     pub decisions: Vec<ReviewedDecision>,
@@ -318,10 +324,58 @@ fn grade_from_id(id: &str) -> Option<Grade> {
 
 fn decision_json(d: &GradedDecision) -> (serde_json::Value, serde_json::Value) {
     let actions: Vec<String> = d.actions.iter().map(|a| a.to_string()).collect();
-    (
-        json!({ "actions": actions, "ev": d.hand_evs }),
-        json!({ "hand": d.hand_freqs, "range": d.range_freqs }),
-    )
+    let mut ev = json!({ "actions": actions, "ev": d.hand_evs });
+    // Against a profile `ev` is against the profile; the reference EVs and
+    // both lines come along for the review (spec §8 payload).
+    if let Some(v) = &d.vs_profile {
+        ev["vs"] = json!({
+            "profile": v.profile,
+            "reference_ev": v.reference_evs,
+            "gto": v.gto,
+            "exploit": v.exploit,
+            "ev_gap": v.ev_gap_bb,
+        });
+    }
+    (ev, json!({ "hand": d.hand_freqs, "range": d.range_freqs }))
+}
+
+fn floats(v: &serde_json::Value) -> Vec<f32> {
+    v.as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_f64())
+                .map(|x| x as f32)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The `vs` part of a stored decision's `ev_per_action`, if any.
+fn vs_from_json(ev: &serde_json::Value) -> Option<VsProfile> {
+    let v = ev.get("vs")?;
+    Some(VsProfile {
+        profile: v["profile"].as_str()?.to_string(),
+        reference_evs: floats(&v["reference_ev"]),
+        gto: usize::try_from(v["gto"].as_u64()?).ok()?,
+        exploit: usize::try_from(v["exploit"].as_u64()?).ok()?,
+        ev_gap_bb: v["ev_gap"].as_f64()?,
+    })
+}
+
+/// Who sat at each of `seats` seats, from `hands.bot_ids`: one entry per
+/// seat since #28; older hands (`["reference"]`) were all reference.
+fn seat_profiles(bot_ids: &serde_json::Value, seats: usize) -> Vec<Option<String>> {
+    match bot_ids.as_array() {
+        Some(ids) if ids.len() == seats => ids
+            .iter()
+            .map(|id| {
+                id.as_str()
+                    .filter(|id| !matches!(*id, "hero" | taful_core::profile::REFERENCE))
+                    .map(str::to_owned)
+            })
+            .collect(),
+        _ => vec![None; seats],
+    }
 }
 
 impl App {
@@ -497,7 +551,15 @@ impl App {
             config_toml: &config.to_toml(),
             seed: h.seed,
             hero_seat: h.hero as u32,
-            bot_ids: json!(["reference"]),
+            bot_ids: json!(
+                (0..h.seat_profiles.len())
+                    .map(|s| match &h.seat_profiles[s] {
+                        _ if s == h.hero => "hero",
+                        Some(id) => id.as_str(),
+                        None => taful_core::profile::REFERENCE,
+                    })
+                    .collect::<Vec<_>>()
+            ),
             library_format_version: Some(u32::from(taful_solver::format::FORMAT_VERSION)),
             replay: Some(replay),
         })?;
@@ -599,16 +661,6 @@ impl App {
             .and_then(|r| serde_json::from_value(r).ok())
             .ok_or_else(|| Error::NotFound(format!("hand `{id}` replay")))?;
         let states = replay.states(&config).map_err(Error::NotFound)?;
-        let floats = |v: &serde_json::Value| -> Vec<f32> {
-            v.as_array()
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|x| x.as_f64())
-                        .map(|x| x as f32)
-                        .collect()
-                })
-                .unwrap_or_default()
-        };
         let decisions = rows
             .iter()
             .filter_map(|d| {
@@ -630,6 +682,7 @@ impl App {
                     pot_bb: d.pot,
                     ev_loss_bb: d.ev_loss,
                     grade: grade_from_id(&d.grade)?,
+                    vs_profile: vs_from_json(&d.ev_per_action),
                 })
             })
             .filter(|d| d.step < states.len())
@@ -637,6 +690,7 @@ impl App {
         Ok(HandReview {
             summary: self.summary(&h, &rows),
             hero: h.hero_seat as usize,
+            seat_profiles: seat_profiles(&h.bot_ids, usize::from(config.table_size)),
             states,
             decisions,
         })
@@ -1248,5 +1302,137 @@ mod tests {
         db.execute_batch("DROP TRIGGER trap").unwrap();
         a.record_spot_decision(&d, &ctx, Some(&item.id)).unwrap();
         assert_eq!(decisions(&a), 1);
+    }
+
+    /// Hero's choice in `h`: the action that keeps the line on the
+    /// fixture's configuration (BTN open, SB 3-bet, BTN call) when there is
+    /// one, the most frequent reference action otherwise.
+    fn steer(h: &FullHand, t: &Trainers) -> Action {
+        let acts = h.hero_actions(&t.preflop);
+        const FIXTURE: &str = "UTG:f,HJ:f,CO:f,BTN:r250,SB:r950,BB:f,BTN:c";
+        if h.walk().is_none() {
+            let line = h.state.history().line().to_string();
+            let pos = h.state.position(h.hero);
+            if let Some(&a) = acts.iter().find(|a| {
+                let next = if line.is_empty() {
+                    format!("{pos}:{a}")
+                } else {
+                    format!("{line},{pos}:{a}")
+                };
+                FIXTURE.starts_with(&next)
+            }) {
+                return a;
+            }
+        }
+        let freqs = match h.walk() {
+            Some(w) => w.strategy(h.hero_hand()),
+            None => None,
+        };
+        match freqs {
+            Some(f) => {
+                acts[(0..acts.len())
+                    .max_by(|&a, &b| f[a].total_cmp(&f[b]))
+                    .unwrap()]
+            }
+            None => acts[0],
+        }
+    }
+
+    /// #28 acceptance: through `App`, a seeded full hand against the nit
+    /// replays identically, grades every hero decision against the nit,
+    /// and the stored hand shows the profile on each bot seat.
+    #[test]
+    fn full_hands_against_a_profile_replay_and_grade_against_it() {
+        let mut a = profile_app();
+        let t = a.trainers().unwrap();
+        let mut postflop = 0;
+        let mut hands = 0;
+        for seed in 0..4_000 {
+            let hero = Some((seed % 2) as usize); // BTN or SB
+            let play = || {
+                let mut h =
+                    FullHand::against(&t.preflop, t.post(), hero, seed, Some("nit")).unwrap();
+                while h.end.is_none() {
+                    let act = steer(&h, &t);
+                    h.act(&t.preflop, t.post(), act).unwrap();
+                }
+                h
+            };
+            let h = play();
+            if h.decisions.is_empty() {
+                continue;
+            }
+            let reached = h
+                .decisions
+                .iter()
+                .any(|d| d.context.street != Street::Preflop);
+            if !reached && hands >= 3 {
+                continue;
+            }
+            hands += 1;
+            postflop += usize::from(reached);
+            // Same seed, same hero answers: the same hand, decision for
+            // decision.
+            let again = play();
+            assert_eq!(again.state, h.state);
+            assert_eq!(again.end, h.end);
+            assert_eq!(again.decisions, h.decisions);
+            for d in &h.decisions {
+                let vs = d
+                    .graded
+                    .vs_profile
+                    .as_ref()
+                    .expect("graded against the nit");
+                assert_eq!(vs.profile, "nit");
+            }
+            let id = a.record_hand(&h).unwrap();
+            let r = a.hand_review(&id).unwrap();
+            for (s, p) in r.seat_profiles.iter().enumerate() {
+                assert_eq!(p.as_deref(), (s != h.hero).then_some("nit"), "seat {s}");
+            }
+            assert_eq!(r.decisions.len(), h.decisions.len());
+            for (rd, hd) in r.decisions.iter().zip(&h.decisions) {
+                assert_eq!(rd.vs_profile, hd.graded.vs_profile);
+                assert_eq!(rd.hand_evs, hd.graded.hand_evs);
+                assert_eq!(rd.grade, hd.graded.grade);
+            }
+            assert_eq!(r.states.last().unwrap().board(), h.state.board());
+            if postflop >= 2 && hands >= 5 {
+                break;
+            }
+        }
+        assert!(postflop >= 2, "{postflop} hands reached the flop");
+        // Mistakes were filed under the nit (#26 keys).
+        let buckets = a.store.bucket_stats(LEAK_WINDOW).unwrap();
+        assert!(!buckets.is_empty());
+        assert!(buckets.iter().all(|b| b.opponent == "nit"), "{buckets:?}");
+    }
+
+    #[test]
+    fn reference_hands_store_every_seat_as_reference() {
+        let mut a = app();
+        let t = a.trainers().unwrap();
+        let h = FullHand::new(&t.preflop, t.post(), Some(2), 7).unwrap();
+        let id = a.record_hand(&h).unwrap();
+        let r = a.hand_review(&id).unwrap();
+        assert_eq!(r.seat_profiles, vec![None; 6]);
+        let row = a.store.hand(&id).unwrap().unwrap();
+        assert_eq!(
+            row.bot_ids,
+            json!([
+                "reference",
+                "reference",
+                "hero",
+                "reference",
+                "reference",
+                "reference"
+            ])
+        );
+        // Hands stored before #28 hold one id for every bot.
+        assert_eq!(seat_profiles(&json!(["reference"]), 6), vec![None; 6]);
+        assert_eq!(
+            seat_profiles(&json!(["hero", "nit"]), 2),
+            vec![None, Some("nit".to_string())]
+        );
     }
 }
