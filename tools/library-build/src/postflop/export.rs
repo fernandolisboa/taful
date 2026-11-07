@@ -52,6 +52,8 @@ struct Ex<'a> {
     /// under the profile, responder under the reference) brings to it, on
     /// the normalized weights' scale; empty without profiles (#45).
     profile_mass: HashMap<Vec<usize>, f64>,
+    /// Whether profiles are listed (then every node has a mass).
+    profiles: bool,
     pruned: usize,
     /// Nodes kept only because a profile reaches them.
     kept_for_profiles: usize,
@@ -102,10 +104,16 @@ impl Ex<'_> {
         // maniac's raises) must be in the library to be dealt against it.
         let threshold = self.prune_reach_pct * self.root_total[p];
         if !history.is_empty() && 100.0 * normalized < threshold {
-            let by_profile = self
-                .profile_mass
-                .get(history.as_slice())
-                .is_some_and(|&m| 100.0 * m as f32 >= threshold);
+            let by_profile = match self.profile_mass.get(history.as_slice()) {
+                Some(&m) => 100.0 * m as f32 >= threshold,
+                None if self.profiles => {
+                    return Err(format!(
+                        "node {history:?} not measured by the profile reach pass (a stored \
+                         turn is not one of the solver's own turn cards?)"
+                    ));
+                }
+                None => false,
+            };
             if !by_profile {
                 self.pruned += 1;
                 return Ok(Child::Pruned);
@@ -288,6 +296,7 @@ pub fn export(
         histories: Vec::new(),
         chance: Vec::new(),
         profile_mass,
+        profiles: !profiles.is_empty(),
         pruned: 0,
         kept_for_profiles: 0,
     };
@@ -758,5 +767,31 @@ mod tests {
             with.nodes.len(),
             rescued.len()
         );
+    }
+
+    /// A neutral profile (it plays the reference) keeps exactly the nodes
+    /// the reference keeps: the profile reach is measured on the export's
+    /// own scale, end to end.
+    #[test]
+    fn a_neutral_profile_keeps_the_reference_tree() {
+        let mut neutral = taful_core::profile::Profile::from_toml(include_str!(
+            "../../../../content/bots/tag.toml"
+        ))
+        .unwrap();
+        neutral.postflop = taful_core::profile::PostflopDeviation {
+            fold_to_cbet: 0.0,
+            fold_to_raise: 0.0,
+            bluff_value_shift: 0.0,
+            aggression: 0.0,
+        };
+        neutral.sizing.prefer = taful_core::profile::Sizing::Reference;
+        let (_, reference, _) = solved_pruned("Td9d6h", &[], 1.0);
+        let (_, with, _) = solved_pruned("Td9d6h", std::slice::from_ref(&neutral), 1.0);
+        assert_eq!(reference.nodes.len(), with.nodes.len());
+        for (r, w) in reference.nodes.iter().zip(&with.nodes) {
+            assert_eq!(r.actions, w.actions);
+            assert_eq!(r.live, w.live);
+        }
+        assert_eq!(reference.chance, with.chance);
     }
 }

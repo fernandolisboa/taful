@@ -392,8 +392,8 @@ impl Ctx<'_> {
             // the profile's counterpart of the solver's normalized weights.
             let b = self.p.bot;
             let compat = self.compat(b, hero_ref, at.board);
+            // `compat` is 0 for board-dead hands.
             let mass: f64 = (0..bot.len())
-                .filter(|&h| !self.dead(b, h, at.board))
                 .map(|h| f64::from(bot[h]) * compat[h])
                 .sum::<f64>()
                 * at.scale
