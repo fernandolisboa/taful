@@ -602,6 +602,8 @@ pub struct DecisionContext<'a> {
     pub texture: Option<&'a str>,
     /// Index into the hand's replay states (full hands).
     pub step: Option<u32>,
+    /// `reference` or a bot profile id.
+    pub opponent: &'a str,
 }
 
 /// One graded hero decision.
@@ -658,6 +660,7 @@ pub struct DecisionRow {
     pub node_type: Option<String>,
     pub texture: Option<String>,
     pub step: Option<u32>,
+    pub opponent: Option<String>,
 }
 
 /// EV loss of one leak bucket over the window (spec §13).
@@ -667,6 +670,8 @@ pub struct BucketStats {
     pub street: String,
     pub node_type: String,
     pub texture: Option<String>,
+    /// `reference` or a bot profile id.
+    pub opponent: String,
     pub decisions: u32,
     pub total_ev_loss: f64,
     /// Decisions graded below `correct`.
@@ -695,7 +700,7 @@ fn hand_row(r: &Row<'_>) -> rusqlite::Result<HandRow> {
 
 const DECISION_COLS: &str = "id, created_at, hand_id, node_key, hero_combo, chosen_action, \
     ev_per_action, frequencies, pot, ev_loss, grade, thresholds_version, template_key, spot, \
-    street, node_type, texture, step";
+    street, node_type, texture, step, opponent";
 
 fn decision_row(r: &Row<'_>) -> rusqlite::Result<DecisionRow> {
     let json = |i: usize| -> rusqlite::Result<Value> {
@@ -721,6 +726,7 @@ fn decision_row(r: &Row<'_>) -> rusqlite::Result<DecisionRow> {
         node_type: r.get(15)?,
         texture: r.get(16)?,
         step: r.get(17)?,
+        opponent: r.get(18)?,
     })
 }
 
@@ -774,9 +780,10 @@ impl Store {
         self.conn().execute(
             "INSERT INTO decisions (id, created_at, updated_at, hand_id, node_key, hero_combo,
                  chosen_action, ev_per_action, frequencies, pot, ev_loss, grade,
-                 thresholds_version, template_key, spot, street, node_type, texture, step)
+                 thresholds_version, template_key, spot, street, node_type, texture, step,
+                 opponent)
              VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
-                 ?16, ?17, ?18)",
+                 ?16, ?17, ?18, ?19)",
             params![
                 id,
                 self.now(),
@@ -795,7 +802,8 @@ impl Store {
                 some(c.street),
                 some(c.node_type),
                 c.texture,
-                c.step
+                c.step,
+                some(c.opponent)
             ],
         )?;
         Ok(id)
@@ -837,12 +845,13 @@ impl Store {
     /// context, worst total first.
     pub fn bucket_stats(&self, window: u32) -> Result<Vec<BucketStats>> {
         let mut stmt = self.conn().prepare(
-            "SELECT spot, street, node_type, texture, count(*), sum(ev_loss),
+            "SELECT spot, street, node_type, texture, coalesce(opponent, 'reference'), count(*),
+                 sum(ev_loss),
                  sum(CASE WHEN grade IN ('inaccuracy', 'mistake', 'blunder') THEN 1 ELSE 0 END)
              FROM (SELECT * FROM decisions
                    WHERE deleted_at IS NULL AND spot IS NOT NULL
                    ORDER BY created_at DESC, id DESC LIMIT ?1)
-             GROUP BY spot, street, node_type, texture
+             GROUP BY spot, street, node_type, texture, coalesce(opponent, 'reference')
              ORDER BY sum(ev_loss) DESC",
         )?;
         let rows = stmt.query_map(params![window], |r| {
@@ -851,9 +860,10 @@ impl Store {
                 street: r.get(1)?,
                 node_type: r.get(2)?,
                 texture: r.get(3)?,
-                decisions: r.get(4)?,
-                total_ev_loss: r.get(5)?,
-                mistakes: r.get(6)?,
+                opponent: r.get(4)?,
+                decisions: r.get(5)?,
+                total_ev_loss: r.get(6)?,
+                mistakes: r.get(7)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
@@ -1179,12 +1189,13 @@ mod tests {
                 grade,
                 thresholds_version: 1,
                 context: Some(DecisionContext {
-                    template_key: "v1|k|btn-bb-srp||A-r-u-0|BB",
+                    template_key: "v2|k|btn-bb-srp||A-r-u-0|BB|reference",
                     spot: "btn-bb-srp",
                     street: "flop",
                     node_type: "unopened",
                     texture: Some("A-r-u-0"),
                     step: Some(7),
+                    opponent: "reference",
                 }),
             }
         }
@@ -1224,6 +1235,19 @@ mod tests {
         assert_eq!((b[0].decisions, b[0].mistakes), (3, 2));
         assert!((b[0].total_ev_loss - 4.25).abs() < 1e-9);
         assert_eq!(s.bucket_stats(1).unwrap()[0].decisions, 1, "window");
+        assert_eq!(b[0].opponent, "reference");
+        assert_eq!(ds[0].opponent.as_deref(), Some("reference"));
+
+        // The opponent profile is a bucket dimension.
+        let mut vs_nit = decision(None, "mistake", 0.5);
+        if let Some(c) = vs_nit.context.as_mut() {
+            c.opponent = "nit";
+        }
+        s.insert_decision(&vs_nit).unwrap();
+        let b = s.bucket_stats(100).unwrap();
+        assert_eq!(b.len(), 2);
+        assert_eq!((b[1].opponent.as_str(), b[1].decisions), ("nit", 1));
+        assert_eq!((b[0].opponent.as_str(), b[0].decisions), ("reference", 3));
 
         // Foreign keys are enforced.
         assert!(

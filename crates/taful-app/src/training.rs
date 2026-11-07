@@ -22,8 +22,8 @@ use crate::preflop::{
 };
 use crate::review::{ItemKind, Source};
 use crate::template::{
-    LeakBucket, NodeType, PREFLOP, SpotContext, SpotTemplate, parse_street, short_config_key,
-    street_id,
+    LeakBucket, NodeType, PREFLOP, SpotContext, SpotTemplate, opponent_id, parse_opponent,
+    parse_street, short_config_key, street_id,
 };
 use crate::{App, Error, Result};
 
@@ -79,15 +79,25 @@ impl Trainers {
         short_config_key(self.preflop.config())
     }
 
+    /// Whether this build can deal against `opponent` (`None` = the
+    /// reference bot, always).
+    pub fn knows_opponent(&self, opponent: Option<&str>) -> bool {
+        opponent.is_none_or(|id| self.preflop.profile(id).is_some())
+    }
+
     /// A spot of `template` (a review of a past mistake, spec §13): same
-    /// configuration, line, history and hero position, a fresh board of the
-    /// same family and fresh hands.
+    /// configuration, line, history, hero position and opponent, a fresh
+    /// board of the same family and fresh hands.
     pub fn spot_for_template(
         &self,
         t: &SpotTemplate,
         seed: u64,
     ) -> std::result::Result<DrillSpot, TemplateError> {
         if t.config != self.config_key() {
+            return Err(TemplateError::Gone);
+        }
+        // A profile this build no longer ships is gone with its items.
+        if !self.knows_opponent(t.opponent.as_deref()) {
             return Err(TemplateError::Gone);
         }
         if t.is_preflop() {
@@ -99,7 +109,14 @@ impl Trainers {
                 .preflop
                 .spot_at(node, seed)
                 .map_err(|_| TemplateError::Unavailable)?;
-            return Ok(DrillSpot::Preflop(Box::new(spot)));
+            return Ok(DrillSpot::Preflop(Box::new(
+                spot.against(t.opponent.as_deref()),
+            )));
+        }
+        // Postflop spots against profiles come with their best responses
+        // (#27); until then such an item waits.
+        if t.opponent.is_some() {
+            return Err(TemplateError::Unavailable);
         }
         let post = self
             .postflop
@@ -124,12 +141,16 @@ impl Trainers {
         .map_err(|_| TemplateError::Unavailable)
     }
 
-    /// A spot from a leak bucket (the "drill this" action, spec §13).
+    /// A spot from a leak bucket (the "drill this" action, spec §13),
+    /// against the bucket's opponent.
     pub fn spot_for_bucket(
         &self,
         b: &LeakBucket,
         seed: u64,
     ) -> std::result::Result<DrillSpot, PostflopError> {
+        if !self.knows_opponent(b.opponent.as_deref()) {
+            return Err(PostflopError::Empty);
+        }
         if b.spot == PREFLOP {
             let NodeType::Preflop(kind) = b.node_type else {
                 return Err(PostflopError::Empty);
@@ -137,8 +158,12 @@ impl Trainers {
             return self
                 .preflop
                 .spot(kind, seed)
-                .map(|s| DrillSpot::Preflop(Box::new(s)))
+                .map(|s| DrillSpot::Preflop(Box::new(s.against(b.opponent.as_deref()))))
                 .map_err(|_| PostflopError::Empty);
+        }
+        // Postflop against profiles: #27.
+        if b.opponent.is_some() {
+            return Err(PostflopError::Empty);
         }
         let post = self.postflop.as_ref().map_err(Clone::clone)?;
         post.generate(
@@ -217,6 +242,7 @@ impl DrillSpot {
                     postflop: Vec::new(),
                     texture: None,
                     hero: position,
+                    opponent: s.opponent.clone(),
                 },
                 street: Street::Preflop,
                 node_type: NodeType::Preflop(s.kind),
@@ -348,6 +374,17 @@ impl App {
         ctx: &SpotContext,
         step: Option<usize>,
     ) -> Result<String> {
+        // Decisions are keyed by who they were graded against (#26): a
+        // context that names another opponent would file the mistake under
+        // the wrong template and leak.
+        let graded_vs = d.vs_profile.as_ref().map(|v| v.profile.as_str());
+        if graded_vs != ctx.template.opponent.as_deref() {
+            return Err(Error::Invalid(format!(
+                "a decision graded against `{}` filed under `{}`",
+                opponent_id(graded_vs),
+                opponent_id(ctx.template.opponent.as_deref())
+            )));
+        }
         let (ev, freqs) = decision_json(d);
         let template_key = ctx.template.key();
         let texture = ctx.template.texture.clone();
@@ -369,6 +406,7 @@ impl App {
                 node_type: ctx.node_type.id(),
                 texture: texture.as_deref(),
                 step: step.map(|s| s as u32),
+                opponent: opponent_id(ctx.template.opponent.as_deref()),
             }),
         })?)
     }
@@ -406,28 +444,26 @@ impl App {
         ctx: &SpotContext,
         review_item: Option<&str>,
     ) -> Result<()> {
-        // Decisions against a bot profile are kept out of the history, the
-        // review queue and leaks until those are keyed by profile (#26):
-        // stored now they would count as reference mistakes.
-        if d.vs_profile.is_some() {
-            // Reviews deal reference spots; answering one against a
-            // profile would leave the item due while looking graded.
-            if review_item.is_some() {
-                return Err(Error::NotFound(
-                    "a review answered against a bot profile".into(),
-                ));
-            }
-            return Ok(());
-        }
         // The decision and its review land together, or neither does: a
         // decision without its review would leave the item due forever.
         self.store.atomic(|_| {
             let id = self.store_decision(None, d, ctx, None)?;
             match review_item.and_then(|i| self.store.review_item_by_id(i).transpose()) {
                 Some(item) => {
+                    let item = item?;
+                    // A review answered against another opponent would
+                    // reschedule the wrong item.
+                    let item_vs = SpotTemplate::parse(&item.key).and_then(|t| t.opponent);
+                    if item_vs != ctx.template.opponent {
+                        return Err(Error::Invalid(format!(
+                            "review item `{}` answered against `{}`",
+                            item.key,
+                            opponent_id(ctx.template.opponent.as_deref())
+                        )));
+                    }
                     self.scheduler.review_item(
                         &self.store,
-                        &item?,
+                        &item,
                         Rating::from_grade(d.grade),
                         None,
                         Some(Source {
@@ -487,8 +523,10 @@ impl App {
     }
 
     /// The top leaks over the rolling window (spec §13): buckets with at
-    /// least one mistake, by total EV loss.
-    pub fn leaks(&self) -> Result<Vec<Leak>> {
+    /// least one mistake, by total EV loss. Buckets against a profile this
+    /// build no longer ships are left out (they cannot be drilled).
+    pub fn leaks(&mut self) -> Result<Vec<Leak>> {
+        let trainers = self.trainers()?;
         Ok(self
             .store
             .bucket_stats(LEAK_WINDOW)?
@@ -501,12 +539,14 @@ impl App {
                         node_type: NodeType::parse(&b.node_type)?,
                         spot: b.spot,
                         texture: b.texture,
+                        opponent: parse_opponent(&b.opponent),
                     },
                     decisions: b.decisions,
                     mistakes: b.mistakes,
                     total_ev_loss_bb: b.total_ev_loss,
                 })
             })
+            .filter(|l| trainers.knows_opponent(l.bucket.opponent.as_deref()))
             .take(TOP_LEAKS)
             .collect())
     }
@@ -640,8 +680,7 @@ mod tests {
 
     /// #25 acceptance: through `App`, a preflop spot against a profile is
     /// graded on the profile's best-response EVs, the payload carries both
-    /// EV sets, reference grades are unchanged, and profile decisions stay
-    /// out of the history until #26 keys them by profile.
+    /// EV sets, and reference grades are unchanged.
     #[test]
     fn spots_against_a_profile_grade_on_best_responses() {
         use crate::preflop::SpotKind;
@@ -649,7 +688,6 @@ mod tests {
         let t = a.trainers().unwrap();
         let pre = &t.preflop;
         let mut checked = 0;
-        let mut station_ctx = None;
         for seed in 0..40 {
             let spot = pre.spot(SpotKind::VsOpen, seed).unwrap();
             let station =
@@ -675,16 +713,6 @@ mod tests {
                     (vs.ev_gap_bb - f64::from(d.hand_evs[vs.exploit] - d.hand_evs[vs.gto])).abs()
                         < 1e-9
                 );
-                // Not stored until decisions are keyed by profile (#26).
-                let ctx = station.context(&t);
-                a.record_spot_decision(&d, &ctx, None).unwrap();
-                station_ctx = Some((ctx.clone(), d.clone()));
-                assert!(
-                    a.store
-                        .review_item(ItemKind::SpotTemplate.id(), &ctx.template.key())
-                        .unwrap()
-                        .is_none()
-                );
                 checked += 1;
             }
             // The exploitative line is always Best against the profile.
@@ -697,17 +725,6 @@ mod tests {
             assert_eq!(t.answer(&station, exploit).unwrap().grade, Grade::Best);
         }
         assert!(checked > 40);
-        // A due review cannot be answered against a profile.
-        let ctx = station_ctx.unwrap();
-        let item = a
-            .store
-            .ensure_review_item("spot_template", &ctx.0.template.key(), None, 0)
-            .unwrap();
-        assert!(
-            a.record_spot_decision(&ctx.1, &ctx.0, Some(&item.id))
-                .is_err()
-        );
-        assert!(a.leaks().unwrap().is_empty());
         assert!(
             pre.spot(SpotKind::VsOpen, 0)
                 .unwrap()
@@ -722,6 +739,196 @@ mod tests {
 
     fn spot_actions(s: &DrillSpot, t: &Trainers) -> Vec<Action> {
         s.actions(t)
+    }
+
+    /// #26 acceptance: through `App`, the same mistake against a nit and
+    /// against the reference makes two review items; reviewing the nit item
+    /// deals against the nit; leaks split by profile and drill against it.
+    #[test]
+    fn mistakes_are_keyed_by_opponent_profile() {
+        use std::sync::atomic::Ordering;
+
+        use crate::i18n::Locale;
+        use crate::preflop::SpotKind;
+        use crate::review::RELEARN_MS;
+        use crate::review_session::ReviewPrompt;
+
+        let (mut a, clock) = app_at(1_000_000);
+        a.set_library_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/postflop"));
+        let t = a.trainers().unwrap();
+        let nit = Some("nit".to_string());
+        // A spot where one action is below Correct against both.
+        let (reference, vs_nit, act) = (0..500)
+            .find_map(|seed| {
+                let spot = t.preflop.spot(SpotKind::Rfi, seed).ok()?;
+                let reference = DrillSpot::Preflop(Box::new(spot.clone()));
+                let vs_nit = DrillSpot::Preflop(Box::new(spot.against(nit.as_deref())));
+                let act = spot_actions(&reference, &t).into_iter().find(|&act| {
+                    t.answer(&reference, act).unwrap().grade > Grade::Correct
+                        && t.answer(&vs_nit, act).unwrap().grade > Grade::Correct
+                })?;
+                Some((reference, vs_nit, act))
+            })
+            .expect("a mistake against both");
+        let (r_ctx, n_ctx) = (reference.context(&t), vs_nit.context(&t));
+        assert_eq!(n_ctx.template.opponent, nit);
+        assert_eq!(
+            SpotTemplate {
+                opponent: None,
+                ..n_ctx.template.clone()
+            },
+            r_ctx.template,
+            "same template but the opponent"
+        );
+        let r_dec = t.answer(&reference, act).unwrap();
+        let n_dec = t.answer(&vs_nit, act).unwrap();
+        // A decision filed under another opponent is refused.
+        assert!(matches!(
+            a.record_spot_decision(&n_dec, &r_ctx, None),
+            Err(Error::Invalid(_))
+        ));
+        a.record_spot_decision(&r_dec, &r_ctx, None).unwrap();
+        a.record_spot_decision(&n_dec, &n_ctx, None).unwrap();
+        let r_key = r_ctx.template.key();
+        let n_key = n_ctx.template.key();
+        assert!(r_key.ends_with("|reference") && n_key.ends_with("|nit"));
+        let item = |a: &App, k: &str| a.store.review_item("spot_template", k).unwrap();
+        let r_item = item(&a, &r_key).expect("reference item");
+        let n_item = item(&a, &n_key).expect("nit item");
+        assert_ne!(r_item.id, n_item.id);
+        assert_eq!(a.store.review_totals().unwrap().0, 2);
+        // Answering the reference item against the nit is refused.
+        assert!(matches!(
+            a.record_spot_decision(&n_dec, &n_ctx, Some(&r_item.id)),
+            Err(Error::Invalid(_))
+        ));
+
+        // Leaks split by profile; drilling the nit leak deals against it.
+        let leaks = a.leaks().unwrap();
+        let mut opponents: Vec<_> = leaks.iter().map(|l| l.bucket.opponent.clone()).collect();
+        opponents.sort();
+        assert_eq!(opponents, [None, nit.clone()]);
+        for l in &leaks {
+            assert_eq!(l.decisions, 1);
+            for seed in 0..3 {
+                let s = t.spot_for_bucket(&l.bucket, seed).unwrap();
+                assert_eq!(s.context(&t).bucket(), l.bucket);
+                let d = t.answer(&s, s.actions(&t)[0]).unwrap();
+                assert_eq!(
+                    d.vs_profile.map(|v| v.profile),
+                    l.bucket.opponent,
+                    "graded against the bucket's opponent"
+                );
+            }
+        }
+
+        // The review session deals each item against its own opponent.
+        clock.fetch_add(RELEARN_MS, Ordering::SeqCst);
+        let mut seen = Vec::new();
+        while let Some(p) = a.next_review(Locale::PtBr).unwrap() {
+            let ReviewPrompt::Spot {
+                item_id,
+                template,
+                spot,
+            } = p
+            else {
+                panic!("spot prompt expected");
+            };
+            let DrillSpot::Preflop(s) = &*spot else {
+                panic!("preflop spot expected");
+            };
+            assert_eq!(s.opponent, template.opponent);
+            assert_eq!(spot.context(&t).template, template);
+            let want = if item_id == n_item.id { &n_key } else { &r_key };
+            assert_eq!(&template.key(), want);
+            let acts = spot.actions(&t);
+            let best = acts[t.answer(&spot, acts[0]).unwrap().best()];
+            let g = a.answer_spot_review(&item_id, &spot, best).unwrap();
+            assert_eq!(g.vs_profile.map(|v| v.profile), template.opponent);
+            seen.push(template.opponent);
+            assert!(seen.len() <= 2);
+        }
+        seen.sort();
+        assert_eq!(seen, [None, nit]);
+        assert_eq!(a.due_count().unwrap(), 0, "both rescheduled");
+        assert_eq!(item(&a, &n_key).unwrap().reps, 2);
+
+        // An item against a profile this build no longer ships is retired.
+        let gone = SpotTemplate {
+            opponent: Some("nobody".into()),
+            ..r_ctx.template.clone()
+        };
+        assert_eq!(
+            t.spot_for_template(&gone, 1).err(),
+            Some(TemplateError::Gone)
+        );
+    }
+
+    /// #26: a database from before opponent keys (schema v2, `v1|…` template
+    /// keys) opens with its items and leaks as reference ones.
+    #[test]
+    fn old_databases_keep_their_items_as_reference() {
+        use crate::i18n::Locale;
+        use crate::review_session::ReviewPrompt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let config = App::open(dir.path())
+            .unwrap()
+            .trainers()
+            .unwrap()
+            .config_key();
+        std::fs::remove_dir_all(dir.path()).unwrap();
+        std::fs::create_dir_all(dir.path()).unwrap();
+        let old = format!("v1|{config}|preflop||-|UTG");
+        {
+            let db = rusqlite::Connection::open(dir.path().join(crate::services::DB_FILE)).unwrap();
+            for sql in &taful_store::MIGRATIONS[..2] {
+                db.execute_batch(sql).unwrap();
+            }
+            db.pragma_update(None, "user_version", 2).unwrap();
+            db.execute(
+                "INSERT INTO review_items (id, created_at, updated_at, kind, item_key, due, reps,
+                     lapses)
+                 VALUES ('01OLD', 1, 1, 'spot_template', ?1, 0, 1, 0)",
+                [&old],
+            )
+            .unwrap();
+            db.execute(
+                "INSERT INTO decisions (id, created_at, updated_at, node_key, hero_combo,
+                     chosen_action, ev_per_action, frequencies, pot, ev_loss, grade,
+                     thresholds_version, template_key, spot, street, node_type)
+                 VALUES ('01DEC', 1, 1, ?1 || '#0', 'AsAh', 'f', '[]', '[]', 1.5, 3.0,
+                     'blunder', 1, ?1, 'preflop', 'preflop', 'rfi')",
+                [&old],
+            )
+            .unwrap();
+        }
+        let mut a = App::open(dir.path()).unwrap();
+        let new = format!("v2|{config}|preflop||-|UTG|reference");
+        let item = a.store.review_item("spot_template", &new).unwrap().unwrap();
+        assert_eq!(item.id, "01OLD");
+        assert!(
+            a.store
+                .review_item("spot_template", &old)
+                .unwrap()
+                .is_none()
+        );
+        let leaks = a.leaks().unwrap();
+        assert_eq!(leaks.len(), 1);
+        assert_eq!(leaks[0].bucket.opponent, None);
+        let Some(ReviewPrompt::Spot { item_id, spot, .. }) = a.next_review(Locale::PtBr).unwrap()
+        else {
+            panic!("the old item is reviewed as a reference spot");
+        };
+        assert_eq!(item_id, "01OLD");
+        let DrillSpot::Preflop(s) = &*spot else {
+            panic!("preflop spot expected");
+        };
+        assert_eq!(s.opponent, None);
+        let t = a.trainers().unwrap();
+        a.answer_spot_review(&item_id, &spot, spot.actions(&t)[0])
+            .unwrap();
+        assert_eq!(a.store.review_item_by_id("01OLD").unwrap().unwrap().reps, 2);
     }
 
     #[test]
@@ -853,7 +1060,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut a = App::open(dir.path()).unwrap();
         let t = a.trainers().unwrap();
-        let tpl = SpotTemplate::parse(&format!("v1|{}|preflop||-|UTG", t.config_key())).unwrap();
+        let tpl = SpotTemplate::parse(&format!("v2|{}|preflop||-|UTG|reference", t.config_key()))
+            .unwrap();
         let spot = t.spot_for_template(&tpl, 1).unwrap();
         let d = t.answer(&spot, spot.actions(&t)[0]).unwrap();
         let ctx = spot.context(&t);

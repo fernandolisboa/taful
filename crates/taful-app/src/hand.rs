@@ -242,6 +242,9 @@ impl FullHand {
                             postflop: Vec::new(),
                             texture: None,
                             hero: position,
+                            // Full hands are against the reference until
+                            // seats carry profiles (#28).
+                            opponent: None,
                         },
                         street: Street::Preflop,
                         node_type: NodeType::Preflop(kind),
@@ -486,6 +489,7 @@ pub(crate) fn postflop_context(config_key: &str, walk: &Walk, position: Position
             postflop: walk.history().to_vec(),
             texture: Some(walk.texture().id()),
             hero: position,
+            opponent: None,
         },
         street: walk.street(),
         node_type: NodeType::postflop(node.map_or(0, |n| n.facing)),

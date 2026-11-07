@@ -85,6 +85,7 @@ layout-panel-explanation = Explicação
 
 ## Opponent profiles (spec §9). Names and one-line descriptions.
 table-opponent = Oponente
+leak-vs-profile = contra { $profile }
 bot-profile-reference = Referência (GTO)
 bot-profile-reference-about = Joga a estratégia de referência.
 bot-profile-nit = Nit
@@ -95,7 +96,6 @@ bot-profile-maniac = Maníaco
 bot-profile-maniac-about = Joga mãos demais e aumenta com frequência exagerada.
 bot-profile-tag = TAG
 bot-profile-tag-about = Regular tight-agressivo, perto da referência.
-table-opponent-practice = Só treino por enquanto: decisões contra perfis ainda não vão para revisões nem leaks.
 table-col-ev-profile = EV vs bot
 table-col-ev-gto = EV GTO
 table-vs-profile = Avaliado contra { $profile }: EV contra este bot.
