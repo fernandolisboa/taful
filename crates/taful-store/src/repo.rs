@@ -889,6 +889,43 @@ impl Store {
         Ok(())
     }
 
+    /// Note that `flop` was dealt in `spot`'s cycle `cycle` (#51); dealing
+    /// it again in the same cycle changes nothing.
+    pub fn note_dealt_flop(
+        &self,
+        config_key: &str,
+        spot: &str,
+        cycle: u32,
+        flop: &str,
+    ) -> Result<()> {
+        let now = self.now();
+        self.conn().execute(
+            "INSERT INTO dealt_flops (id, created_at, updated_at, config_key, spot, cycle, flop)
+             VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT (config_key, spot, cycle, flop) DO UPDATE SET
+                 updated_at = ?2, deleted_at = NULL",
+            params![new_id(), now, config_key, spot, cycle, flop],
+        )?;
+        Ok(())
+    }
+
+    /// Per spot of `config_key`: its current cycle and the flops dealt in
+    /// it, as `(spot, cycle, flop)` rows.
+    pub fn dealt_flops(&self, config_key: &str) -> Result<Vec<(String, u32, String)>> {
+        let mut stmt = self.conn().prepare(
+            "SELECT d.spot, d.cycle, d.flop FROM dealt_flops d
+             JOIN (SELECT spot, max(cycle) AS cycle FROM dealt_flops
+                   WHERE config_key = ?1 AND deleted_at IS NULL GROUP BY spot) c
+               ON c.spot = d.spot AND c.cycle = d.cycle
+             WHERE d.config_key = ?1 AND d.deleted_at IS NULL
+             ORDER BY d.spot, d.flop",
+        )?;
+        let rows = stmt.query_map(params![config_key], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     /// `(line, history, count)` of the most frequent solve candidates.
     pub fn solve_candidates(&self, limit: u32) -> Result<Vec<(String, String, u32)>> {
         let mut stmt = self.conn().prepare(
@@ -1272,6 +1309,24 @@ mod tests {
         let c = s.solve_candidates(10).unwrap();
         assert_eq!(c[0], ("UTG:r250,HJ:c".into(), "".into(), 2));
         assert_eq!(c.len(), 2);
+    }
+
+    #[test]
+    fn dealt_flops_keep_each_spots_current_cycle() {
+        let (s, _) = store();
+        s.note_dealt_flop("k", "a", 0, "Tc9c6d").unwrap();
+        s.note_dealt_flop("k", "a", 0, "Tc9c6d").unwrap();
+        s.note_dealt_flop("k", "a", 0, "Kc7c2c").unwrap();
+        s.note_dealt_flop("k", "a", 1, "AcKdQh").unwrap();
+        s.note_dealt_flop("k", "b", 0, "Kc7c2c").unwrap();
+        s.note_dealt_flop("other", "a", 3, "Kc7c2c").unwrap();
+        assert_eq!(
+            s.dealt_flops("k").unwrap(),
+            vec![
+                ("a".into(), 1, "AcKdQh".into()),
+                ("b".into(), 0, "Kc7c2c".into()),
+            ]
+        );
     }
 }
 

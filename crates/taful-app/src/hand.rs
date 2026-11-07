@@ -508,6 +508,7 @@ impl FullHand {
             return Ok(());
         };
         let mut walk = post.walk(cfg, file, flop)?;
+        post.note_dealt(&cfg.id, flop);
         let n = self.state.players().len();
         let pos = walk.positions();
         let seats = [seat_of(n, pos[0]), seat_of(n, pos[1])];

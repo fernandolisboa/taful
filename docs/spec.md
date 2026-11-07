@@ -238,6 +238,7 @@ Trees as measured in spike §9.2 (medium: flop 33/75%; turn and river 50/100%/al
 
 - A *board family* (for spot templates, D6) = subset flops in the same texture class. Re-instantiating a template picks another flop from the family.
 - Mapping a real random flop to a "nearest" library flop is rejected: hero's actual hand strength changes with the board, so the grade would be wrong in exactly the hands that matter.
+- **As built (#51):** the app deals in cycles per configuration: a solved flop not yet dealt in the current cycle comes first, still weighted by real frequency, and a new cycle starts once every solved flop was dealt. A request the cycle cannot meet (a texture drill, dead cards) draws from every solved flop. The cycle is stored (`dealt_flops`, schema v4) so it survives restarts; newly installed flops join the current cycle. A deal depends on the seed and the cycle state. Every deal relabels suits at random (one of the 24 isomorphs).
 - Variety grows as the library grows; the subset is a manifest parameter. The goal is all 1,755 canonical flops (100% of real flops), added in order of real-flop weight after the first ~49, ties broken by stratified sampling over texture classes (§7.2) (D13).
 
 ### 7.5 Library format (Taful's own, D11)

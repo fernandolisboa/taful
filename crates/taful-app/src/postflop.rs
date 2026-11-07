@@ -7,7 +7,7 @@
 //! lazily. Flops are dealt only from solved flops, weighted so textures come
 //! up as often as on random boards, with a random suit relabeling (D13).
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -117,6 +117,45 @@ impl SpotConfig {
     }
 }
 
+/// A flop dealt in a configuration's cycle (#51), to store.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DealtFlop {
+    pub spot: String,
+    pub cycle: u32,
+    /// Canonical.
+    pub flop: Flop,
+}
+
+/// One configuration's cycle: the flops dealt since it started.
+#[derive(Debug, Clone, Default)]
+struct Cycle {
+    number: u32,
+    dealt: HashSet<Flop>,
+}
+
+impl Cycle {
+    /// Starts the next cycle once every solved flop of `cfg` was dealt.
+    fn close_if_complete(&mut self, cfg: &SpotConfig) {
+        if cfg.flops.iter().all(|(f, _)| self.dealt.contains(f)) {
+            self.number += 1;
+            self.dealt.clear();
+        }
+    }
+}
+
+/// Which flops each configuration dealt in its current cycle (#51). Off
+/// until [`PostflopTrainer::start_cycles`]: then a deal prefers a solved
+/// flop not dealt yet, and a new cycle starts once all were.
+#[derive(Debug, Default)]
+struct Cycles {
+    on: bool,
+    by_spot: HashMap<String, Cycle>,
+    /// Dealt since the last [`PostflopTrainer::take_dealt`]. Lost if the
+    /// trainer is replaced or the store write fails first: at worst a flop
+    /// repeats early, which is fine for a no-repeat preference.
+    pending: Vec<DealtFlop>,
+}
+
 /// Postflop library + thresholds: spot generation and grading.
 pub struct PostflopTrainer {
     source: Box<dyn LibrarySource>,
@@ -124,6 +163,7 @@ pub struct PostflopTrainer {
     spots: Vec<SpotConfig>,
     thresholds: Thresholds,
     cache: Mutex<HashMap<String, Arc<PostflopFile>>>,
+    cycles: Mutex<Cycles>,
 }
 
 impl std::fmt::Debug for PostflopTrainer {
@@ -175,6 +215,7 @@ impl PostflopTrainer {
             spots: Vec::new(),
             thresholds,
             cache: Mutex::new(HashMap::new()),
+            cycles: Mutex::new(Cycles::default()),
         };
         for (id, mut flops) in by_spot {
             flops.sort_by_key(|(f, _)| f.cards().map(Card::index));
@@ -257,8 +298,49 @@ impl PostflopTrainer {
         dead: CardSet,
         rng: &mut ChaCha8Rng,
     ) -> Result<Option<(Arc<PostflopFile>, Flop)>, PostflopError> {
+        self.deal(cfg, texture, dead, rng, true)
+    }
+
+    /// [`Self::deal_flop`], with `cycle` false dealing from every solved flop.
+    fn deal(
+        &self,
+        cfg: &SpotConfig,
+        texture: Option<&str>,
+        dead: CardSet,
+        rng: &mut ChaCha8Rng,
+        cycle: bool,
+    ) -> Result<Option<(Arc<PostflopFile>, Flop)>, PostflopError> {
+        // Flops not dealt in this cycle first (#51); every solved flop when
+        // none of those fits.
+        if cycle && let Some(d) = self.deal_flop_from(cfg, texture, dead, rng, true)? {
+            return Ok(Some(d));
+        }
+        self.deal_flop_from(cfg, texture, dead, rng, false)
+    }
+
+    fn deal_flop_from(
+        &self,
+        cfg: &SpotConfig,
+        texture: Option<&str>,
+        dead: CardSet,
+        rng: &mut ChaCha8Rng,
+        fresh: bool,
+    ) -> Result<Option<(Arc<PostflopFile>, Flop)>, PostflopError> {
+        let dealt = if fresh {
+            let c = self.cycles.lock().expect("not poisoned");
+            if !c.on {
+                return Ok(None);
+            }
+            c.by_spot
+                .get(&cfg.id)
+                .map(|x| x.dealt.clone())
+                .unwrap_or_default()
+        } else {
+            HashSet::new()
+        };
         let idx: Vec<usize> = (0..cfg.flops.len())
             .filter(|&i| texture.is_none_or(|t| cfg.flops[i].0.texture().class().id() == t))
+            .filter(|&i| !dealt.contains(&cfg.flops[i].0))
             .collect();
         let perms: Vec<SuitPerm> = SuitPerm::all().collect();
         for _ in 0..200 {
@@ -280,6 +362,63 @@ impl PostflopTrainer {
             return Ok(Some((file, real)));
         }
         Ok(None)
+    }
+
+    /// Turns on dealing in cycles (#51), starting from what the store
+    /// remembers. A deal then depends on the seed and the cycle state, so
+    /// the same seed replays the same hand only from the same state.
+    pub fn start_cycles(&self, dealt: impl IntoIterator<Item = DealtFlop>) {
+        let mut c = self.cycles.lock().expect("not poisoned");
+        c.on = true;
+        c.by_spot.clear();
+        for d in dealt {
+            let e = c.by_spot.entry(d.spot).or_default();
+            if d.cycle > e.number {
+                *e = Cycle {
+                    number: d.cycle,
+                    dealt: HashSet::new(),
+                };
+            }
+            if d.cycle == e.number {
+                e.dealt.insert(d.flop);
+            }
+        }
+        // The store keeps the cycle that was closed last; the next one
+        // starts empty and lives only in memory until its first deal.
+        for cfg in &self.spots {
+            if let Some(e) = c.by_spot.get_mut(&cfg.id) {
+                e.close_if_complete(cfg);
+            }
+        }
+    }
+
+    /// Records that `real` was dealt in configuration `spot`: a new cycle
+    /// starts once every solved flop of it was dealt. No-op while cycles
+    /// are off.
+    pub(crate) fn note_dealt(&self, spot: &str, real: Flop) {
+        let Some(cfg) = self.spots.iter().find(|s| s.id == spot) else {
+            return;
+        };
+        let flop = real.canonical().0;
+        let mut guard = self.cycles.lock().expect("not poisoned");
+        let c = &mut *guard;
+        if !c.on {
+            return;
+        }
+        let e = c.by_spot.entry(spot.to_string()).or_default();
+        if e.dealt.insert(flop) {
+            c.pending.push(DealtFlop {
+                spot: spot.to_string(),
+                cycle: e.number,
+                flop,
+            });
+        }
+        e.close_if_complete(cfg);
+    }
+
+    /// The flops dealt since the last call, for the store.
+    pub fn take_dealt(&self) -> Vec<DealtFlop> {
+        std::mem::take(&mut self.cycles.lock().expect("not poisoned").pending)
     }
 
     /// A walk from the root of `cfg` on `real`.
@@ -315,14 +454,39 @@ impl PostflopTrainer {
         req: &SpotRequest<'_>,
         seed: u64,
     ) -> Result<PostflopSpot, PostflopError> {
+        let s = self.generate_unnoted(req, seed)?;
+        self.note_spot(&s);
+        Ok(s)
+    }
+
+    /// [`Self::generate`] without marking the flop as dealt in its cycle,
+    /// for callers that may discard the spot ([`Self::note_spot`] once
+    /// kept). A spot counts as dealt when it is shown, answered or not.
+    pub(crate) fn generate_unnoted(
+        &self,
+        req: &SpotRequest<'_>,
+        seed: u64,
+    ) -> Result<PostflopSpot, PostflopError> {
         let mut rng = ChaCha8Rng::seed_from_u64(seed);
         let mut rivers = RIVER_SOLVES;
-        for _ in 0..ATTEMPTS {
-            if let Some(s) = self.try_generate(req, &mut rng, &mut rivers)? {
+        for attempt in 0..ATTEMPTS {
+            // The first half deals from the cycle; when a request only fits
+            // flops already dealt in it, the second half uses every flop.
+            let cycle = attempt < ATTEMPTS / 2;
+            if let Some(s) = self.try_generate(req, &mut rng, &mut rivers, cycle)? {
                 return Ok(s);
             }
         }
         Err(PostflopError::Empty)
+    }
+
+    /// Marks the flop of `s` as dealt in its cycle (#51).
+    pub(crate) fn note_spot(&self, s: &PostflopSpot) {
+        let w = s.walk();
+        let board = w.board();
+        if let Some(flop) = Flop::new([board[0], board[1], board[2]]) {
+            self.note_dealt(w.spot_id(), flop);
+        }
     }
 
     fn try_generate(
@@ -330,6 +494,7 @@ impl PostflopTrainer {
         req: &SpotRequest<'_>,
         rng: &mut ChaCha8Rng,
         rivers: &mut usize,
+        cycle: bool,
     ) -> Result<Option<PostflopSpot>, PostflopError> {
         let cfg = match req.spot {
             Some(id) => self
@@ -339,7 +504,7 @@ impl PostflopTrainer {
                 .ok_or(PostflopError::Empty)?,
             None => self.spots.choose(rng).ok_or(PostflopError::Empty)?,
         };
-        let Some((file, real)) = self.deal_flop(cfg, req.texture, CardSet::EMPTY, rng)? else {
+        let Some((file, real)) = self.deal(cfg, req.texture, CardSet::EMPTY, rng, cycle)? else {
             return Ok(None);
         };
         let mut walk = self.walk(cfg, file, real)?;
@@ -716,6 +881,128 @@ mod tests {
             Thresholds::default(),
         )
         .expect("fixture library opens")
+    }
+
+    fn flop_of(s: &PostflopSpot) -> Flop {
+        Flop::new([s.board[0], s.board[1], s.board[2]])
+            .unwrap()
+            .canonical()
+            .0
+    }
+
+    #[test]
+    fn cycles_deal_every_flop_before_repeating() {
+        let t = trainer();
+        // Off until started: nothing is noted.
+        t.spot(None, 0).unwrap();
+        assert!(t.take_dealt().is_empty());
+        t.start_cycles([]);
+        let flops: Vec<Flop> = (0..6)
+            .map(|seed| flop_of(&t.spot(None, seed).unwrap()))
+            .collect();
+        // Two solved flops: each cycle deals both, whatever the weights.
+        for pair in flops.chunks(2) {
+            assert_ne!(pair[0], pair[1], "{flops:?}");
+        }
+        let dealt = t.take_dealt();
+        assert_eq!(
+            dealt.iter().map(|d| d.cycle).collect::<Vec<_>>(),
+            vec![0, 0, 1, 1, 2, 2]
+        );
+        assert_eq!(dealt.iter().map(|d| d.flop).collect::<Vec<_>>(), flops);
+        assert!(t.take_dealt().is_empty());
+    }
+
+    #[test]
+    fn cycles_resume_where_the_store_left_off() {
+        let t = trainer();
+        let tc: Flop = "Tc9c6d".parse().unwrap();
+        let kc: Flop = "Kc7c2c".parse().unwrap();
+        let spot = "btn-sb-3bp".to_string();
+        t.start_cycles([
+            DealtFlop {
+                spot: spot.clone(),
+                cycle: 2,
+                flop: kc,
+            },
+            DealtFlop {
+                spot: spot.clone(),
+                cycle: 3,
+                flop: tc,
+            },
+        ]);
+        // Cycle 3 already dealt Tc9c6d: Kc7c2c comes next and closes it.
+        assert_eq!(flop_of(&t.spot(None, 0).unwrap()), kc);
+        let next = flop_of(&t.spot(None, 1).unwrap());
+        let dealt = t.take_dealt();
+        assert_eq!(
+            dealt,
+            vec![
+                DealtFlop {
+                    spot: spot.clone(),
+                    cycle: 3,
+                    flop: kc,
+                },
+                DealtFlop {
+                    spot,
+                    cycle: 4,
+                    flop: next,
+                },
+            ]
+        );
+    }
+
+    /// The store's last rows can be a closed cycle (the next one was only
+    /// in memory): a reload starts the next cycle instead of sticking.
+    #[test]
+    fn a_closed_cycle_in_the_store_starts_the_next() {
+        let t = trainer();
+        let tc: Flop = "Tc9c6d".parse().unwrap();
+        let kc: Flop = "Kc7c2c".parse().unwrap();
+        let spot = "btn-sb-3bp".to_string();
+        t.start_cycles([tc, kc].map(|flop| DealtFlop {
+            spot: spot.clone(),
+            cycle: 0,
+            flop,
+        }));
+        let a = flop_of(&t.spot(None, 0).unwrap());
+        let b = flop_of(&t.spot(None, 1).unwrap());
+        assert_ne!(a, b, "a fresh cycle deals both flops");
+        let dealt = t.take_dealt();
+        assert_eq!(dealt.len(), 2);
+        assert_eq!(dealt[0].cycle, 1);
+        assert_eq!(dealt[1].cycle, 1);
+    }
+
+    #[test]
+    fn a_request_the_cycle_cannot_meet_uses_every_flop() {
+        let t = trainer();
+        let kc: Flop = "Kc7c2c".parse().unwrap();
+        t.start_cycles([DealtFlop {
+            spot: "btn-sb-3bp".into(),
+            cycle: 0,
+            flop: kc,
+        }]);
+        let texture = kc.texture().class().id();
+        let req = SpotRequest {
+            texture: Some(&texture),
+            ..SpotRequest::default()
+        };
+        let s = t.generate(&req, 1).unwrap();
+        assert_eq!(flop_of(&s), kc);
+    }
+
+    #[test]
+    fn flops_are_dealt_in_every_suit() {
+        let t = trainer();
+        let real: HashSet<Flop> = (0..60)
+            .map(|seed| {
+                let s = t.spot(None, seed).unwrap();
+                Flop::new([s.board[0], s.board[1], s.board[2]]).unwrap()
+            })
+            .collect();
+        assert!(real.iter().any(|f| !f.is_canonical()));
+        assert!(real.len() > 10, "{} distinct real flops", real.len());
     }
 
     #[test]
