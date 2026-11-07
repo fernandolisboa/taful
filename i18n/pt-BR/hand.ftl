@@ -7,6 +7,7 @@ table-subtitle-hand = Mãos completas contra bots (a referência ou o perfil esc
 table-subtitle-drill = Treinando um vazamento: { $bucket }
 table-hand-over-unsolved = Esta linha de preflop ainda não tem flop resolvido, então a mão termina aqui: { $line }
 table-hand-over-range = Sua mão saiu dos ranges resolvidos antes nesta linha, então a mão termina aqui: { $line }
+table-hand-over-bot-range = { $profile } tem uma mão que a biblioteca resolvida não cobre (joga mais solto que a referência), então a mão termina aqui: { $line }
 table-river-solved = River resolvido neste computador para esta mão.
 table-review-hand = Revisar a mão
 table-postflop-preflop = Preflop

@@ -45,6 +45,10 @@ pub enum LeftReason {
     /// A player's hand has no data at the node (it was played off the
     /// strategy earlier).
     NotInRange,
+    /// A profiled bot holds a hand the library has no data for: the profile
+    /// played it preflop, but the postflop solve starts from the reference
+    /// range along the line (spec §9 simplifications).
+    BotOffRange,
 }
 
 impl LeftReason {
@@ -55,6 +59,7 @@ impl LeftReason {
             LeftReason::NoLibrary => "no-library",
             LeftReason::OffTree => "off-tree",
             LeftReason::NotInRange => "not-in-range",
+            LeftReason::BotOffRange => "bot-off-range",
         }
     }
 
@@ -506,7 +511,12 @@ impl FullHand {
                 None => break,
             };
             let Some(freqs) = freqs else {
-                self.leave(LeftReason::NotInRange);
+                let profiled = seat != self.hero && self.seat_profiles[seat].is_some();
+                self.leave(if profiled {
+                    LeftReason::BotOffRange
+                } else {
+                    LeftReason::NotInRange
+                });
                 break;
             };
             if seat == self.hero {
@@ -961,5 +971,21 @@ mod tests {
         assert_eq!(a.state, b.state);
         assert_eq!(a.end, b.end);
         assert_eq!(a.decisions, b.decisions);
+    }
+
+    #[test]
+    fn a_loose_bot_off_the_library_range_ends_the_hand_with_its_own_reason() {
+        let (pre, post) = (pre(), post_profiles());
+        let mut off = 0;
+        for mut h in library_hands_vs(&pre, &post, Some("calling-station"), 30) {
+            play_best(&mut h, &pre, Some(&post));
+            if let Some(HandEnd::LeftLibrary { reason, .. }) = &h.end {
+                // Hero follows the reference, so only the bot can be off
+                // the library's range.
+                assert_ne!(*reason, LeftReason::NotInRange, "seed {}", h.seed);
+                off += usize::from(*reason == LeftReason::BotOffRange);
+            }
+        }
+        assert!(off > 0, "the station never left the library's range");
     }
 }

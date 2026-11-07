@@ -564,8 +564,19 @@ impl TableScreen {
                     LeftReason::Unsolved => "table-hand-over-unsolved",
                     LeftReason::OffTree => "table-hand-over-left",
                     LeftReason::NotInRange => "table-hand-over-range",
+                    LeftReason::BotOffRange => "table-hand-over-bot-range",
                 };
-                i18n.tr_args(key, &[("line", history.to_string().into())])
+                let profile = h
+                    .table_profile()
+                    .map(|id| i18n.tr(&format!("bot-profile-{id}")))
+                    .unwrap_or_default();
+                i18n.tr_args(
+                    key,
+                    &[
+                        ("line", history.to_string().into()),
+                        ("profile", profile.into()),
+                    ],
+                )
             }
         })
     }

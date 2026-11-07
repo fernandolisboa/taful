@@ -7,6 +7,7 @@ table-subtitle-hand = Full hands vs bots (the reference or the profile you pick)
 table-subtitle-drill = Drilling a leak: { $bucket }
 table-hand-over-unsolved = This preflop line has no solved flop yet, so the hand ends here: { $line }
 table-hand-over-range = Your hand left the solved ranges earlier in this line, so the hand ends here: { $line }
+table-hand-over-bot-range = { $profile } holds a hand the solved library does not cover (it plays wider than the reference), so the hand ends here: { $line }
 table-river-solved = River solved on this computer for this hand.
 table-review-hand = Review hand
 table-postflop-preflop = Preflop
