@@ -394,3 +394,24 @@ The only user today is the author, on his own PC. Signing certificates, hosting 
 ### Implications
 - The installer format must not require a signature to install (rules out MSIX); an MSI or a setup executable built in CI fits.
 - Q5 (library host) and the INPI filing stay deferred until a sell decision.
+
+---
+
+## D15 — Profiles play their own preflop range postflop
+
+**Date:** 2026-11-07 · **Spec ref:** §9 simplifications, #48
+
+### Decision
+- The postflop build computes each listed profile's preflop range along the line (the profile's transform of the chart, the same function the app's profiled bots sample). Each profile's best-response and reach passes start the bot from that range instead of the reference's, and the library stores it per profile section (format v4). The app starts a profiled bot from it.
+- **Seeding** (`solve.profile_seed`, opt-in): combos a profile brings to the flop that the reference never does join the solve at a tiny weight. In CFR a hand's regrets do not depend on its own reach, so seeded combos get a real strategy while the reference barely moves. The reference's own rows and header ranges never include seeded combos. Without a seed, the profile's range is restricted to the reference's combos, and a bot holding another combo ends the hand with `bot-off-range`.
+- **Rejected:** a separate solve per profile from its own root range (#48 option 2). It is the most faithful, but costs ~5x the build (2,150–3,500 h for the 8,775 solves).
+
+### Cost (measured 2026-11-07, cloud, 4 vCPU)
+- Solver memory and time scale with the number of hands, and loose profiles roughly double the ranges. Memory estimates over the 49 first-slice flops, all four profiles seeded, mean and max per flop: btn-bb-srp 9.5/14.6 → 17.3/25.6 GB (1.82x); co-bb-srp 7.7/11.8 → 14.0/21.1 GB (1.82x); sb-bb-srp 10.6/16.0 → 16.4/24.2 GB (1.54x); btn-sb-3bp 3.5/5.5 → 9.0/13.8 GB (2.56x); co-btn-3bp 4.8/7.5 → 10.5/16.2 GB (2.18x).
+- One real solve (`btn-sb-3bp` AcKdQh, large tree): reference only 1,158 s, 340 iterations, peak 4.7 GB, 3.2 MB. Seeded with four profiles 2,631 s, 300 iterations (2.6x per iteration), best responses 125 s, peak 13.2 GB, 23.5 MB (14.7 MB with unseeded profiles, #27).
+- Rough full-coverage estimate with seeding: ~1.9x the reference build, so ~800–1,350 h instead of 430–700 h, with dry SRP flops peaking at ~26 GB on the 32 GB build PC.
+
+### Implications
+- Whether the full-coverage run (#31) enables `profile_seed` is decided with that cost in view. Without it, the code still runs every profile's best response from its own range within the reference's combos.
+- Manifests that list profiles hash a profile-sections tag, so a build resumed across this change never mixes v3 and v4 files.
+
