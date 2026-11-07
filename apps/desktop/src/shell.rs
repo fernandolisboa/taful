@@ -54,6 +54,12 @@ pub struct Shell {
     pub(crate) table: Entity<TableScreen>,
     /// The home screen's leaks, read again each time home is opened.
     pub(crate) leaks: Option<Vec<taful_app::model::Leak>>,
+    /// The guided tour on screen: which screen's, and the step shown.
+    tour: Option<(Screen, usize)>,
+    /// Screens whose tour was finished or skipped (`tour.seen`).
+    pub(crate) tour_seen: String,
+    /// Set by Settings' "show tours again" until the screen changes.
+    pub(crate) tour_reset_done: bool,
     _ticker: Task<()>,
     _subscriptions: Vec<Subscription>,
 }
@@ -120,10 +126,18 @@ impl Shell {
             settings: SettingsView::default(),
             hand_review: HandReviewView::default(),
             leaks: None,
+            tour: None,
+            tour_seen: String::new(),
+            tour_reset_done: false,
             table,
             _ticker: ticker,
             _subscriptions: subscriptions,
         };
+        shell.tour_seen = shell
+            .app
+            .string_setting(taful_app::keys::TOUR_SEEN)
+            .unwrap_or_default();
+        shell.maybe_start_tour();
         // Dev override (screenshots): TAFUL_REVIEW_START=1 deals the first review.
         if shell.screen == Screen::Review && std::env::var_os("TAFUL_REVIEW_START").is_some() {
             shell.review_load_next(cx);
@@ -203,10 +217,15 @@ impl Shell {
 
     pub(crate) fn select(&mut self, screen: Screen, window: &mut Window, cx: &mut Context<Self>) {
         if self.screen != screen {
+            self.tour_reset_done = false;
+            // Leaving mid-tour counts as skipping it (before calc_leave,
+            // which would otherwise be undone by the tour's resume).
+            self.tour_end();
             if self.screen == Screen::Calc {
                 self.calc_leave();
             }
             self.screen = screen;
+            crate::tour::clear_anchors();
             self.input.clear();
             self.scroll_to_top();
             if screen == Screen::Review {
@@ -218,6 +237,7 @@ impl Shell {
             if screen == Screen::HandReview {
                 self.hand_review_enter();
             }
+            self.maybe_start_tour();
             if screen == Screen::Home {
                 self.leaks = None;
             }
@@ -260,6 +280,16 @@ impl Shell {
     }
 
     fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if self.tour.is_some() {
+            // The tour owns the keyboard: no answer is typed behind it.
+            match ev.keystroke.key.as_str() {
+                "escape" => self.tour_end(),
+                "enter" => self.tour_next(cx),
+                _ => {}
+            }
+            cx.notify();
+            return;
+        }
         if self.screen == Screen::Settings {
             // The theme editor's hex and name fields.
             self.theme_editor_key(ev, cx);
@@ -365,6 +395,7 @@ impl Shell {
         let settings = item(n, crate::screen::NAV_BOTTOM, cx);
 
         div()
+            .relative()
             .w(px(NAV_WIDTH))
             .h_full()
             .flex()
@@ -395,6 +426,7 @@ impl Shell {
                             .child(i18n.tr("app-tagline")),
                     ),
             )
+            .child(crate::tour::anchor("nav"))
             .child(items)
             .child(div().flex_1())
             .child(settings)
@@ -436,8 +468,202 @@ impl Shell {
             .into_any_element()
     }
 
+    /// Opens the current screen's tour on its first visit.
+    /// `TAFUL_TOUR=0` (screenshots, CI) never opens one on its own.
+    fn maybe_start_tour(&mut self) {
+        if std::env::var("TAFUL_TOUR").as_deref() == Ok("0") {
+            return;
+        }
+        if !crate::tour::is_seen(&self.tour_seen, self.screen) {
+            self.tour_start();
+        }
+    }
+
+    /// Opens the current screen's tour at its first step. A timed
+    /// question's clock is paused while the tour is open.
+    fn tour_start(&mut self) {
+        self.tour = Some((self.screen, 0));
+        if self.screen == Screen::Calc {
+            self.calc_leave();
+        }
+    }
+
+    fn tour_next(&mut self, cx: &mut Context<Self>) {
+        if let Some((screen, i)) = self.tour {
+            if i + 1 < crate::tour::steps(screen).len() {
+                self.tour = Some((screen, i + 1));
+            } else {
+                self.tour_end();
+            }
+        }
+        cx.notify();
+    }
+
+    /// Closes the tour and remembers the screen as seen.
+    fn tour_end(&mut self) {
+        let Some((screen, _)) = self.tour.take() else {
+            return;
+        };
+        if screen == Screen::Calc && self.screen == Screen::Calc {
+            self.calc_enter();
+        }
+        self.tour_seen = crate::tour::with_seen(&self.tour_seen, screen);
+        if let Err(e) = self
+            .app
+            .set_string_setting(taful_app::keys::TOUR_SEEN, &self.tour_seen)
+        {
+            eprintln!("taful: saving the tour state failed: {e}");
+        }
+    }
+
+    /// Forgets every seen tour; each screen shows its tour again.
+    pub(crate) fn tour_reset(&mut self) {
+        self.tour_seen.clear();
+        self.tour_reset_done = true;
+        if let Err(e) = self.app.set_string_setting(taful_app::keys::TOUR_SEEN, "") {
+            eprintln!("taful: resetting the tours failed: {e}");
+        }
+    }
+
+    /// The coach mark over the anchored element (or centered when the
+    /// anchor is not on screen, e.g. a quiz that is already open).
+    fn tour_overlay(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        const CARD_W: f32 = 360.;
+        const GAP: f32 = 12.;
+        // Room kept for the card (its height is known only after layout).
+        const CARD_H: f32 = 260.;
+        let (screen, i) = self.tour?;
+        let steps = crate::tour::steps(screen);
+        let step = steps.get(i)?;
+        let (p, t, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
+        let vp = window.viewport_size();
+        let (vw, vh) = (f32::from(vp.width), f32::from(vp.height));
+        let bounds = crate::tour::anchor_bounds(step.anchor);
+        if bounds.is_none() && crate::tour::retry_once(screen, i) {
+            // The anchor may paint this frame; point at it on the next one.
+            window.request_animation_frame();
+        }
+        let last = i + 1 == steps.len();
+        let card = div()
+            .id("tour_card")
+            .occlude()
+            .absolute()
+            .w(px(CARD_W))
+            .flex()
+            .flex_col()
+            .gap(px(t.spacing.sm))
+            .p(px(t.spacing.lg))
+            .rounded(px(t.radii.lg))
+            .bg(p.surface_raised)
+            .border_1()
+            .border_color(p.accent)
+            .shadow_lg()
+            .child(crate::widgets::eyebrow(
+                i18n.tr_args(
+                    "tour-step",
+                    &[("n", (i + 1).into()), ("total", steps.len().into())],
+                ),
+                &self.ui,
+                p,
+            ))
+            .child(crate::widgets::title(i18n.tr(step.title), &self.ui))
+            .child(
+                div()
+                    .text_size(px(t.text_size.md))
+                    .line_height(px(t.text_size.md * 1.5))
+                    .child(i18n.tr(step.body)),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .pt(px(t.spacing.sm))
+                    .child(
+                        div()
+                            .id("tour_skip")
+                            .text_size(px(t.text_size.sm))
+                            .text_color(p.text_muted)
+                            .cursor_pointer()
+                            .hover(|s| s.text_color(p.text))
+                            .when(!last, |d| d.child(i18n.tr("tour-skip")))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.tour_end();
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        crate::widgets::button(
+                            "tour_next",
+                            i18n.tr(if last { "tour-done" } else { "tour-next" }),
+                            true,
+                            &self.ui,
+                            p,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| this.tour_next(cx))),
+                    ),
+            );
+        let Some(b) = bounds else {
+            return Some(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .size_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(card.relative())
+                    .into_any_element(),
+            );
+        };
+        let (bx, by) = (f32::from(b.origin.x), f32::from(b.origin.y));
+        let (bw, bh) = (f32::from(b.size.width), f32::from(b.size.height));
+        let ring = div()
+            .absolute()
+            .left(px(bx - 4.))
+            .top(px(by - 4.))
+            .w(px(bw + 8.))
+            .h(px(bh + 8.))
+            .rounded(px(t.radii.lg))
+            .border_2()
+            .border_color(p.accent);
+        let clamp_x = |x: f32| x.clamp(GAP, (vw - CARD_W - GAP).max(GAP));
+        // The card always stays inside the window, even when the anchor
+        // is scrolled out of view (e.g. the quiz button under a long text).
+        let clamp_y = |y: f32| y.clamp(GAP, (vh - CARD_H - GAP).max(GAP));
+        // Tall anchors (nav, felt): beside them; others: below, or above
+        // when there is no room below.
+        // `None`: above the anchor, the card's bottom edge on its top.
+        let (x, top) = if bh > vh * 0.5 && bx + bw + GAP + CARD_W < vw {
+            (bx + bw + GAP, Some(by + 40.))
+        } else if bh > vh * 0.5 && bx > CARD_W + GAP {
+            (bx - CARD_W - GAP, Some(by + 40.))
+        } else if by + bh + GAP + CARD_H < vh {
+            (clamp_x(bx), Some(by + bh + GAP))
+        } else if by - GAP - CARD_H >= GAP && by <= vh {
+            (clamp_x(bx), None)
+        } else {
+            (clamp_x(bx), Some(by - GAP - CARD_H))
+        };
+        let card = match top {
+            Some(y) => card.left(px(x)).top(px(clamp_y(y))),
+            None => card.left(px(x)).bottom(px(vh - by + GAP)),
+        };
+        Some(
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .child(ring)
+                .child(card)
+                .into_any_element(),
+        )
+    }
+
     /// Screen title plus a one-line "what is this screen" subtitle.
-    fn header(&self) -> AnyElement {
+    fn header(&self, cx: &mut Context<Self>) -> AnyElement {
         let (p, t, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
         let subtitle = matches!(
             self.screen,
@@ -449,14 +675,39 @@ impl Shell {
                 | Screen::Settings
         );
         div()
+            .relative()
             .flex()
             .flex_col()
             .gap(px(t.spacing.xs))
+            .child(crate::tour::anchor("screen_title"))
             .child(
                 div()
-                    .text_size(px(t.text_size.xl))
-                    .font_weight(FontWeight::BOLD)
-                    .child(i18n.tr(self.screen.nav_key())),
+                    .flex()
+                    .items_center()
+                    .gap(px(t.spacing.md))
+                    .child(
+                        div()
+                            .text_size(px(t.text_size.xl))
+                            .font_weight(FontWeight::BOLD)
+                            .child(i18n.tr(self.screen.nav_key())),
+                    )
+                    .child(
+                        div()
+                            .id("tour_replay")
+                            .px(px(t.spacing.sm))
+                            .rounded(px(t.radii.pill))
+                            .border_1()
+                            .border_color(p.border)
+                            .text_size(px(t.text_size.sm))
+                            .text_color(p.text_muted)
+                            .cursor_pointer()
+                            .hover(|s| s.border_color(p.accent).text_color(p.text))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.tour_start();
+                                cx.notify();
+                            }))
+                            .child(format!("? {}", i18n.tr("tour-replay"))),
+                    ),
             )
             .when(subtitle, |d| {
                 d.child(
@@ -498,7 +749,7 @@ impl Shell {
                         .flex_none()
                         .gap(px(gap))
                         .p(px(xxl))
-                        .child(self.header())
+                        .child(self.header(cx))
                         .child(body),
                 )
                 .into_any_element();
@@ -533,7 +784,7 @@ impl Shell {
                     // too short to scroll to its end.
                     .w(px(column_width))
                     .p(px(xxl))
-                    .child(self.header())
+                    .child(self.header(cx))
                     .child(body),
             )
             .into_any_element()
@@ -542,9 +793,12 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        crate::tour::begin_frame();
         let content = self.content(window, cx);
         let nav = self.nav(cx);
+        let tour = self.tour_overlay(window, cx);
         div()
+            .relative()
             .size_full()
             .flex()
             .bg(self.palette.background)
@@ -553,5 +807,6 @@ impl Render for Shell {
             .on_key_down(cx.listener(Self::on_key))
             .child(nav)
             .child(content)
+            .children(tour)
     }
 }

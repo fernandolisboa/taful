@@ -62,7 +62,10 @@ impl Shell {
                 .when(open, |d| {
                     d.child(progress(done as f32 / total.max(1) as f32, &ui, &p))
                 });
-            let mut c = card(&ui, &p).child(header);
+            let mut c = card(&ui, &p)
+                .relative()
+                .when(n == 0, |c| c.child(crate::tour::anchor("tree_first")))
+                .child(header);
             if !expanded {
                 // A locked track is one line, not a wall of grey rows; a
                 // click expands it to preview its lessons.
@@ -128,6 +131,8 @@ impl Shell {
                         // Locked lessons open too (read-only preview, no quiz).
                         .cursor_pointer()
                         .hover(|s| s.bg(p.surface_raised))
+                        .relative()
+                        .when(is_next, |d| d.child(crate::tour::anchor("tree_next")))
                         .when(is_next, |d| {
                             d.bg(p.surface_raised)
                                 .border_1()

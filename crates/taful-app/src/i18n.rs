@@ -90,6 +90,7 @@ pub const SOURCES: &[Source] = sources![
     "settings.ftl",
     "table.ftl",
     "theme.ftl",
+    "tour.ftl",
 ];
 
 /// A Fluent file failed to parse or clashed with another file.

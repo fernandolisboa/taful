@@ -88,6 +88,8 @@ jobs:
         run: |
           # Open the table screen (M3) so the screenshot shows the preflop trainer.
           $env:TAFUL_SCREEN = "table"
+          # No guided tour over the screenshot (#58).
+          $env:TAFUL_TOUR = "0"
           $app = Start-Process -FilePath target\release\taful.exe -PassThru `
             -RedirectStandardOutput stdout.log -RedirectStandardError stderr.log
           Start-Sleep -Seconds 15

@@ -44,9 +44,13 @@ impl Screen {
 
     /// The screen whose nav key is `nav-<id>` (e.g. `table`, `skill-tree`).
     pub fn from_id(id: &str) -> Option<Screen> {
-        Screen::ALL
-            .into_iter()
-            .find(|s| s.nav_key().split_once('-').map(|(_, rest)| rest) == Some(id))
+        Screen::ALL.into_iter().find(|s| s.id() == id)
+    }
+
+    /// Stable id (`TAFUL_SCREEN`, the `tour.seen` setting): the nav key
+    /// without its `nav-` prefix.
+    pub fn id(self) -> &'static str {
+        self.nav_key().split_once('-').map_or("", |(_, rest)| rest)
     }
 
     /// Fluent id of the navigation label, also used as the screen title.

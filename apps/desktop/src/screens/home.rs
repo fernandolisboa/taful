@@ -31,6 +31,8 @@ impl Shell {
         );
         // The one thing to do next, big, at the top.
         let lesson = card(&ui, &p)
+            .relative()
+            .child(crate::tour::anchor("home_continue"))
             .border_l(px(4.))
             .border_color(p.accent)
             .gap(px(t.spacing.lg))
@@ -201,8 +203,10 @@ impl Shell {
             .child(lesson)
             .child(
                 div()
+                    .relative()
                     .flex()
                     .gap(px(t.spacing.lg))
+                    .child(crate::tour::anchor("home_stats"))
                     .child(reviews)
                     .child(calc),
             )

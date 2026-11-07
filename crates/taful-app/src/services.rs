@@ -30,6 +30,9 @@ pub mod keys {
     /// Table auto-replay up to hero's decision (#53): `on` (default) or
     /// `off`.
     pub const TABLE_REPLAY: &str = "table.replay";
+    /// Screens whose guided tour was finished or skipped (#58),
+    /// comma-separated screen ids.
+    pub const TOUR_SEEN: &str = "tour.seen";
 }
 
 /// The database file name inside the data folder.

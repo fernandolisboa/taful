@@ -391,7 +391,12 @@ impl Shell {
         if open.state == LessonState::Locked {
             col = col.child(muted(ui.i18n.tr("lesson-locked-note"), &ui, &p));
         }
-        col = col.child(card(&ui, &p).child(document(&open.doc, &ui, &p)));
+        col = col.child(
+            card(&ui, &p)
+                .relative()
+                .child(crate::tour::anchor("lesson_doc"))
+                .child(document(&open.doc, &ui, &p)),
+        );
         if !open.glossary.is_empty() {
             let mut g = card(&ui, &p).child(title(ui.i18n.tr("lesson-glossary"), &ui));
             for term in &open.glossary {
@@ -420,13 +425,14 @@ impl Shell {
                     "lesson-take-quiz"
                 };
                 col = col.child(
-                    button("lesson_quiz", ui.i18n.tr(label), true, &ui, &p).on_click(cx.listener(
-                        |this, _, window, cx| {
+                    button("lesson_quiz", ui.i18n.tr(label), true, &ui, &p)
+                        .relative()
+                        .child(crate::tour::anchor("lesson_quiz"))
+                        .on_click(cx.listener(|this, _, window, cx| {
                             this.start_quiz();
                             window.focus(&this.focus);
                             cx.notify();
-                        },
-                    )),
+                        })),
                 );
             }
             None => {}
