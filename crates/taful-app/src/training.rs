@@ -132,7 +132,7 @@ impl Trainers {
         if !post.spots().iter().any(|s| s.id == t.spot) {
             return Err(TemplateError::Unavailable);
         }
-        post.generate(
+        post.generate_unnoted(
             &SpotRequest {
                 spot: Some(&t.spot),
                 texture: t.texture.as_deref(),
@@ -148,6 +148,7 @@ impl Trainers {
         // the wrong opponent.
         .ok()
         .filter(|s| s.fallback.is_none())
+        .inspect(|s| post.note_spot(s))
         .map(|s| DrillSpot::Postflop(Box::new(s)))
         .ok_or(TemplateError::Unavailable)
     }
@@ -180,7 +181,7 @@ impl Trainers {
             )));
         }
         let post = self.postflop.as_ref().map_err(Clone::clone)?;
-        let s = post.generate(
+        let s = post.generate_unnoted(
             &SpotRequest {
                 spot: Some(&b.spot),
                 texture: b.texture.as_deref(),
@@ -196,6 +197,7 @@ impl Trainers {
         if s.fallback.is_some() {
             return Err(PostflopError::Empty);
         }
+        post.note_spot(&s);
         Ok(DrillSpot::Postflop(Box::new(s)))
     }
 
