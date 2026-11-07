@@ -23,6 +23,7 @@ use taful_app::model::{
 };
 use taful_app::postflop::{PostflopError, SpotRequest};
 use taful_app::preflop::{Action, GameState, GradedDecision, SpotKind};
+use taful_app::story::{Story, StoryEvent};
 use taful_app::template::{street_id, texture_label_keys};
 
 #[path = "table_edit.rs"]
@@ -51,6 +52,8 @@ pub enum TableEvent {
     /// Save the edited layout as a user copy; the shell answers through
     /// [`TableScreen::layout_saved`].
     SaveLayout(Box<Layout>),
+    /// The auto-replay toggle changed (#53), to store.
+    AutoReplay(bool),
 }
 
 impl EventEmitter<TableEvent> for TableScreen {}
@@ -89,7 +92,38 @@ pub struct TableScreen {
     /// generation is dropped.
     generation: u64,
     _job: Option<Task<()>>,
+    /// How the shown question or hand got here (#53): the action log and
+    /// the replay. Rebuilt with every new question and every hand step.
+    playback: Option<Playback>,
+    /// Play the story up to hero's decision on every deal (setting).
+    auto_replay: bool,
+    /// The replay's timer; dropping it stops the replay.
+    _ticker: Option<Task<()>>,
 }
+
+/// The story of the shown question or hand and the state on the felt.
+struct Playback {
+    story: Story,
+    /// Index into `story.states` shown now; the last one when not playing.
+    at: usize,
+}
+
+impl Playback {
+    fn last(&self) -> usize {
+        self.story.states.len() - 1
+    }
+
+    fn playing(&self) -> bool {
+        self.at < self.last()
+    }
+}
+
+/// Replay pace (#53): the pause before the first action, then per action
+/// (folds go faster) and per dealt street.
+const REPLAY_START: std::time::Duration = std::time::Duration::from_millis(500);
+const REPLAY_FOLD: std::time::Duration = std::time::Duration::from_millis(300);
+const REPLAY_ACTION: std::time::Duration = std::time::Duration::from_millis(800);
+const REPLAY_DEAL: std::time::Duration = std::time::Duration::from_millis(1000);
 
 /// What the background is doing (the busy line).
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -138,6 +172,7 @@ impl TableScreen {
         ui: Rc<Ui>,
         trainers: Result<Arc<Trainers>, String>,
         layout: Layout,
+        auto_replay: bool,
         cx: &mut Context<Self>,
     ) -> Self {
         let palette = Palette::new(&ui.theme.colors);
@@ -167,7 +202,14 @@ impl TableScreen {
             busy: None,
             generation: 0,
             _job: None,
+            playback: None,
+            auto_replay,
+            _ticker: None,
         };
+        // Screenshots: TAFUL_TABLE_REPLAY=0 deals straight to the decision.
+        if std::env::var("TAFUL_TABLE_REPLAY").as_deref() == Ok("0") {
+            s.auto_replay = false;
+        }
         // Dev override (and screenshots): TAFUL_TABLE_MODE=postflop|hand.
         match std::env::var("TAFUL_TABLE_MODE").as_deref() {
             Ok("postflop") => s.mode = Mode::Postflop,
@@ -224,6 +266,8 @@ impl TableScreen {
         let seed = self.next_seed();
         self.answer = None;
         self.generation += 1;
+        self.playback = None;
+        self._ticker = None;
         match self.mode {
             Mode::Spot => {
                 self.busy = None;
@@ -234,6 +278,7 @@ impl TableScreen {
                     .spot(self.kind, seed)
                     .ok()
                     .map(|s| DrillSpot::Preflop(Box::new(s.against(opponent))));
+                self.question_landed(cx);
             }
             Mode::Postflop => {
                 self.question = None;
@@ -300,16 +345,182 @@ impl TableScreen {
 
     fn finish(&mut self, done: Done, cx: &mut Context<Self>) {
         match done {
-            Done::Question(q) => self.question = q,
+            Done::Question(q) => {
+                self.question = q;
+                self.question_landed(cx);
+            }
             // The bots can end a hand before hero ever acts (a walk in the
             // big blind), so a fresh deal is checked as well.
-            Done::Hand(Some(h)) | Done::Acted(Ok(h)) => {
+            Done::Hand(Some(h)) => {
                 self.send_if_over(&h, cx);
+                self.show_story(&h.state, Some(0), cx);
+                self.hand = Some(h);
+            }
+            Done::Acted(Ok(h)) => {
+                self.send_if_over(&h, cx);
+                // Hero's own action shows at once; the bots' answers play.
+                let from = self.playback.as_ref().map(|p| p.last() + 1);
+                self.show_story(&h.state, from, cx);
                 self.hand = Some(h);
             }
             Done::Hand(None) => self.hand = None,
             Done::Acted(Err(e)) => eprintln!("taful: hand: {e}"),
         }
+    }
+
+    /// A new question is on the table: its story plays from the deal.
+    fn question_landed(&mut self, cx: &mut Context<Self>) {
+        match self.question.as_ref().map(|q| q.state().clone()) {
+            Some(state) => self.show_story(&state, Some(0), cx),
+            None => {
+                self.playback = None;
+                self._ticker = None;
+            }
+        }
+    }
+
+    /// Shows `state`'s story (#53), replaying it from state `from` when
+    /// auto-replay is on (`None` or auto-replay off: straight to the end).
+    fn show_story(&mut self, state: &GameState, from: Option<usize>, cx: &mut Context<Self>) {
+        self._ticker = None;
+        self.playback = match Story::of(state) {
+            Ok(story) => {
+                let last = story.states.len() - 1;
+                let at = from
+                    .filter(|_| self.auto_replay)
+                    .map_or(last, |f| f.min(last));
+                Some(Playback { story, at })
+            }
+            Err(e) => {
+                eprintln!("taful: story: {e}");
+                None
+            }
+        };
+        self.start_ticker(cx);
+    }
+
+    /// Plays the story from the shown state to the end, one event at a time.
+    fn start_ticker(&mut self, cx: &mut Context<Self>) {
+        if !self.playback.as_ref().is_some_and(Playback::playing) {
+            self._ticker = None;
+            return;
+        }
+        let mut delay = REPLAY_START;
+        self._ticker = Some(cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(delay).await;
+                let next = this.update(cx, |s, cx| {
+                    let p = s.playback.as_mut()?;
+                    p.at = (p.at + 1).min(p.last());
+                    cx.notify();
+                    let next = p.story.events.get(p.at)?;
+                    Some(match next {
+                        StoryEvent::Dealt { .. } => REPLAY_DEAL,
+                        StoryEvent::Action(a) if a.action == Action::Fold => REPLAY_FOLD,
+                        StoryEvent::Action(_) => REPLAY_ACTION,
+                    })
+                });
+                match next {
+                    Ok(Some(d)) => delay = d,
+                    _ => break,
+                }
+            }
+        }));
+    }
+
+    fn playing(&self) -> bool {
+        self.playback.as_ref().is_some_and(Playback::playing)
+    }
+
+    /// Jumps to the end of the replay.
+    fn skip_replay(&mut self, cx: &mut Context<Self>) {
+        self._ticker = None;
+        if let Some(p) = &mut self.playback {
+            p.at = p.last();
+        }
+        cx.notify();
+    }
+
+    /// Plays the story again from the deal.
+    fn replay_again(&mut self, cx: &mut Context<Self>) {
+        if let Some(p) = &mut self.playback {
+            p.at = 0;
+        }
+        self.start_ticker(cx);
+        cx.notify();
+    }
+
+    fn toggle_auto_replay(&mut self, cx: &mut Context<Self>) {
+        self.auto_replay = !self.auto_replay;
+        if !self.auto_replay {
+            self.skip_replay(cx);
+        }
+        cx.emit(TableEvent::AutoReplay(self.auto_replay));
+        cx.notify();
+    }
+
+    /// The state on the felt: the replay's, else `live`.
+    fn shown<'a>(&'a self, live: &'a GameState) -> &'a GameState {
+        match &self.playback {
+            Some(p) if p.playing() => &p.story.states[p.at],
+            _ => live,
+        }
+    }
+
+    /// The action log of the shown question or hand, and the replay button.
+    fn story_panel(&self, hero: taful_app::preflop::Seat, cx: &mut Context<Self>) -> Option<Div> {
+        let p = self.playback.as_ref()?;
+        let th = &self.ui.theme;
+        let d = div()
+            .flex()
+            .flex_col()
+            .gap(px(th.spacing.sm))
+            .child(felt::story_log(
+                &self.ui,
+                &self.palette,
+                &p.story,
+                p.at,
+                hero,
+            ));
+        let mut row = div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap(px(th.spacing.sm));
+        if !p.playing() && !p.story.events.is_empty() {
+            row = row.child(self.button(
+                "replay_again",
+                self.ui.i18n.tr("table-replay-again"),
+                false,
+                cx,
+                |this, cx| this.replay_again(cx),
+            ));
+        }
+        row = row.child(self.chip(
+            "auto_replay",
+            self.ui.i18n.tr("table-replay-auto"),
+            self.auto_replay,
+            cx,
+            |this, cx| this.toggle_auto_replay(cx),
+        ));
+        Some(d.child(row))
+    }
+
+    /// The skip button that stands in for hero's actions during a replay.
+    fn skip_bar(&self, cx: &mut Context<Self>) -> Div {
+        let th = &self.ui.theme;
+        div()
+            .flex()
+            .items_center()
+            .gap(px(th.spacing.md))
+            .child(self.message(self.ui.i18n.tr("table-replay-playing")))
+            .child(self.button(
+                "replay_skip",
+                self.ui.i18n.tr("table-replay-skip"),
+                true,
+                cx,
+                |this, cx| this.skip_replay(cx),
+            ))
     }
 
     /// Emits [`TableEvent::HandOver`] once per hand, when it has ended.
@@ -411,7 +622,7 @@ impl TableScreen {
     }
 
     fn act(&mut self, action: Action, cx: &mut Context<Self>) {
-        if self.busy.is_some() {
+        if self.busy.is_some() || self.playing() {
             return;
         }
         let Ok(t) = self.trainers.clone() else { return };
@@ -606,13 +817,20 @@ impl TableScreen {
                     },
                 )),
             ),
+            None if self.playing() => (div(), self.skip_bar(cx)),
             None => (
                 self.prompt(q),
                 self.actions_bar(q.state(), &q.actions(t), cx),
             ),
         };
+        let panel = div()
+            .flex()
+            .flex_col()
+            .gap(px(self.ui.theme.spacing.lg))
+            .child(panel)
+            .children(self.story_panel(q.hero(), cx));
         Parts {
-            table: felt::table_scaled(&self.ui, p, q.state(), q.hero(), false, scale),
+            table: felt::table_scaled(&self.ui, p, self.shown(q.state()), q.hero(), false, scale),
             actions,
             panel,
         }
@@ -660,7 +878,8 @@ impl TableScreen {
                 None => Parts::message(self.message(i18n.tr("table-no-spot"))),
             };
         };
-        let over = h.end.is_some();
+        let playing = self.playing();
+        let over = h.end.is_some() && !playing;
         let decisions = h.decisions.iter().map(|d| {
             div()
                 .flex()
@@ -734,7 +953,9 @@ impl TableScreen {
                     .child(i18n.tr("table-river-solved")),
             );
         }
-        let actions = if let Some(text) = self.end_text(h) {
+        let actions = if playing {
+            self.skip_bar(cx)
+        } else if let Some(text) = self.end_text(h) {
             panel = panel
                 .child(div().text_size(px(th.text_size.md)).child(text))
                 .child(
@@ -777,11 +998,12 @@ impl TableScreen {
         } else {
             self.actions_bar(&h.state, &h.hero_actions(&t.preflop), cx)
         };
+        let panel = panel.children(self.story_panel(h.hero, cx));
         Parts {
             table: felt::table_tagged(
                 &self.ui,
                 p,
-                &h.state,
+                self.shown(&h.state),
                 h.hero,
                 over,
                 scale,

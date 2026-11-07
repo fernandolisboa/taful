@@ -27,6 +27,9 @@ pub mod keys {
     pub const LIBRARY_BASE_URL: &str = "library.base_url";
     /// The postflop library folder picked in settings (M6).
     pub const LIBRARY_DIR: &str = "library.dir";
+    /// Table auto-replay up to hero's decision (#53): `on` (default) or
+    /// `off`.
+    pub const TABLE_REPLAY: &str = "table.replay";
 }
 
 /// The database file name inside the data folder.

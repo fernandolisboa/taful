@@ -7,6 +7,7 @@ use taful_app::fmt;
 use taful_app::i18n::Locale;
 use taful_app::model::Grade;
 use taful_app::preflop::{Action, BB_CHIPS, Card, Chips, GameState, Position, Seat};
+use taful_app::story::{Story, StoryAction, StoryEvent};
 
 use crate::Ui;
 use crate::theme::Palette;
@@ -507,6 +508,116 @@ pub fn explanation(ui: &Ui, p: &Palette, d: &Explain<'_>) -> Div {
         .children(lines)
         .child(head)
         .children(rows)
+}
+
+/// One action of the hand's story as the log shows it (#53): the size is
+/// what the action put in for a call and what the player has in front for
+/// a bet, raise or all-in, as on the action buttons.
+pub fn story_action_label(ui: &Ui, a: &StoryAction) -> String {
+    let i18n = &ui.i18n;
+    let amount = |c: Chips| bb(ui, c).into();
+    match a.action {
+        Action::Fold => i18n.tr("table-action-fold"),
+        Action::Check => i18n.tr("table-action-check"),
+        Action::Call => i18n.tr_args("table-action-call", &[("amount", amount(a.paid))]),
+        Action::Bet(_) => i18n.tr_args("table-action-bet", &[("amount", amount(a.to))]),
+        Action::Raise(_) => i18n.tr_args("table-action-raise", &[("amount", amount(a.to))]),
+        Action::AllIn => i18n.tr_args("table-action-allin", &[("amount", amount(a.to))]),
+    }
+}
+
+/// The hand's story up to state `upto` (#53): the blinds, then one line
+/// per action and a line per dealt street. Hero's lines say so; while a
+/// replay plays (`upto` before the end), the newest line is highlighted.
+pub fn story_log(ui: &Ui, p: &Palette, story: &Story, upto: usize, hero: Seat) -> Div {
+    let (t, i18n) = (&ui.theme, &ui.i18n);
+    let deal = &story.states[0];
+    let blinds: Vec<String> = deal
+        .players()
+        .iter()
+        .enumerate()
+        .filter(|(_, pl)| pl.street_commit > 0)
+        .map(|(seat, pl)| {
+            format!(
+                "{} {}",
+                deal.position(seat).label(),
+                bb(ui, pl.street_commit)
+            )
+        })
+        .collect();
+    let replaying = upto + 1 < story.states.len();
+    let shown: Vec<&StoryEvent> = story.events.iter().filter(|e| e.step() <= upto).collect();
+    let line = |text: String, newest: bool, strong: bool| {
+        div()
+            .text_size(px(t.text_size.sm))
+            .text_color(if newest {
+                p.accent
+            } else if strong {
+                p.text
+            } else {
+                p.text_muted
+            })
+            .when(strong, |d| d.font_weight(FontWeight::SEMIBOLD))
+            .child(text)
+    };
+    let mut d = div()
+        .flex()
+        .flex_col()
+        .gap(px(t.spacing.xs))
+        .child(
+            div()
+                .text_size(px(t.text_size.sm))
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(i18n.tr("table-story-title")),
+        )
+        .child(line(
+            i18n.tr_args(
+                "table-story-blinds",
+                &[("blinds", blinds.join(" · ").into())],
+            ),
+            false,
+            false,
+        ));
+    let count = shown.len();
+    for (i, e) in shown.into_iter().enumerate() {
+        let newest = replaying && i + 1 == count;
+        d = d.child(match e {
+            StoryEvent::Dealt { street, cards, .. } => {
+                let cards: String = cards.iter().map(Card::to_string).collect();
+                line(
+                    format!(
+                        "{}: {}",
+                        i18n.tr(&format!(
+                            "street-{}",
+                            taful_app::template::street_id(*street)
+                        )),
+                        fmt::cards(&cards)
+                    ),
+                    newest,
+                    true,
+                )
+            }
+            StoryEvent::Action(a) => {
+                let who = if a.seat == hero {
+                    i18n.tr_args(
+                        "table-story-you",
+                        &[("position", a.position.label().into())],
+                    )
+                } else {
+                    a.position.label().to_string()
+                };
+                line(
+                    format!("{who} {}", story_action_label(ui, a)),
+                    newest,
+                    a.seat == hero || a.action.is_aggressive(),
+                )
+            }
+        });
+    }
+    if story.events.is_empty() {
+        d = d.child(line(i18n.tr("table-story-none"), false, false));
+    }
+    d
 }
 
 /// The side panel next to a table.

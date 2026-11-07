@@ -118,3 +118,14 @@ table-seat-left = #{ $n }
 table-seats-from-left = From your left:
 table-hand-vs-mixed = Mixed table: each bot plays its own profile. Preflop is graded against the opponents still in the hand, postflop against the remaining bot.
 table-hand-next-mixed = The next hand is at the mixed table.
+
+## How the hand got here (#53)
+
+table-story-title = How the hand got here
+table-story-blinds = Blinds: { $blinds }
+table-story-you = { $position } (you)
+table-story-none = Nobody acted before you.
+table-replay-auto = Auto replay
+table-replay-playing = Replaying the hand…
+table-replay-skip = Skip replay
+table-replay-again = Replay the action

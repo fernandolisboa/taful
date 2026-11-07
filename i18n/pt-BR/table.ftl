@@ -118,3 +118,14 @@ table-seat-left = { $n }º
 table-seats-from-left = À sua esquerda:
 table-hand-vs-mixed = Mesa mista: cada bot joga o próprio perfil. O pré-flop é avaliado contra os oponentes ainda na mão, o pós-flop contra o bot que sobrou.
 table-hand-next-mixed = A próxima mão é na mesa mista.
+
+## Como a mão chegou aqui (#53)
+
+table-story-title = Como a mão chegou aqui
+table-story-blinds = Blinds: { $blinds }
+table-story-you = { $position } (você)
+table-story-none = Ninguém agiu antes de você.
+table-replay-auto = Replay automático
+table-replay-playing = Repassando a mão…
+table-replay-skip = Pular replay
+table-replay-again = Rever a ação
