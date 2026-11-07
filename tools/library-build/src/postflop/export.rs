@@ -348,6 +348,13 @@ mod tests {
     }
 
     fn solved(flop: &str) -> (PostFlopGame, LibraryFile, Flop) {
+        solved_with(flop, &[])
+    }
+
+    fn solved_with(
+        flop: &str,
+        profiles: &[taful_core::profile::Profile],
+    ) -> (PostFlopGame, LibraryFile, Flop) {
         let chart = PreflopChart::decode(include_bytes!(
             "../../../../library/v1/c1c6782d353382947a3bbcf1493b6a17155b2e63a7218bf8f54cc38be59cf37f/preflop.tafl"
         ))
@@ -374,7 +381,16 @@ mod tests {
         let mut game = build_game(&job).unwrap();
         game.allocate_memory(false);
         let report = solve(&mut game, &m.solve, job.geometry.pot as f32);
-        let file = export(&mut game, &job, chart.config(), &m, &report, [0; 32], &[]).unwrap();
+        let file = export(
+            &mut game,
+            &job,
+            chart.config(),
+            &m,
+            &report,
+            [0; 32],
+            profiles,
+        )
+        .unwrap();
         (game, file, flop)
     }
 
@@ -447,6 +463,87 @@ mod tests {
             pf.strategy(&r, swap.hand(h)),
             pf.strategy(&root, h),
             "same strategy for the relabeled hand"
+        );
+    }
+
+    /// #27 acceptance: a build with a profile writes best-response EVs
+    /// that read back from the encoded file within quantization error of an
+    /// independent best-response pass, at the flop root, after a check and
+    /// on every stored turn after check-check, for both sides.
+    #[test]
+    fn profile_evs_read_back_within_quantization() {
+        use std::collections::HashMap;
+
+        use super::super::profiles::{Pass, Recorded, Responder, Shape};
+
+        let station = taful_core::profile::Profile::from_toml(include_str!(
+            "../../../../content/bots/calling-station.toml"
+        ))
+        .unwrap();
+        let (mut game, file, flop) = solved_with("Td9d6h", std::slice::from_ref(&station));
+        assert_eq!(file.profiles.len(), 1);
+        let ev_scale = file.profiles[0].ev_scale;
+        let pf = PostflopFile::decode(&file.encode()).unwrap();
+        let idx = pf.profile_index("calling-station").unwrap();
+        let shape = Shape::of(&mut game).unwrap();
+        let passes: Vec<HashMap<Vec<usize>, Recorded>> = (0..2)
+            .map(|bot| {
+                Pass {
+                    game: &game,
+                    shape: &shape,
+                    profile: &station,
+                    bot,
+                    responder: Responder::Best,
+                    keep: None,
+                }
+                .run()
+                .0
+            })
+            .collect();
+
+        let root = pf.root(flop).unwrap();
+        let Step::Node(ip) = pf.step(&root, Action::Check) else {
+            panic!()
+        };
+        let Step::Chance(k, perm) = pf.step(&ip, Action::Check) else {
+            panic!()
+        };
+        let mut at = vec![(Vec::new(), root), (vec![0], ip)];
+        for &(card, ref b) in &file.chance[0].branches {
+            if !matches!(b, Branch::Node(_)) {
+                continue;
+            }
+            if let Step::Node(c) = pf.deal(k, perm, card) {
+                at.push((vec![0, 0, usize::from(card.index())], c));
+            }
+        }
+        let (mut checked, mut max_diff) = (0, 0.0f32);
+        for (hist, c) in &at {
+            game.apply_history(hist);
+            let p = game.current_player();
+            let Some(Recorded::Responder { ev }) = passes[p ^ 1].get(hist) else {
+                panic!("{hist:?} not recorded")
+            };
+            let n = game.private_cards(p).len();
+            for (i, &(a, b)) in game.private_cards(p).iter().enumerate() {
+                let h =
+                    Hand::new(Card::from_index(a).unwrap(), Card::from_index(b).unwrap()).unwrap();
+                let Some(stored) = pf.profile_ev(c, idx, h) else {
+                    continue;
+                };
+                for (x, m) in stored.iter().enumerate() {
+                    let d = (m - ev[x * n + i]).abs();
+                    max_diff = max_diff.max(d);
+                    checked += 1;
+                }
+            }
+        }
+        game.back_to_root();
+        eprintln!("{checked} profile EVs, max difference {max_diff} bb (scale {ev_scale})");
+        assert!(checked > 500, "{checked}");
+        assert!(
+            max_diff <= ev_scale * 0.5 + 1e-4,
+            "{max_diff} vs scale {ev_scale}"
         );
     }
 }

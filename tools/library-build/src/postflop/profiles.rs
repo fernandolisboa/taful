@@ -210,10 +210,11 @@ struct At {
 fn evaluate(game: &PostFlopGame, node: &PostFlopNode, player: usize, cfreach: &[f32]) -> Vec<f32> {
     let n = game.num_private_hands(player);
     let mut out: Vec<f32> = Vec::with_capacity(n);
+    // Initialized up front, so `set_len` is sound whatever the evaluator
+    // writes (it overwrites every element in practice).
+    out.spare_capacity_mut()[..n].fill(std::mem::MaybeUninit::new(0.0));
     game.evaluate(&mut out.spare_capacity_mut()[..n], node, player, cfreach);
-    // SAFETY: postflop-solver's `evaluate` writes all `n` elements (it
-    // zero-fills the slice before accumulating), exactly as its own callers
-    // rely on before `set_len`.
+    // SAFETY: all `n` elements were initialized above.
     unsafe { out.set_len(n) };
     out
 }

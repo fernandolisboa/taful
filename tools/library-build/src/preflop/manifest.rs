@@ -35,6 +35,11 @@ pub struct Profiles {
 impl Profiles {
     /// Loads `<manifest dir>/<dir>/<id>.toml` for every listed id.
     pub fn load(&self, manifest_dir: &Path) -> Result<Vec<Profile>, String> {
+        // Caught here rather than by the file check after hours of solving.
+        let mut seen = std::collections::HashSet::new();
+        if let Some(id) = self.ids.iter().find(|id| !seen.insert(id.as_str())) {
+            return Err(format!("profiles: `{id}` is listed twice"));
+        }
         self.ids
             .iter()
             .map(|id| {
@@ -267,5 +272,10 @@ mod tests {
         let mut edited = profiles.clone();
         edited[0].preflop.vpip_mult += 0.1;
         assert_ne!(m.profile_hash(&profiles), m.profile_hash(&edited));
+        let twice = Profiles {
+            dir: m.profiles.as_ref().unwrap().dir.clone(),
+            ids: vec!["nit".into(), "nit".into()],
+        };
+        assert!(twice.load(&dir).unwrap_err().contains("twice"));
     }
 }
