@@ -385,3 +385,31 @@ pub fn segment(
         })
         .child(label.into())
 }
+
+/// An empty state: what is (not) here, what fills it, and what to do now.
+pub fn empty_state(
+    title_text: impl Into<SharedString>,
+    body: impl Into<SharedString>,
+    ui: &Ui,
+    p: &Palette,
+) -> Div {
+    let t = &ui.theme;
+    card(ui, p)
+        .gap(px(t.spacing.sm))
+        .py(px(t.spacing.xxl))
+        .child(
+            div()
+                .text_size(px(t.text_size.lg))
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(title_text.into()),
+        )
+        .child(muted(body, ui, p))
+}
+
+/// A heading for a group of controls inside a card.
+pub fn subhead(text: impl Into<SharedString>, ui: &Ui) -> Div {
+    div()
+        .text_size(px(ui.theme.text_size.md))
+        .font_weight(FontWeight::SEMIBOLD)
+        .child(text.into())
+}

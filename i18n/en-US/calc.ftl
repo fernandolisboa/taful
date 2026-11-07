@@ -1,6 +1,6 @@
 # Mental-math trainer (spec §11).
 
-calc-intro = Timed drills. Answer fast: right within the target time rates Good, within half of it Easy. Wrong or slow answers go to your review queue.
+calc-intro = Answer fast: right within the target time rates Good, within half of it Easy. Wrong or slow answers go to your review queue.
 calc-mixed = Mixed
 calc-kind-outs = Outs
 calc-kind-rule_of_2_and_4 = Rule of 2 and 4
@@ -54,3 +54,15 @@ rating-again = Again
 rating-hard = Hard
 rating-good = Good
 rating-easy = Easy
+
+## Exercise picker cards (#57)
+
+calc-desc-mixed = A bit of everything, drawn each round.
+calc-desc-outs = How many cards improve your hand.
+calc-desc-rule_of_2_and_4 = Turn outs into rough equity.
+calc-desc-pot_odds = How much equity you need to call.
+calc-desc-mdf = How often to defend against a bet.
+calc-desc-alpha = How many folds a bluff needs.
+calc-desc-spr = Effective stack divided by the pot.
+calc-desc-equity_vs_range = Your equity against a range on the board.
+calc-how-title = How it works

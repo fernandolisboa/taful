@@ -1,6 +1,6 @@
 # Treino de cálculo mental (spec §11).
 
-calc-intro = Exercícios cronometrados. Responda rápido: certo dentro do tempo-alvo vale Bom, dentro da metade vale Fácil. Respostas erradas ou lentas vão para a sua fila de revisão.
+calc-intro = Responda rápido: certo dentro do tempo-alvo vale Bom, dentro da metade vale Fácil. Respostas erradas ou lentas vão para a sua fila de revisão.
 calc-mixed = Misto
 calc-kind-outs = Outs
 calc-kind-rule_of_2_and_4 = Regra do 2 e do 4
@@ -54,3 +54,15 @@ rating-again = De novo
 rating-hard = Difícil
 rating-good = Bom
 rating-easy = Fácil
+
+## Exercise picker cards (#57)
+
+calc-desc-mixed = Um pouco de tudo, sorteado a cada rodada.
+calc-desc-outs = Quantas cartas melhoram a sua mão.
+calc-desc-rule_of_2_and_4 = Outs viram equity aproximada.
+calc-desc-pot_odds = Quanto de equity você precisa para pagar.
+calc-desc-mdf = Com que frequência defender contra uma aposta.
+calc-desc-alpha = Quantos folds um blefe precisa.
+calc-desc-spr = Stack efetivo dividido pelo pote.
+calc-desc-equity_vs_range = Sua equity contra um range no board.
+calc-how-title = Como funciona

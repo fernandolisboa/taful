@@ -9,7 +9,7 @@ use taful_app::template::street_id;
 
 use crate::felt::{self, Explain};
 use crate::shell::Shell;
-use crate::widgets::{button, card, muted, title};
+use crate::widgets::{button, muted, title};
 
 #[derive(Default)]
 pub struct HandReviewView {
@@ -83,16 +83,22 @@ impl Shell {
             self.hand_review_enter();
         }
         let Some(h) = &self.hand_review.open else {
-            return card(&ui, &p)
-                .child(ui.i18n.tr("hand-review-empty"))
-                .child(
-                    button("hr_play", ui.i18n.tr("hand-review-play"), true, &ui, &p).on_click(
-                        cx.listener(|this, _, window, cx| {
-                            this.select(crate::screen::Screen::Table, window, cx)
-                        }),
-                    ),
-                )
-                .into_any_element();
+            return crate::widgets::empty_state(
+                ui.i18n.tr("hand-review-empty-title"),
+                ui.i18n.tr("hand-review-empty"),
+                &ui,
+                &p,
+            )
+            // Same width as the review screen's cards.
+            .w(px(760.))
+            .child(
+                button("hr_play", ui.i18n.tr("hand-review-play"), true, &ui, &p).on_click(
+                    cx.listener(|this, _, window, cx| {
+                        this.select(crate::screen::Screen::Table, window, cx)
+                    }),
+                ),
+            )
+            .into_any_element();
         };
         let step = self.hand_review.step.min(h.states.len() - 1);
         let last = h.states.len() - 1;

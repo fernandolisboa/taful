@@ -53,7 +53,7 @@ review-from-spot = Spot from a past mistake: { $spot }
 
 ## Hand review
 
-hand-review-empty = No hands yet. Play full hands on the table and they show up here.
+hand-review-empty = Play full hands at the table: each one shows up here with a grade for every decision and a step-by-step replay.
 hand-review-play = Play a hand
 hand-review-first = ⏮
 hand-review-prev = ◀
@@ -65,3 +65,5 @@ hand-review-no-decisions = You had no decision in this hand.
 hand-review-recent = Recent hands
 hand-review-table = Table: { $profile } on every bot seat
 hand-review-mixed = Mixed table: each bot's profile is shown on its seat.
+
+hand-review-empty-title = No hands yet

@@ -385,7 +385,7 @@ impl Shell {
         }
         card(&ui, &p)
             .child(title(ui.i18n.tr("settings-appearance"), &ui))
-            .child(muted(ui.i18n.tr("settings-theme"), &ui, &p))
+            .child(crate::widgets::subhead(ui.i18n.tr("settings-theme"), &ui))
             .child(
                 div()
                     .flex()
@@ -394,7 +394,8 @@ impl Shell {
                     .children(theme_chips),
             )
             .child(theme_buttons)
-            .child(muted(ui.i18n.tr("settings-layout"), &ui, &p))
+            .child(div().h(px(1.)).my(px(t.spacing.sm)).bg(p.border))
+            .child(crate::widgets::subhead(ui.i18n.tr("settings-layout"), &ui))
             .child(muted(ui.i18n.tr("settings-layout-body"), &ui, &p))
             .child(
                 div()

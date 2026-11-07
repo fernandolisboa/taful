@@ -7,6 +7,7 @@ use taful_app::preflop::{Action, GradedDecision};
 use taful_app::review_session::ReviewStep;
 
 use crate::felt::{self, Explain};
+use crate::screen::Screen;
 use crate::screens::calc::{outcome_view, round_view};
 use crate::screens::lesson::QuestionState;
 use crate::shell::{KeyResult, Shell};
@@ -277,11 +278,7 @@ impl Shell {
         let t = &ui.theme;
         let loc = ui.i18n.locale();
         let due = self.app.due_count().unwrap_or(0);
-        let mut col = div().flex().flex_col().gap(px(t.spacing.lg)).child(muted(
-            ui.i18n.tr("review-intro"),
-            &ui,
-            &p,
-        ));
+        let mut col = div().flex().flex_col().gap(px(t.spacing.lg));
         if self.review.done > 0 {
             col = col.child(muted(
                 ui.i18n
@@ -297,31 +294,45 @@ impl Shell {
                 .child(muted(ui.i18n.tr("review-dealing"), &ui, &p))
                 .into_any_element(),
             _ if spot && self.review.loaded => self.review_spot_view(cx),
-            _ if !self.review.loaded => card(&ui, &p)
+            _ if !self.review.loaded && due > 0 => card(&ui, &p)
                 .child(ui.i18n.tr_args("review-due", &[("count", due.into())]))
-                .when(due > 0, |d| {
-                    d.child(self.review_next_button("review-start", cx))
-                })
+                .child(self.review_next_button("review-start", cx))
                 .into_any_element(),
-            (None, _) => {
+            // Nothing due (before or after a session): say when the next
+            // item is due and offer the two places that fill the queue.
+            _ if !self.review.loaded || self.review.prompt.is_none() => {
                 let next = self
                     .app
                     .store()
                     .next_due_after(self.app.now())
                     .ok()
                     .flatten();
-                card(&ui, &p)
-                    .child(ui.i18n.tr("review-empty"))
-                    .when_some(next, |d, when| {
-                        d.child(muted(
-                            ui.i18n.tr_args(
-                                "review-next-at",
-                                &[("when", fmt::datetime(when, loc).into())],
+                let body = match next {
+                    Some(when) => ui.i18n.tr_args(
+                        "review-next-at",
+                        &[("when", fmt::datetime(when, loc).into())],
+                    ),
+                    None => ui.i18n.tr("review-empty-body"),
+                };
+                crate::widgets::empty_state(ui.i18n.tr("review-empty"), body, &ui, &p)
+                    .child(
+                        div()
+                            .flex()
+                            .gap(px(t.spacing.sm))
+                            .pt(px(t.spacing.sm))
+                            .child(
+                                button("rv_table", ui.i18n.tr("hand-review-play"), true, &ui, &p)
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.select(Screen::Table, window, cx)
+                                    })),
+                            )
+                            .child(
+                                button("rv_calc", ui.i18n.tr("review-go-calc"), false, &ui, &p)
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.select(Screen::Calc, window, cx)
+                                    })),
                             ),
-                            &ui,
-                            &p,
-                        ))
-                    })
+                    )
                     .into_any_element()
             }
             (Some(ReviewPrompt::Calc { round, .. }), None) => card(&ui, &p)

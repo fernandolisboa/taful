@@ -443,6 +443,7 @@ impl Shell {
             self.screen,
             Screen::Home
                 | Screen::SkillTree
+                | Screen::Calc
                 | Screen::HandReview
                 | Screen::Review
                 | Screen::Settings

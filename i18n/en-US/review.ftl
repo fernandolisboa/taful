@@ -1,6 +1,5 @@
 # Review session (spec §13) and home screen.
 
-review-intro = Your spaced-repetition queue: spots you misplayed, missed quiz questions and slow or wrong calc answers, in one session.
 review-due = { $count ->
     [0] Nothing due right now.
     [one] 1 item due.
@@ -30,3 +29,7 @@ home-continue-title = Pick up where you left off
 home-start-lesson = Start lesson
 home-calc-short = Drill pot odds, outs and equity against the clock.
 home-due-short = waiting for you now
+
+review-empty-body = Spots you miss at the table, wrong quiz answers and slow calcs land here on their own.
+
+review-go-calc = Practice mental math
