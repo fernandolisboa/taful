@@ -10,8 +10,11 @@ window-title = { -product } · Treinador de No-Limit Hold'em
 ## Navigation (spec §15.1)
 
 nav-home = Início
-nav-skill-tree = Trilha
-nav-lesson = Lições
+nav-skill-tree = Lições
+nav-lesson = Lição
+nav-group-learn = Aprender
+nav-group-practice = Praticar
+nav-group-analyze = Analisar
 nav-table = Mesa
 nav-hand-review = Revisão de mãos
 nav-calc = Cálculo mental

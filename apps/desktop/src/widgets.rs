@@ -316,3 +316,72 @@ pub fn document(doc: &Document, ui: &std::rc::Rc<Ui>, p: &Palette) -> Div {
     }
     out
 }
+
+/// A thin progress bar, `frac` in 0–1.
+pub fn progress(frac: f32, ui: &Ui, p: &Palette) -> Div {
+    let t = &ui.theme;
+    let frac = frac.clamp(0., 1.);
+    div()
+        .w_full()
+        .h(px(6.))
+        .rounded(px(t.radii.pill))
+        .bg(p.surface_raised)
+        .child(
+            div()
+                .h_full()
+                .w(gpui::relative(frac))
+                .rounded(px(t.radii.pill))
+                .bg(p.accent),
+        )
+}
+
+/// A small uppercase label above a card's content.
+pub fn eyebrow(text: impl Into<SharedString>, ui: &Ui, p: &Palette) -> Div {
+    div()
+        .text_size(px(ui.theme.text_size.sm))
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(p.accent)
+        .child(text.into().to_uppercase())
+}
+
+/// A segmented control: one rounded track holding exclusive options.
+pub fn segmented(ui: &Ui, p: &Palette) -> Div {
+    let t = &ui.theme;
+    div()
+        .flex()
+        .flex_none()
+        .p(px(3.))
+        .gap(px(2.))
+        .rounded(px(t.radii.md + 3.))
+        .bg(p.surface)
+        .border_1()
+        .border_color(p.border)
+}
+
+/// One option of a [`segmented`] control.
+pub fn segment(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    selected: bool,
+    ui: &Ui,
+    p: &Palette,
+) -> Stateful<Div> {
+    let t = &ui.theme;
+    div()
+        .id(id.into())
+        .px(px(t.spacing.lg))
+        .py(px(t.spacing.xs + 2.))
+        .rounded(px(t.radii.md))
+        .text_size(px(t.text_size.md))
+        .cursor_pointer()
+        .when(selected, |d| {
+            d.bg(p.accent)
+                .text_color(p.on_accent)
+                .font_weight(FontWeight::SEMIBOLD)
+        })
+        .when(!selected, |d| {
+            d.text_color(p.text_muted)
+                .hover(|s| s.bg(p.surface_raised).text_color(p.text))
+        })
+        .child(label.into())
+}

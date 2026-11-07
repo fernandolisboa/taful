@@ -374,7 +374,18 @@ impl Shell {
             }
             Some(Ok(o)) => o.clone(),
         };
-        let mut col = div().flex().flex_col().gap(px(t.spacing.lg));
+        let mut col = div().flex().flex_col().gap(px(t.spacing.lg)).child(
+            div()
+                .id("lesson_back")
+                .text_size(px(t.text_size.md))
+                .text_color(p.accent)
+                .cursor_pointer()
+                .hover(|s| s.opacity(0.8))
+                .on_click(
+                    cx.listener(|this, _, window, cx| this.select(Screen::SkillTree, window, cx)),
+                )
+                .child(ui.i18n.tr("lesson-back")),
+        );
         if open.state == LessonState::Locked {
             col = col.child(muted(ui.i18n.tr("lesson-locked-note"), &ui, &p));
         }

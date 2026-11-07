@@ -118,3 +118,6 @@ table-seat-left = #{ $n }
 table-seats-from-left = From your left:
 table-hand-vs-mixed = Mixed table: each bot plays its own profile. Preflop is graded against the opponents still in the hand, postflop against the remaining bot.
 table-hand-next-mixed = The next hand is at the mixed table.
+
+table-row-mode = Mode
+table-row-spot = Spot

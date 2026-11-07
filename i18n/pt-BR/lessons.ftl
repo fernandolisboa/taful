@@ -10,7 +10,6 @@ track-game-plan = Plano de jogo
 
 ## Skill tree
 
-tree-intro = Siga as trilhas em ordem. Passar no quiz de uma lição libera as próximas.
 tree-state-done = Concluída
 tree-state-available = Disponível
 tree-state-locked = Bloqueada
@@ -41,3 +40,9 @@ quiz-wrong = Quase. Resposta: { $answer }
 quiz-passed = Aprovado com { $score }.
 quiz-failed = { $score }. Para passar você precisa de { $pass }; as perguntas erradas foram para a sua fila de revisão.
 quiz-unlocked = Liberadas: { $lessons }
+
+tree-track-progress = { $done } de { $total }
+tree-start = Começar
+tree-next = Próxima
+tree-track-locked = { $count } lições · libera quando você terminar a trilha anterior
+lesson-back = ← Voltar às lições

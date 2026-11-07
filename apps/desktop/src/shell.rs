@@ -21,7 +21,7 @@ use crate::screens::{
 use crate::theme::Palette;
 
 pub(crate) const NAV_WIDTH: f32 = 232.;
-pub const CONTENT_MAX_WIDTH: f32 = 760.;
+pub const CONTENT_MAX_WIDTH: f32 = 960.;
 const SELECTION_BAR: f32 = 3.;
 /// How often the live timer repaints while an exercise is running.
 const TICK: Duration = Duration::from_millis(250);
@@ -286,8 +286,14 @@ impl Shell {
     fn nav(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let (p, t, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
         let due = self.app.due_count().unwrap_or(0);
-        let items = Screen::ALL.into_iter().enumerate().map(|(i, screen)| {
-            let selected = screen == self.screen;
+        // The lesson reader lives under the lessons item.
+        let current = if self.screen == Screen::Lesson {
+            Screen::SkillTree
+        } else {
+            self.screen
+        };
+        let item = |i: usize, screen: Screen, cx: &mut Context<Self>| {
+            let selected = screen == current;
             let label: SharedString = i18n.tr(screen.nav_key()).into();
             div()
                 .id(("nav", i))
@@ -323,7 +329,38 @@ impl Shell {
                             .child(due.to_string()),
                     )
                 })
-        });
+        };
+        let groups: [(Option<&str>, &[Screen]); 4] = [
+            (None, &[Screen::Home]),
+            (Some("nav-group-learn"), &[Screen::SkillTree]),
+            (
+                Some("nav-group-practice"),
+                &[Screen::Table, Screen::Calc, Screen::Review],
+            ),
+            (Some("nav-group-analyze"), &[Screen::HandReview]),
+        ];
+        let mut n = 0;
+        let mut items = div().flex().flex_col().gap(px(t.spacing.lg));
+        for (heading, screens) in groups {
+            let mut g = div().flex().flex_col().gap(px(t.spacing.xs));
+            if let Some(h) = heading {
+                g = g.child(
+                    div()
+                        .px(px(t.spacing.md))
+                        .pb(px(t.spacing.xs))
+                        .text_size(px(t.text_size.sm))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(p.text_muted)
+                        .child(i18n.tr(h).to_uppercase()),
+                );
+            }
+            for &screen in screens {
+                g = g.child(item(n, screen, cx));
+                n += 1;
+            }
+            items = items.child(g);
+        }
+        let settings = item(n, Screen::Settings, cx);
 
         div()
             .w(px(NAV_WIDTH))
@@ -356,14 +393,9 @@ impl Shell {
                             .child(i18n.tr("app-tagline")),
                     ),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(t.spacing.xs))
-                    .children(items),
-            )
+            .child(items)
             .child(div().flex_1())
+            .child(settings)
             .child(
                 div()
                     .flex()
@@ -402,11 +434,41 @@ impl Shell {
             .into_any_element()
     }
 
+    /// Screen title plus a one-line "what is this screen" subtitle.
+    fn header(&self) -> AnyElement {
+        let (p, t, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
+        let subtitle = matches!(
+            self.screen,
+            Screen::Home
+                | Screen::SkillTree
+                | Screen::HandReview
+                | Screen::Review
+                | Screen::Settings
+        );
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(t.spacing.xs))
+            .child(
+                div()
+                    .text_size(px(t.text_size.xl))
+                    .font_weight(FontWeight::BOLD)
+                    .child(i18n.tr(self.screen.nav_key())),
+            )
+            .when(subtitle, |d| {
+                d.child(
+                    div()
+                        .text_size(px(t.text_size.md))
+                        .text_color(p.text_muted)
+                        .child(i18n.tr(self.screen.body_key())),
+                )
+            })
+            .into_any_element()
+    }
+
     fn content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let t = &self.ui.theme;
         let (xl, xxl) = (t.spacing.xl, t.spacing.xxl);
-        let title = self.ui.i18n.tr(self.screen.nav_key());
-        let title_size = t.text_size.xl;
         if matches!(
             self.screen,
             Screen::Table | Screen::HandReview | Screen::Review
@@ -433,12 +495,7 @@ impl Shell {
                         .flex_none()
                         .gap(px(gap))
                         .p(px(xxl))
-                        .child(
-                            div()
-                                .text_size(px(title_size))
-                                .font_weight(FontWeight::BOLD)
-                                .child(title),
-                        )
+                        .child(self.header())
                         .child(body),
                 )
                 .into_any_element();
@@ -459,6 +516,7 @@ impl Shell {
             .h_full()
             .flex()
             .flex_col()
+            .items_center()
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
             .child(
@@ -472,12 +530,7 @@ impl Shell {
                     // too short to scroll to its end.
                     .w(px(column_width))
                     .p(px(xxl))
-                    .child(
-                        div()
-                            .text_size(px(title_size))
-                            .font_weight(FontWeight::BOLD)
-                            .child(title),
-                    )
+                    .child(self.header())
                     .child(body),
             )
             .into_any_element()

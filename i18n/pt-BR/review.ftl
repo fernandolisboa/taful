@@ -17,9 +17,7 @@ review-session-done = { $count ->
 }
 
 home-due-title = Revisões
-home-lesson-title = Próxima lição
 home-lesson-none = Todas as lições concluídas. Mais lições chegam nos próximos marcos.
-home-open-lesson = Ler
 home-calc-title = Cálculo mental
 home-calc-recent = { $correct } de { $total } certas nas suas últimas respostas
 home-calc-none = Nenhuma resposta ainda.
@@ -28,3 +26,8 @@ home-progress = { $done } de { $total } lições concluídas
 home-leaks-title = Maiores vazamentos
 home-leaks-body = Nenhum vazamento ainda. Eles aparecem quando as decisões avaliadas acumulam erros num tipo de spot.
 review-dealing = Distribuindo um spot…
+
+home-continue-title = Continue de onde parou
+home-start-lesson = Começar lição
+home-calc-short = Treine pot odds, outs e equity contra o relógio.
+home-due-short = { $count } para revisar

@@ -10,7 +10,6 @@ track-game-plan = Game plan
 
 ## Skill tree
 
-tree-intro = Work through the tracks in order. Passing a lesson's quiz unlocks the next ones.
 tree-state-done = Done
 tree-state-available = Available
 tree-state-locked = Locked
@@ -41,3 +40,9 @@ quiz-wrong = Not quite. Answer: { $answer }
 quiz-passed = Passed with { $score }.
 quiz-failed = { $score }. You need { $pass } to pass; the missed questions went to your review queue.
 quiz-unlocked = Unlocked: { $lessons }
+
+tree-track-progress = { $done } of { $total }
+tree-start = Start
+tree-next = Next
+tree-track-locked = { $count } lessons · unlocks when you finish the previous track
+lesson-back = ← Back to lessons

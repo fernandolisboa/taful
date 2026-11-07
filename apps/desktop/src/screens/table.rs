@@ -479,6 +479,37 @@ impl TableScreen {
             .on_click(cx.listener(move |this, _, _, cx| on(this, cx)))
     }
 
+    fn segment(
+        &self,
+        id: impl Into<gpui::ElementId>,
+        label: String,
+        selected: bool,
+        cx: &mut Context<Self>,
+        on: impl Fn(&mut Self, &mut Context<Self>) + 'static,
+    ) -> Stateful<Div> {
+        crate::widgets::segment(id, label, selected, &self.ui, &self.palette)
+            .on_click(cx.listener(move |this, _, _, cx| on(this, cx)))
+    }
+
+    /// One labeled row of the controls panel.
+    fn control_row(&self, label: String, body: impl IntoElement) -> Div {
+        let (p, th) = (self.palette, &self.ui.theme);
+        div()
+            .flex()
+            .items_center()
+            .gap(px(th.spacing.md))
+            .child(
+                div()
+                    .w(px(96.))
+                    .flex_none()
+                    .text_size(px(th.text_size.sm))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(p.text_muted)
+                    .child(label.to_uppercase()),
+            )
+            .child(body)
+    }
+
     /// Hero's action buttons (exactly the tree's sizes, D4).
     fn actions_bar(&self, state: &GameState, actions: &[Action], cx: &mut Context<Self>) -> Div {
         let t = &self.ui.theme;
@@ -797,25 +828,22 @@ impl TableScreen {
         let (p, th) = (self.palette, self.ui.theme.clone());
         let ui = self.ui.clone();
         let i18n = &ui.i18n;
-        let mut modes = div()
-            .flex()
-            .flex_wrap()
-            .gap(px(th.spacing.sm))
-            .child(self.chip(
+        let mut modes = crate::widgets::segmented(&ui, &p)
+            .child(self.segment(
                 "mode_spot",
                 i18n.tr("table-mode-spot"),
                 self.mode == Mode::Spot,
                 cx,
                 |this, cx| this.set_mode(Mode::Spot, cx),
             ))
-            .child(self.chip(
+            .child(self.segment(
                 "mode_postflop",
                 i18n.tr("table-mode-postflop"),
                 self.mode == Mode::Postflop,
                 cx,
                 |this, cx| this.set_mode(Mode::Postflop, cx),
             ))
-            .child(self.chip(
+            .child(self.segment(
                 "mode_hand",
                 i18n.tr("table-mode-hand"),
                 self.mode == Mode::Hand,
@@ -823,7 +851,7 @@ impl TableScreen {
                 |this, cx| this.set_mode(Mode::Hand, cx),
             ));
         if self.drill.is_some() {
-            modes = modes.child(self.chip(
+            modes = modes.child(self.segment(
                 "mode_drill",
                 i18n.tr("table-mode-drill"),
                 self.mode == Mode::Drill,
@@ -831,15 +859,15 @@ impl TableScreen {
                 |this, cx| this.set_mode(Mode::Drill, cx),
             ));
         }
-        if !self.is_editing() {
-            modes = modes.child(self.chip(
+        let edit = (!self.is_editing()).then(|| {
+            self.button(
                 "layout_edit",
                 i18n.tr("layout-edit-start"),
                 false,
                 cx,
                 |this, cx| this.start_edit(cx),
-            ));
-        }
+            )
+        });
         // Opponent picker (spec §9, D8): reference first, then each profile.
         let mut opponents = vec![self.chip(
             "opp_reference",
@@ -904,23 +932,6 @@ impl TableScreen {
                 }));
             }
         }
-        if matches!(self.mode, Mode::Spot | Mode::Postflop | Mode::Hand) {
-            modes = modes.child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .items_center()
-                    .gap(px(th.spacing.sm))
-                    .ml(px(th.spacing.lg))
-                    .child(
-                        div()
-                            .text_size(px(th.text_size.sm))
-                            .text_color(p.text_muted)
-                            .child(i18n.tr("table-opponent")),
-                    )
-                    .children(opponents),
-            );
-        }
         let kinds: Vec<_> = trainers
             .preflop
             .available_kinds()
@@ -968,35 +979,42 @@ impl TableScreen {
             Mode::Spot => i18n.tr("table-subtitle"),
         }
         .into();
+        let wrap = |items: Vec<Stateful<Div>>| {
+            div()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap(px(th.spacing.sm))
+                .children(items)
+        };
+        let show_opponents = matches!(self.mode, Mode::Spot | Mode::Postflop | Mode::Hand);
         div()
             .flex()
             .flex_col()
-            .gap(px(th.spacing.sm))
+            .gap(px(th.spacing.md))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(self.control_row(i18n.tr("table-row-mode"), modes))
+                    .children(edit),
+            )
+            .when(self.mode == Mode::Spot, |d| {
+                d.child(self.control_row(i18n.tr("table-row-spot"), wrap(kinds)))
+            })
+            .when(self.mode == Mode::Postflop, |d| {
+                d.child(self.control_row(i18n.tr("table-row-spot"), wrap(pf_chips)))
+            })
+            .when(show_opponents, |d| {
+                d.child(self.control_row(i18n.tr("table-opponent"), wrap(opponents)))
+            })
             .child(
                 div()
                     .text_size(px(th.text_size.sm))
                     .text_color(p.text_muted)
                     .child(title),
             )
-            .child(modes)
-            .when(self.mode == Mode::Spot, |d| {
-                d.child(
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .gap(px(th.spacing.sm))
-                        .children(kinds),
-                )
-            })
-            .when(self.mode == Mode::Postflop, |d| {
-                d.child(
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .gap(px(th.spacing.sm))
-                        .children(pf_chips),
-                )
-            })
     }
 
     /// A panel's box on the grid.
