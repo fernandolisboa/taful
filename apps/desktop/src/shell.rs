@@ -192,6 +192,9 @@ impl Shell {
 
     pub(crate) fn select(&mut self, screen: Screen, window: &mut Window, cx: &mut Context<Self>) {
         if self.screen != screen {
+            if self.screen == Screen::Calc {
+                self.calc_leave();
+            }
             self.screen = screen;
             self.input.clear();
             self.scroll_to_top();
