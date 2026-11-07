@@ -3,7 +3,7 @@
 ## Table screen
 
 table-mode-drill = Drill
-table-subtitle-hand = Mãos completas contra o bot de referência, cash 6-max 100bb: preflop pelos charts, flop e turn pela biblioteca resolvida, river resolvido na hora.
+table-subtitle-hand = Mãos completas contra bots (a referência ou o perfil escolhido), cash 6-max 100bb: preflop pelos charts, flop e turn pela biblioteca resolvida, river resolvido na hora.
 table-subtitle-drill = Treinando um vazamento: { $bucket }
 table-hand-over-unsolved = Esta linha de preflop ainda não tem flop resolvido, então a mão termina aqui: { $line }
 table-hand-over-range = Sua mão saiu dos ranges resolvidos antes nesta linha, então a mão termina aqui: { $line }
@@ -62,3 +62,4 @@ hand-review-step = Passo { $step } de { $total }
 hand-review-summary = { $hand } · resultado { $net } bb · EV perdido { $loss } bb
 hand-review-no-decisions = Você não teve decisão nesta mão.
 hand-review-recent = Mãos recentes
+hand-review-table = Mesa: { $profile } em todos os assentos dos bots

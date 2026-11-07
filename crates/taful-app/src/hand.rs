@@ -4,6 +4,12 @@
 //! (D13) and play continues on the library tree; the river is solved in the
 //! app (spec §7.7). Every hero decision is graded. A line that leaves the
 //! reference strategy ends the hand with a reason (D4).
+//!
+//! The table can play one bot profile at every bot seat (#28, D8 amendment):
+//! the bots then sample the profile's strategy (preflop the app's transform
+//! of the chart, postflop the library's profile data and the locked river),
+//! and every hero decision is graded on hero's best-response EVs against
+//! it. Without a profile the hand is exactly the reference hand of M5.
 
 use rand::seq::IndexedRandom;
 use rand::{RngExt, SeedableRng};
@@ -15,6 +21,7 @@ use taful_core::engine::{EngineError, Phase, Settlement};
 use taful_core::eval::RsPokerEvaluator;
 use taful_solver::preflop::{Lookup, NodeId};
 
+use crate::bots::Bot;
 use crate::postflop::{PostflopError, PostflopTrainer, grade_walk, seat_of};
 use crate::preflop::{
     Action, BB_CHIPS, Card, GameState, GradedDecision, Hand, Position, PreflopError,
@@ -139,12 +146,21 @@ enum Tree {
     Postflop { walk: Box<Walk>, seats: [Seat; 2] },
 }
 
-/// A full hand vs reference bots (spec §9, §10.2).
+/// A full hand vs bots (spec §9, §10.2).
 #[derive(Debug, Clone)]
 pub struct FullHand {
     pub seed: u64,
     pub hero: Seat,
     pub state: GameState,
+    /// Who sits at each seat: `None` for hero and for reference bots,
+    /// `Some(id)` for a bot playing that profile.
+    pub seat_profiles: Vec<Option<String>>,
+    /// The profile every bot seat plays (`None` = the reference).
+    table: Option<String>,
+    /// The table plays a profile, but the postflop library file has no data
+    /// for it: postflop is against the reference (graded and filed so), and
+    /// this holds the profile id for the message.
+    pub fallback: Option<String>,
     tree: Option<Tree>,
     pub decisions: Vec<HandDecision>,
     pub end: Option<HandEnd>,
@@ -155,23 +171,47 @@ pub struct FullHand {
 }
 
 impl FullHand {
-    /// Deal a hand with hero at `hero` (`None` = random seat); bots act until
-    /// hero's first decision or the end of the hand. Without `post` the hand
-    /// ends at the flop.
+    /// Deal a hand vs reference bots with hero at `hero` (`None` = random
+    /// seat); bots act until hero's first decision or the end of the hand.
+    /// Without `post` the hand ends at the flop.
     pub fn new(
         pre: &PreflopTrainer,
         post: Option<&PostflopTrainer>,
         hero: Option<Seat>,
         seed: u64,
     ) -> Result<FullHand, HandError> {
+        FullHand::against(pre, post, hero, seed, None)
+    }
+
+    /// As [`new`](Self::new), with every bot seat playing `profile`
+    /// (`None` = the reference). The deal is the same for every profile
+    /// under one seed; only the bots' choices differ.
+    pub fn against(
+        pre: &PreflopTrainer,
+        post: Option<&PostflopTrainer>,
+        hero: Option<Seat>,
+        seed: u64,
+        profile: Option<&str>,
+    ) -> Result<FullHand, HandError> {
+        if let Some(id) = profile
+            && pre.profile(id).is_none()
+        {
+            return Err(PreflopError::UnknownProfile(id.into()).into());
+        }
         let mut rng = ChaCha8Rng::seed_from_u64(seed);
         let seats = usize::from(pre.config().table_size);
         let hero = hero.unwrap_or_else(|| rng.random_range(0..seats)) % seats;
         let state = GameState::new(pre.config().clone(), BUTTON, rng.random())?;
+        let seat_profiles = (0..seats)
+            .map(|s| profile.filter(|_| s != hero).map(str::to_owned))
+            .collect();
         let mut h = FullHand {
             seed,
             hero,
             state,
+            seat_profiles,
+            table: profile.map(str::to_owned),
+            fallback: None,
             tree: Some(Tree::Preflop(pre.chart().root())),
             decisions: Vec::new(),
             end: None,
@@ -185,6 +225,11 @@ impl FullHand {
 
     pub fn hero_hand(&self) -> Hand {
         self.state.players()[self.hero].hole
+    }
+
+    /// The profile the bots play (`None` = the reference).
+    pub fn table_profile(&self) -> Option<&str> {
+        self.table.as_deref()
     }
 
     fn hero_turn(&self) -> bool {
@@ -230,7 +275,7 @@ impl FullHand {
                     .node(*node)
                     .action_index(action)
                     .ok_or(HandError::NotInTree(action))?;
-                let graded = pre.grade(*node, hand, chosen)?;
+                let graded = pre.grade_vs(*node, hand, chosen, self.table.as_deref())?;
                 let line = pre.chart().line(*node);
                 let kind = SpotKind::classify(&line, position);
                 HandDecision {
@@ -242,9 +287,7 @@ impl FullHand {
                             postflop: Vec::new(),
                             texture: None,
                             hero: position,
-                            // Full hands are against the reference until
-                            // seats carry profiles (#28).
-                            opponent: None,
+                            opponent: self.table.clone(),
                         },
                         street: Street::Preflop,
                         node_type: NodeType::Preflop(kind),
@@ -396,10 +439,19 @@ impl FullHand {
             self.leave(LeftReason::OffTree);
             return Ok(());
         };
-        let walk = post.walk(cfg, file, flop)?;
+        let mut walk = post.walk(cfg, file, flop)?;
         let n = self.state.players().len();
         let pos = walk.positions();
         let seats = [seat_of(n, pos[0]), seat_of(n, pos[1])];
+        if let Some(id) = &self.table {
+            // Heads-up from here on: the bot is the side hero is not.
+            let hero_side = usize::from(seats[1] == self.hero);
+            match walk.clone().against(id, hero_side ^ 1)? {
+                Some(w) => walk = w,
+                // A reference-only library: postflop vs the reference.
+                None => self.fallback = Some(id.clone()),
+            }
+        }
         self.state = self.state.deal_board(&flop.cards())?;
         self.steps += 1;
         self.tree = Some(Tree::Postflop {
@@ -409,8 +461,9 @@ impl FullHand {
         Ok(())
     }
 
-    /// Reference bots (spec §9): sample the reference strategy for their
-    /// hand. Stops at hero's turn; ends the hand if hero has no data there.
+    /// Bots (spec §9): sample their seat's strategy (the reference or the
+    /// profile) for their hand. Stops at hero's turn; ends the hand if hero
+    /// has no data there.
     fn run_bots(
         &mut self,
         pre: &PreflopTrainer,
@@ -423,7 +476,15 @@ impl FullHand {
             let hand = self.state.players()[seat].hole;
             let (actions, freqs) = match &self.tree {
                 Some(Tree::Preflop(node)) => {
-                    (pre.actions(*node), pre.chart().strategy(*node, hand))
+                    let freqs = match self.seat_profiles[seat].as_deref() {
+                        Some(id) if seat != self.hero => pre
+                            .profile(id)
+                            .ok_or_else(|| PreflopError::UnknownProfile(id.into()))?
+                            .bot
+                            .strategy(pre.chart(), *node, hand),
+                        _ => pre.chart().strategy(*node, hand),
+                    };
+                    (pre.actions(*node), freqs)
                 }
                 Some(Tree::Postflop { walk, seats }) => {
                     let node = walk.node().ok_or(PostflopError::NoData)?;
@@ -433,7 +494,14 @@ impl FullHand {
                         )
                         .into());
                     }
-                    (node.actions, walk.strategy(hand))
+                    // Hero's data check is on the reference; a bot plays
+                    // its profile when the walk is against one.
+                    let freqs = if seat == self.hero {
+                        walk.strategy(hand)
+                    } else {
+                        walk.actor_strategy(hand)
+                    };
+                    (node.actions, freqs)
                 }
                 None => break,
             };
@@ -590,9 +658,20 @@ mod tests {
     }
 
     fn post() -> PostflopTrainer {
+        fixture("postflop")
+    }
+
+    /// The fixture library with profile data (#27).
+    fn post_profiles() -> PostflopTrainer {
+        fixture("postflop-profiles")
+    }
+
+    fn fixture(name: &str) -> PostflopTrainer {
         PostflopTrainer::open(
             Box::new(LocalDir(
-                Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/postflop"),
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("tests/fixtures")
+                    .join(name),
             )),
             GameConfig::cash(6, 100),
             Thresholds::default(),
@@ -658,10 +737,20 @@ mod tests {
     /// Seeds whose hands reach the fixture's configuration (BTN open, SB
     /// 3-bet, BTN call) with hero in it.
     fn library_hands(pre: &PreflopTrainer, post: &PostflopTrainer, want: usize) -> Vec<FullHand> {
+        library_hands_vs(pre, post, None, want)
+    }
+
+    /// As [`library_hands`], with every bot playing `profile`.
+    fn library_hands_vs(
+        pre: &PreflopTrainer,
+        post: &PostflopTrainer,
+        profile: Option<&str>,
+        want: usize,
+    ) -> Vec<FullHand> {
         let mut out = Vec::new();
         for seed in 0..20_000 {
             let hero = [0, 1][(seed % 2) as usize]; // BTN or SB
-            let mut h = FullHand::new(pre, Some(post), Some(hero), seed).unwrap();
+            let mut h = FullHand::against(pre, Some(post), Some(hero), seed, profile).unwrap();
             // Steer hero along the fixture line when the chart allows it.
             while h.end.is_none() && h.walk().is_none() {
                 let acts = h.hero_actions(pre);
@@ -743,5 +832,134 @@ mod tests {
         play_best(&mut b, &pre, Some(&post));
         assert_eq!(a.state, b.state);
         assert_eq!(a.end, b.end);
+    }
+
+    #[test]
+    fn a_profile_table_keeps_the_deal_and_changes_the_bots() {
+        let pre = pre();
+        let mut differ = 0;
+        for seed in 0..200 {
+            let r = FullHand::new(&pre, None, None, seed).unwrap();
+            let n = FullHand::against(&pre, None, None, seed, Some("nit")).unwrap();
+            // Same seat and cards under one seed, whatever the bots play.
+            assert_eq!(r.hero, n.hero);
+            assert_eq!(
+                r.state.players().iter().map(|p| p.hole).collect::<Vec<_>>(),
+                n.state.players().iter().map(|p| p.hole).collect::<Vec<_>>()
+            );
+            assert_eq!(n.table_profile(), Some("nit"));
+            for (s, p) in n.seat_profiles.iter().enumerate() {
+                assert_eq!(p.as_deref(), (s != n.hero).then_some("nit"));
+            }
+            assert!(r.seat_profiles.iter().all(Option::is_none));
+            differ += usize::from(r.state.history() != n.state.history());
+        }
+        // Nits fold more in front of hero.
+        assert!(differ > 10, "{differ}");
+        assert!(matches!(
+            FullHand::against(&pre, None, None, 0, Some("nobody")),
+            Err(HandError::Preflop(PreflopError::UnknownProfile(_)))
+        ));
+    }
+
+    /// Plays every preflop bot decision of `h` again and checks the bot
+    /// sampled an action its seat's strategy plays.
+    fn bots_follow_their_profile(h: &FullHand, pre: &PreflopTrainer) {
+        let states = h.replay().states(pre.config()).unwrap();
+        let mut node = pre.chart().root();
+        for w in states.windows(2) {
+            let (before, after) = (&w[0], &w[1]);
+            let Some(seat) = before.to_act() else {
+                continue;
+            };
+            if before.board().len() != after.board().len() || !before.board().is_empty() {
+                break; // preflop only
+            }
+            let action = *after.history().streets[0].last().map(|(_, a)| a).unwrap();
+            if seat != h.hero {
+                let hand = before.players()[seat].hole;
+                let id = h.seat_profiles[seat].as_deref().unwrap();
+                let freqs = pre
+                    .profile(id)
+                    .unwrap()
+                    .bot
+                    .strategy(pre.chart(), node, hand)
+                    .unwrap();
+                let i = pre.chart().node(node).action_index(action).unwrap();
+                assert!(
+                    freqs[i] > 0.0,
+                    "seed {}: {id} at {seat} played {action}",
+                    h.seed
+                );
+            }
+            match pre.chart().step(node, action) {
+                Lookup::Node(n) => node = n,
+                _ => break,
+            }
+        }
+    }
+
+    #[test]
+    fn hands_against_a_profile_grade_every_decision_against_it() {
+        let (pre, post) = (pre(), post_profiles());
+        let hands = library_hands_vs(&pre, &post, Some("nit"), 8);
+        assert!(hands.len() >= 4, "found {}", hands.len());
+        let mut streets = std::collections::HashSet::new();
+        for mut h in hands {
+            play_best(&mut h, &pre, Some(&post));
+            assert_eq!(h.fallback, None);
+            bots_follow_their_profile(&h, &pre);
+            for d in &h.decisions {
+                streets.insert(d.context.street);
+                let vs = d
+                    .graded
+                    .vs_profile
+                    .as_ref()
+                    .expect("graded against the nit");
+                assert_eq!(vs.profile, "nit");
+                assert_eq!(d.context.template.opponent.as_deref(), Some("nit"));
+                assert!(d.graded.ev_loss_bb >= 0.0);
+            }
+            let states = h.replay().states(pre.config()).unwrap();
+            assert!(
+                same_table(states.last().unwrap(), &h.state),
+                "seed {}",
+                h.seed
+            );
+        }
+        assert!(streets.contains(&Street::Flop), "{streets:?}");
+        assert!(streets.contains(&Street::River), "{streets:?}");
+    }
+
+    #[test]
+    fn a_reference_only_library_plays_postflop_against_the_reference() {
+        let (pre, post) = (pre(), post());
+        let mut h = library_hands_vs(&pre, &post, Some("nit"), 1).remove(0);
+        assert_eq!(h.fallback.as_deref(), Some("nit"));
+        play_best(&mut h, &pre, Some(&post));
+        for d in &h.decisions {
+            let vs = d.graded.vs_profile.as_ref().map(|v| v.profile.as_str());
+            let filed = d.context.template.opponent.as_deref();
+            assert_eq!(vs, filed);
+            let expect = (d.context.street == Street::Preflop).then_some("nit");
+            assert_eq!(vs, expect, "{:?}", d.context.street);
+        }
+    }
+
+    #[test]
+    fn same_seed_same_hand_against_a_profile() {
+        let (pre, post) = (pre(), post_profiles());
+        let mut a = library_hands_vs(&pre, &post, Some("maniac"), 1).remove(0);
+        let mut b =
+            FullHand::against(&pre, Some(&post), Some(a.hero), a.seed, Some("maniac")).unwrap();
+        for d in a.decisions.clone() {
+            b.act(&pre, Some(&post), d.graded.actions[d.graded.chosen])
+                .unwrap();
+        }
+        play_best(&mut a, &pre, Some(&post));
+        play_best(&mut b, &pre, Some(&post));
+        assert_eq!(a.state, b.state);
+        assert_eq!(a.end, b.end);
+        assert_eq!(a.decisions, b.decisions);
     }
 }

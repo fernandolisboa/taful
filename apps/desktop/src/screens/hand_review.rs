@@ -159,6 +159,16 @@ impl Shell {
         let mut panel = felt::panel(&ui, &p)
             .child(title(self.summary_line(&h.summary), &ui))
             .child(muted(fmt::datetime(h.summary.played_at, loc), &ui, &p))
+            .when_some(table_profile(h), |d, id| {
+                d.child(muted(
+                    ui.i18n.tr_args(
+                        "hand-review-table",
+                        &[("profile", ui.i18n.tr(&format!("bot-profile-{id}")).into())],
+                    ),
+                    &ui,
+                    &p,
+                ))
+            })
             .child(
                 div()
                     .text_size(px(t.text_size.sm))
@@ -179,7 +189,7 @@ impl Shell {
                     hand_freqs: &d.hand_freqs,
                     hand_evs: &d.hand_evs,
                     range_freqs: &d.range_freqs,
-                    vs_profile: None,
+                    vs_profile: d.vs_profile.as_ref(),
                 },
             ));
         }
@@ -195,7 +205,15 @@ impl Shell {
                     .flex()
                     .flex_col()
                     .gap(px(t.spacing.lg))
-                    .child(felt::table(&ui, &p, state, h.hero, step == last))
+                    .child(felt::table_tagged(
+                        &ui,
+                        &p,
+                        state,
+                        h.hero,
+                        step == last,
+                        1.,
+                        &felt::seat_tags(&ui, &h.seat_profiles),
+                    ))
                     .child(controls),
             )
             .child(panel);
@@ -248,4 +266,16 @@ impl Shell {
             )
             .into_any_element()
     }
+}
+
+/// The profile every bot seat played, when they all played the same one.
+fn table_profile(h: &HandReview) -> Option<&str> {
+    let mut bots = h
+        .seat_profiles
+        .iter()
+        .enumerate()
+        .filter(|&(s, _)| s != h.hero)
+        .map(|(_, p)| p.as_deref());
+    let first = bots.next()??;
+    bots.all(|p| p == Some(first)).then_some(first)
 }

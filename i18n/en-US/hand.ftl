@@ -3,7 +3,7 @@
 ## Table screen
 
 table-mode-drill = Drill
-table-subtitle-hand = Full hands vs the reference bot, cash 6-max 100bb: preflop from the charts, flop and turn from the solved library, river solved on the spot.
+table-subtitle-hand = Full hands vs bots (the reference or the profile you pick), cash 6-max 100bb: preflop from the charts, flop and turn from the solved library, river solved on the spot.
 table-subtitle-drill = Drilling a leak: { $bucket }
 table-hand-over-unsolved = This preflop line has no solved flop yet, so the hand ends here: { $line }
 table-hand-over-range = Your hand left the solved ranges earlier in this line, so the hand ends here: { $line }
@@ -62,3 +62,4 @@ hand-review-step = Step { $step } of { $total }
 hand-review-summary = { $hand } · result { $net } bb · EV lost { $loss } bb
 hand-review-no-decisions = You had no decision in this hand.
 hand-review-recent = Recent hands
+hand-review-table = Table: { $profile } on every bot seat

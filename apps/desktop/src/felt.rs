@@ -118,6 +118,32 @@ pub fn table_scaled(
     reveal: bool,
     s: f32,
 ) -> Div {
+    table_tagged(ui, p, state, hero, reveal, s, &[])
+}
+
+/// Seat tags for [`table_tagged`]: each bot profile's name (none for hero
+/// and reference bots).
+pub fn seat_tags(ui: &Ui, profiles: &[Option<String>]) -> Vec<Option<String>> {
+    profiles
+        .iter()
+        .map(|p| {
+            p.as_ref()
+                .map(|id| ui.i18n.tr(&format!("bot-profile-{id}")))
+        })
+        .collect()
+}
+
+/// [`table_scaled`] with a tag over each seat that has one (the bot
+/// profile a seat plays, #28).
+pub fn table_tagged(
+    ui: &Ui,
+    p: &Palette,
+    state: &GameState,
+    hero: Seat,
+    reveal: bool,
+    s: f32,
+    tags: &[Option<String>],
+) -> Div {
     let (t, i18n) = (&ui.theme, &ui.i18n);
     let n = state.players().len();
     let (felt_w, felt_h, pad) = (FELT_W * s, FELT_H * s, PAD * s);
@@ -194,6 +220,40 @@ pub fn table_scaled(
                 d.child(div().text_size(px(sm)).text_color(p.text_muted).child(l))
             })
     });
+    // Seat tags, just outside each seat on the side facing the pot, so they
+    // cover neither the seat nor anything outside the felt.
+    let tag_h = sm * 0.85 + 6. * s;
+    let tag_els = (0..n).filter_map(|seat| {
+        let tag = tags.get(seat)?.as_ref()?;
+        let k = (seat + n - hero) % n;
+        let angle = std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::TAU / n as f32;
+        let (x, y) = (cx0 + rx * angle.cos(), cy0 + ry * angle.sin());
+        let top = if angle.sin() >= 0. {
+            y - seat_h / 2. - tag_h - 2. * s
+        } else {
+            y + seat_h / 2. + 2. * s
+        };
+        Some(
+            div()
+                .absolute()
+                .left(px(x - seat_w / 2.))
+                .top(px(top))
+                .w(px(seat_w))
+                .flex()
+                .justify_center()
+                .child(
+                    div()
+                        .px(px(t.spacing.sm * s))
+                        .rounded(px(t.radii.pill))
+                        .bg(p.rail)
+                        .border_1()
+                        .border_color(p.rail_edge)
+                        .text_size(px(sm * 0.85))
+                        .text_color(p.accent)
+                        .child(tag.clone()),
+                ),
+        )
+    });
     // Chips in front of each seat on this street, between seat and pot.
     let bets = (0..n).filter_map(|seat| {
         let c = state.players()[seat].street_commit;
@@ -264,6 +324,7 @@ pub fn table_scaled(
         )
         .children(bets)
         .children(seats)
+        .children(tag_els)
 }
 
 /// The numbers of one graded decision (spec §8 explanation payload).

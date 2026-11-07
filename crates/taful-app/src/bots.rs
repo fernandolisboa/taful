@@ -11,8 +11,8 @@
 //! Postflop spots against a profile do not go through this trait: the
 //! library file stores the profile's flop and turn strategy next to hero's
 //! best-response EVs, and the river applies the same transform to the
-//! in-app solve (`walk.rs`, #27). Full-hand mode against profiles comes with
-//! #28.
+//! in-app solve (`walk.rs`, #27). Full-hand mode (#28, `hand.rs`) samples
+//! this trait preflop and the walk's profile data postflop.
 
 use rand::seq::IndexedRandom;
 use rand_chacha::ChaCha8Rng;
