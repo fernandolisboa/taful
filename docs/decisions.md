@@ -415,3 +415,22 @@ The only user today is the author, on his own PC. Signing certificates, hosting 
 - Whether the full-coverage run (#31) enables `profile_seed` is decided with that cost in view. Without it, the code still runs every profile's best response from its own range within the reference's combos.
 - Manifests that list profiles hash a profile-sections tag, so a build resumed across this change never mixes v3 and v4 files.
 
+
+---
+
+## D16 — Postflop solve accuracy target
+
+**Date:** 2026-11-12 · **Ref:** #31, PR #64
+
+### Decision
+- The postflop library build stops each solve at **exploitability ≤ 1.0% of the pot** (was 0.5%).
+- Files already built at 0.5% (76 of the 245 first-slice solves in the profile-seeded re-solve) are kept, not rebuilt. They are more accurate, and each file stores its own exploitability.
+
+### Why
+- Measured on 6 seeded solves with the per-check trace (PR #64): reaching 1.0% took 44% less solve time than 0.5% in total (per solve 32–50%); 0.75% saved 29%. Solving is ~93% of build time, so the build runs almost twice as fast.
+- The finest grade bands (D3) split at 2% of the pot, so a 1.0% reference stays below them. Only decisions right at a band edge can move one grade. "Best" already uses each spot's stored exploitability as its tolerance (D3).
+- Faster hardware was not the alternative: a thread-scaling test (5.5x at 32 threads vs 4) showed the solver is not memory-bandwidth bound, so a second DIMM would not speed it up.
+
+### Implications
+- `target_exploitability_pct` is part of the manifest hash, so files built before and after this change carry different hashes in their headers. Output paths and existence-based skipping do not depend on the hash, so the build resumes in the same folder.
+- Exploitability is not monotone across checks; the build stops at the first check at or below the target, as before.
