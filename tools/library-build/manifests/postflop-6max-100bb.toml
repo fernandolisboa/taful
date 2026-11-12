@@ -9,7 +9,7 @@ flops = "../../../library/flops.txt"
 flop_count = 49
 
 [solve]
-target_exploitability_pct = 0.5
+target_exploitability_pct = 1.0   # D16 (was 0.5 for the first 76 files)
 max_iterations = 1000
 check_every = 10
 compression = true

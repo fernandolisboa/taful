@@ -213,7 +213,7 @@ Push/fold and ICM charts for tournaments are computed separately (Nash push/fold
 | BTN vs SB | 3-bet pot | large | ~49 |
 | CO vs BTN | 3-bet pot | large | ~49 |
 
-Trees as measured in spike §9.2 (medium: flop 33/75%; turn and river 50/100%/all-in; raise 3x. Large: flop 25/50/100%; turn and river 33/75/125%/all-in; raises 2.5x/4x). Target exploitability ≤ 0.5% pot. Ranges come from the preflop charts (§6).
+Trees as measured in spike §9.2 (medium: flop 33/75%; turn and river 50/100%/all-in; raise 3x. Large: flop 25/50/100%; turn and river 33/75/125%/all-in; raises 2.5x/4x). Target exploitability ≤ 1.0% pot (D16; the first-slice files built before it used 0.5%). Ranges come from the preflop charts (§6).
 
 ### 7.2 Flop subset
 
