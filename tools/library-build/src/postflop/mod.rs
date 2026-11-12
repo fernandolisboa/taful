@@ -132,12 +132,15 @@ pub fn build_game(job: &Job) -> Result<PostFlopGame, String> {
 }
 
 /// Result of one solve.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct SolveReport {
     pub iterations: u32,
     /// Chips.
     pub exploitability: f32,
     pub secs: f64,
+    /// One `(iteration, seconds, exploitability % pot)` per exploitability
+    /// check, so the build log shows how fast each solve converges.
+    pub trace: Vec<(u32, f64, f32)>,
 }
 
 pub fn solve(game: &mut PostFlopGame, s: &manifest::Solve, pot: f32) -> SolveReport {
@@ -145,11 +148,13 @@ pub fn solve(game: &mut PostFlopGame, s: &manifest::Solve, pot: f32) -> SolveRep
     let t0 = Instant::now();
     let mut expl = f32::INFINITY;
     let mut it = 0;
+    let mut trace = Vec::new();
     while it < s.max_iterations {
         solve_step(game, it);
         it += 1;
         if it % s.check_every == 0 || it == s.max_iterations {
             expl = compute_exploitability(game);
+            trace.push((it, t0.elapsed().as_secs_f64(), 100.0 * expl / pot));
             if expl <= target {
                 break;
             }
@@ -160,6 +165,7 @@ pub fn solve(game: &mut PostFlopGame, s: &manifest::Solve, pot: f32) -> SolveRep
         iterations: it,
         exploitability: expl,
         secs: t0.elapsed().as_secs_f64(),
+        trace,
     }
 }
 
@@ -377,6 +383,7 @@ pub fn run(manifest_path: &Path, out: &Path, opt: &Options) -> Result<(), String
                 "iterations": report.iterations,
                 "exploitability_pct": expl_pct,
                 "solve_secs": report.secs,
+                "exploitability_trace": report.trace,
                 "export_secs": export_secs,
                 "est_mem_bytes": mem,
                 "threads": rayon::current_num_threads(),
