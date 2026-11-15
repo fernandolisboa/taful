@@ -50,6 +50,11 @@ const RULES: &[Rule] = &[
     ),
     rule("taful-content-check", &["taful-content"], false),
     rule("taful-arch-check", &[], false),
+    rule(
+        "taful-profile-stats",
+        &["taful-core", "taful-solver"],
+        false,
+    ),
 ];
 
 /// Packages no shipped crate may reach, whatever their license field says.

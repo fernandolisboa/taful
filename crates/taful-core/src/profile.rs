@@ -63,8 +63,9 @@ use serde::{Deserialize, Serialize};
 use crate::action::Action;
 use crate::config::Chips;
 
-/// Multipliers are clamped to this range by validation.
-pub const MAX_MULT: f64 = 5.0;
+/// Multipliers are clamped to this range by validation. A calling station
+/// needs ~7.5 on `vpip_mult` to call opens wide enough (#31).
+pub const MAX_MULT: f64 = 10.0;
 
 /// A bot profile (`content/bots/<id>.toml`). Its display name is the Fluent
 /// message `bot-profile-<id>`.
@@ -896,9 +897,9 @@ mod tests {
         #[test]
         fn transform_is_deterministic_and_valid(
             (actions, s, ev, w) in node(),
-            vpip in 0.1f64..5.0,
-            pfr in 0.1f64..5.0,
-            threebet in 0.1f64..5.0,
+            vpip in 0.05f64..=MAX_MULT,
+            pfr in 0.05f64..=MAX_MULT,
+            threebet in 0.05f64..=MAX_MULT,
         ) {
             let p = profile(vpip, pfr, threebet);
             let a = p.preflop_strategy(&actions, &s, &ev, &w);
@@ -947,7 +948,7 @@ mod tests {
                 prop::collection::vec(-5.0f32..5.0, n * 3),
                 prop::collection::vec(0.1f32..12.0, n),
             )),
-            vpip in 0.1f64..5.0,
+            vpip in 0.05f64..=MAX_MULT,
         ) {
             let mut base = s.clone();
             renormalize(&mut base, 3);
