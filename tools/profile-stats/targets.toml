@@ -1,0 +1,39 @@
+# Target HUD stats per bot profile (#31), as [target, tolerance] in percent
+# (af: bets and raises per call, flop). Taken from the usual HUD reads for
+# each player type in 6-max cash at 100bb, not tuned by feel.
+# `profile-stats tune` moves content/bots/<id>.toml until every value is
+# inside its band:
+#   vpip          voluntarily puts money in preflop, share of hands
+#   pfr           raises preflop, share of hands (no limps in the tree, so a
+#                 calling station's way in is calling raises)
+#   threebet      re-raises when facing one raise, share of chances
+#   fold_to_cbet  folds to the preflop raiser's first flop bet
+#   af            flop aggression factor: (bets + raises) / calls
+
+[nit]
+vpip = [13.0, 2.0]
+pfr = [10.0, 2.0]
+threebet = [3.0, 1.0]
+fold_to_cbet = [60.0, 5.0]
+af = [2.0, 0.5]
+
+[tag]
+vpip = [22.0, 2.0]
+pfr = [18.0, 2.0]
+threebet = [7.5, 1.5]
+fold_to_cbet = [45.0, 5.0]
+af = [3.0, 0.5]
+
+[calling-station]
+vpip = [45.0, 5.0]
+pfr = [10.0, 3.0]
+threebet = [2.0, 1.0]
+fold_to_cbet = [22.0, 7.0]
+af = [0.8, 0.3]
+
+[maniac]
+vpip = [50.0, 5.0]
+pfr = [40.0, 5.0]
+threebet = [18.0, 3.0]
+fold_to_cbet = [28.0, 6.0]
+af = [5.0, 1.0]

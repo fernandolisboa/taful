@@ -63,8 +63,9 @@ use serde::{Deserialize, Serialize};
 use crate::action::Action;
 use crate::config::Chips;
 
-/// Multipliers are clamped to this range by validation.
-pub const MAX_MULT: f64 = 5.0;
+/// Multipliers are clamped to this range by validation. A calling station
+/// needs ~7.5 on `vpip_mult` to call opens wide enough (#31).
+pub const MAX_MULT: f64 = 10.0;
 
 /// A bot profile (`content/bots/<id>.toml`). Its display name is the Fluent
 /// message `bot-profile-<id>`.

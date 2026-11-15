@@ -15,6 +15,7 @@ See [spec §4](spec.md#4-workspace). In short:
 | `tools/arch-check` | Dependency-direction and license checks over `cargo metadata`. |
 | `tools/content-check` | Runs the content checks over `content/`. |
 | `tools/library-build` | Offline library build: preflop solver (M3), postflop batch (M4). The only crate allowed to link `postflop-solver` (pinned git rev, no default features). |
+| `tools/profile-stats` | Offline: HUD stats of the bot profiles over the library and auto-tuning of `content/bots/*.toml` toward `targets.toml` (#31). Core + solver only. |
 | `library/` | Built library files in the static layout of spec §7.6 (`v1/<config key>/…`). In git: the preflop charts (embedded by `taful-app`) and `flops.txt`. The postflop files are too big for git and live in the app's library folder. |
 | `content/` | Bot profiles (`bots/*.toml`), themes, `skill-tree.toml`, lessons (`lessons/<locale>/*.md`), quizzes (`quizzes/*.toml`) and their render snapshots (`.snapshots/`). Embedded into `taful-app` by its `build.rs`. |
 | `config/` | Tunable numbers loaded at runtime: `grading.toml` (D3 thresholds), `calc.toml` (trainer tolerances and target times). Tests pin them to the code defaults. |
@@ -110,6 +111,22 @@ cargo run --release -p taful-library-build -- postflop tools/library-build/manif
 - **River solver validation** (`tools/library-build/src/postflop/validate.rs`): Taful's river solver against postflop-solver on fixed spots. Fast, so it runs with the normal tests.
 - **App test fixture:** `crates/taful-app/tests/fixtures/postflop` is a tiny library (coarse tree, few iterations) from `manifests/fixture.toml`; rebuild with the command at the top of that manifest.
 - **Bot profiles (#27):** a `[profiles]` table (`dir` relative to the manifest, `ids`) makes every solve also store each profile's flop/turn strategy and hero's best-response EVs (format v3, spec §7.5, §9). Profiles are part of the postflop hash, so editing one means rebuilding. The shipped manifest lists the four profiles with `solve.profile_seed` on (#31, D15), so its hash differs from the reference-only 245: build into a **fresh output folder**, because finished files are skipped by existence and old reference-only files would otherwise stay. Seeded solves take ~7.5 min each against ~4 without, and dry SRP flops peak at ~26 GB (night only). Files grow about 5× with the four profiles. `crates/taful-app/tests/fixtures/postflop-profiles` is the fixture with profile data, from `manifests/fixture-profiles.toml`.
+
+## Bot profile calibration (#31)
+
+`tools/profile-stats` measures what a HUD would show for each bot and tunes the profile knobs toward `tools/profile-stats/targets.toml` (usual HUD reads per player type, 6-max 100bb), so nobody has to calibrate by playing.
+
+```sh
+cargo run --release -p taful-profile-stats -- preflop                     # VPIP, PFR, 3-bet, fold to 3-bet, open %
+cargo run --release -p taful-profile-stats -- postflop --library <out>    # flop c-bet, fold to c-bet, aggression, per spot
+cargo run --release -p taful-profile-stats -- check --library <out>       # recomputed vs stored profile strategies
+cargo run --release -p taful-profile-stats -- tune --library <out>        # search; add --write to rewrite content/bots
+```
+
+- **Preflop** is exact: the bot sits in each seat at a table of five reference players and every line of `preflop-full.tafl` is walked once (card removal between players ignored). Takes well under a second.
+- **Flop** reads only the flop of each library file and recomputes the bot's strategy from the stored reference strategy and EVs, so knobs can be tried without re-solving. Its flop range is its own preflop range (D15). Files weigh by orbit size, spots by how often the bot plays the spot's line from that seat. Needs a seeded build (`profile_seed`), or loose bots miss data at combos the reference never plays (`nodata%`).
+- **Tuning** is coordinate-wise bisection: `threebet_mult` → 3-bet, `vpip_mult` → VPIP, `pfr_mult` → PFR, then `fold_to_cbet` → fold to c-bet and `aggression` → flop aggression factor. Fold to 3-bet and flop c-bet follow from those and are only reported. `fold_to_raise`, `bluff_value_shift` and sizing have no HUD target and stay as they are.
+- Writing new knobs changes the postflop hash: rebuild the library into a fresh folder afterwards.
 
 ## Full hands, reviews and leaks (M5)
 

@@ -5862,6 +5862,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "taful-profile-stats"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "taful-core",
+ "taful-solver",
+ "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
 name = "taful-solver"
 version = "0.0.1"
 dependencies = [
