@@ -123,10 +123,10 @@ cargo run --release -p taful-profile-stats -- check --library <out>       # reco
 cargo run --release -p taful-profile-stats -- tune --library <out>        # search; add --write to rewrite content/bots
 ```
 
-- **Preflop** is exact: the bot sits in each seat at a table of five reference players and every line of `preflop-full.tafl` is walked once (card removal between players ignored). Takes well under a second.
-- **Flop** reads only the flop of each library file and recomputes the bot's strategy from the stored reference strategy and EVs, so knobs can be tried without re-solving. Its flop range is its own preflop range (D15). Files weigh by orbit size, spots by how often the bot plays the spot's line from that seat. Needs a seeded build (`profile_seed`), or loose bots miss data at combos the reference never plays (`nodata%`).
+- **Preflop** is exact: the bot sits in each seat at a table of five reference players and every line of the published `preflop.tafl` (the chart the app's bots play) is walked once (card removal between players ignored). Takes well under a second.
+- **Flop** reads only the flop of each library file and recomputes the bot's strategy from the stored reference strategy and EVs, so knobs can be tried without re-solving. Its flop range is its own preflop range (D15). Files weigh by orbit size, spots by how often the bot plays the spot's line from that seat. The reference stores no rows for the seeded combos a loose bot adds (D15), so those combos play the strategy the build stored for that profile (`fixed%`: they don't follow a knob change) or, without one, are left out (`nodata%`). After rebuilding with new knobs, `postflop --stored` measures exactly what the build stored.
 - **Tuning** is coordinate-wise bisection: `threebet_mult` → 3-bet, `vpip_mult` → VPIP, `pfr_mult` → PFR, then `fold_to_cbet` → fold to c-bet and `aggression` → flop aggression factor. Fold to 3-bet and flop c-bet follow from those and are only reported. `fold_to_raise`, `bluff_value_shift` and sizing have no HUD target and stay as they are.
-- Writing new knobs changes the postflop hash: rebuild the library into a fresh folder afterwards.
+- Writing new knobs changes both builds: rebuild the preflop best-response charts (`taful-library-build preflop`, a test checks `preflop-<id>.tafl` against the profiles) and the postflop library into a fresh folder.
 
 ## Full hands, reviews and leaks (M5)
 

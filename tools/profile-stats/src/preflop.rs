@@ -1,5 +1,6 @@
-//! Preflop HUD stats of one bot, computed exactly from the unpruned preflop
-//! chart (no sampling noise).
+//! Preflop HUD stats of one bot, computed exactly from the published preflop
+//! chart (no sampling noise), the chart the app's bots play: a pruned node
+//! ends the line there, like a bot leaving the library.
 //!
 //! The bot sits in each seat in turn at a table of five reference players and
 //! plays one hand per seat. Every line of the chart is walked once with the
@@ -8,6 +9,8 @@
 //! card removal between players is ignored). A hand's weight is
 //! `combos / 1326 × bot reach × others' probability`, so the six seats add up
 //! to six hands.
+
+use std::rc::Rc;
 
 use taful_core::action::Action;
 use taful_core::position::Position;
@@ -98,7 +101,7 @@ struct Path {
 /// Stats of `profile` (`None` = the reference) over one hand per seat.
 pub fn stats(prep: &Prepared<'_>, profile: Option<&Profile>) -> PreflopStats {
     let chart = prep.chart;
-    let mut cache: Vec<Option<Vec<f32>>> = vec![None; chart.len()];
+    let mut cache: Vec<Option<Rc<[f32]>>> = vec![None; chart.len()];
     let table = usize::from(chart.config().table_size);
     let mut acc = Acc::default();
     let combos: Vec<f64> = HandClass::all()
@@ -140,7 +143,7 @@ pub fn stats(prep: &Prepared<'_>, profile: Option<&Profile>) -> PreflopStats {
 fn walk(
     prep: &Prepared<'_>,
     profile: Option<&Profile>,
-    cache: &mut Vec<Option<Vec<f32>>>,
+    cache: &mut Vec<Option<Rc<[f32]>>>,
     seat: Position,
     id: NodeId,
     reach: &[f64],
@@ -168,8 +171,8 @@ fn walk(
     if node.player == seat {
         if cache[id].is_none() {
             cache[id] = Some(match profile {
-                Some(p) => chart.profile_strategy(id, p),
-                None => prep.strategy[id].clone(),
+                Some(p) => chart.profile_strategy(id, p).into(),
+                None => prep.strategy[id].clone().into(),
             });
         }
         let strategy = cache[id].clone().expect("cached");
@@ -259,7 +262,7 @@ mod tests {
     pub(crate) fn chart() -> PreflopChart {
         let path = concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../library/v1/c1c6782d353382947a3bbcf1493b6a17155b2e63a7218bf8f54cc38be59cf37f/preflop-full.tafl"
+            "/../../library/v1/c1c6782d353382947a3bbcf1493b6a17155b2e63a7218bf8f54cc38be59cf37f/preflop.tafl"
         );
         PreflopChart::decode(&std::fs::read(path).expect("chart")).expect("decodes")
     }

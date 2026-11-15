@@ -4,11 +4,13 @@
 //!
 //! ```text
 //! profile-stats preflop
-//! profile-stats postflop --library <out dir>
+//! profile-stats postflop --library <out dir> [--stored]
 //! profile-stats check    --library <out dir>
 //! profile-stats tune     [--library <out dir>] [--write]
 //! ```
 //!
+//! `--stored` measures the profile strategies the build stored (the knobs
+//! it was built with) instead of recomputing them from the current TOMLs.
 //! `--library` is a postflop build output folder (`<dir>/v1/<key>/<spot>/
 //! <flop>.tafl`). Without it, `tune` only tunes the preflop knobs. Other
 //! options: `--bots <dir>` (default `content/bots`), `--targets <file>`
@@ -42,6 +44,7 @@ struct Opts {
     library: Option<PathBuf>,
     only: Option<Vec<String>>,
     write: bool,
+    stored: bool,
 }
 
 fn parse_args() -> Result<Opts, String> {
@@ -53,6 +56,7 @@ fn parse_args() -> Result<Opts, String> {
         library: None,
         only: None,
         write: false,
+        stored: false,
     };
     let mut i = 1;
     while i < args.len() {
@@ -68,6 +72,11 @@ fn parse_args() -> Result<Opts, String> {
             "--only" => o.only = Some(value()?.split(',').map(str::to_string).collect()),
             "--write" => {
                 o.write = true;
+                i += 1;
+                continue;
+            }
+            "--stored" => {
+                o.stored = true;
                 i += 1;
                 continue;
             }
@@ -160,35 +169,91 @@ fn load_library(root: &Path) -> Result<Vec<FlopTree>, String> {
     Ok(out)
 }
 
-/// Flop stats of one bot over the library: the total and per spot.
-fn flop_stats(
+/// One (file, seat) the bot plays: its weight and its flop range.
+struct SeatPlan {
+    tree: usize,
+    pos: Position,
+    weight: f64,
+    range: Vec<f32>,
+}
+
+/// Where the bot plays and with which range, for one set of preflop knobs
+/// (`None` = the reference). Seats the bot never reaches are left out.
+fn plan(
     trees: &[FlopTree],
-    full: &PreflopChart,
-    published: &PreflopChart,
+    chart: &PreflopChart,
     profile: Option<&Profile>,
-) -> Result<(FlopSums, BTreeMap<String, FlopSums>), String> {
+    stored: Option<&str>,
+) -> Result<Vec<SeatPlan>, String> {
     let mut spot_orbit: BTreeMap<String, f64> = BTreeMap::new();
     for t in trees {
         *spot_orbit.entry(t.spot.clone()).or_default() += t.orbit;
     }
     // How often the bot plays each spot's line from each seat.
     let mut line_w: BTreeMap<(String, Position), f64> = BTreeMap::new();
-    let mut total = FlopSums::default();
-    let mut per_spot: BTreeMap<String, FlopSums> = BTreeMap::new();
-    for t in trees {
+    let mut out = Vec::new();
+    for (i, t) in trees.iter().enumerate() {
         for pos in t.players() {
             let key = (t.spot.clone(), pos);
             if !line_w.contains_key(&key) {
-                let w = postflop::line_probability(full, t.line(), pos, profile)?;
+                let w = postflop::line_probability(chart, t.line(), pos, profile)?;
                 line_w.insert(key.clone(), w);
             }
-            let w = line_w[&key] * t.orbit / spot_orbit[&t.spot];
-            let s = postflop::measure(t, pos, profile, published)?;
-            total.add(&s, w);
-            per_spot.entry(t.spot.clone()).or_default().add(&s, w);
+            let weight = line_w[&key] * t.orbit / spot_orbit[&t.spot];
+            if weight <= 0.0 {
+                continue;
+            }
+            let range = match stored {
+                Some(id) => {
+                    let sec =
+                        t.sections.iter().find(|s| s.id == id).ok_or_else(|| {
+                            format!("{} {}: no stored data for {id}", t.spot, t.flop)
+                        })?;
+                    postflop::stored_range(t, pos, sec)
+                }
+                None => postflop::bot_range(t, pos, profile, chart)?,
+            };
+            out.push(SeatPlan {
+                tree: i,
+                pos,
+                weight,
+                range,
+            });
         }
     }
-    Ok((total, per_spot))
+    Ok(out)
+}
+
+/// Flop stats of one bot over the library: the total and per spot.
+fn flop_stats<'a>(
+    trees: &'a [FlopTree],
+    plan: &[SeatPlan],
+    source: impl Fn(&'a FlopTree) -> postflop::Source<'a>,
+) -> (FlopSums, BTreeMap<String, FlopSums>) {
+    let mut total = FlopSums::default();
+    let mut per_spot: BTreeMap<String, FlopSums> = BTreeMap::new();
+    for sp in plan {
+        let t = &trees[sp.tree];
+        let s = postflop::measure(t, sp.pos, &sp.range, source(t));
+        total.add(&s, sp.weight);
+        per_spot
+            .entry(t.spot.clone())
+            .or_default()
+            .add(&s, sp.weight);
+    }
+    (total, per_spot)
+}
+
+/// The source that recomputes `profile`, falling back on what the build
+/// stored for the same id where the reference has no row.
+fn recompute<'a>(profile: Option<&'a Profile>) -> impl Fn(&'a FlopTree) -> postflop::Source<'a> {
+    move |t: &'a FlopTree| match profile {
+        None => postflop::Source::Reference,
+        Some(p) => postflop::Source::Recompute {
+            profile: p,
+            stored: t.sections.iter().find(|s| s.id == p.id),
+        },
+    }
 }
 
 fn fmt(v: Option<f64>, digits: usize) -> String {
@@ -206,8 +271,8 @@ fn selected<'a>(
 }
 
 fn cmd_preflop(o: &Opts) -> Result<(), String> {
-    let full = chart("preflop-full.tafl")?;
-    let prep = preflop::Prepared::new(&full);
+    let published = chart("preflop.tafl")?;
+    let prep = preflop::Prepared::new(&published);
     let profiles = load_profiles(&o.bots)?;
     println!(
         "{:<16} {:>6} {:>6} {:>6} {:>6} {:>6}",
@@ -235,41 +300,55 @@ fn cmd_preflop(o: &Opts) -> Result<(), String> {
 }
 
 fn print_flop(id: &str, s: &FlopSums) {
-    let mass = s.aggr + s.calls + s.passive_other;
+    let all = s.decisions() + s.missing;
+    let pct = |x: f64| fmt((all > 0.0).then(|| 100.0 * x / all), 1);
     println!(
-        "{:<28} {:>6} {:>6} {:>6} {:>8}",
+        "{:<28} {:>6} {:>6} {:>6} {:>7} {:>7}",
         id,
         fmt(s.cbet_pct(), 1),
         fmt(s.fold_to_cbet_pct(), 1),
         fmt(s.af(), 2),
-        fmt(
-            (mass > 0.0).then(|| 100.0 * s.missing / (mass + s.missing)),
-            2
-        ),
+        pct(s.fixed),
+        pct(s.missing),
     );
 }
 
 fn cmd_postflop(o: &Opts) -> Result<(), String> {
     let lib = o.library.as_ref().ok_or("postflop needs --library <dir>")?;
     let trees = load_library(lib)?;
-    let full = chart("preflop-full.tafl")?;
     let published = chart("preflop.tafl")?;
     let profiles = load_profiles(&o.bots)?;
     println!(
-        "{:<28} {:>6} {:>6} {:>6} {:>8}",
-        "bot / spot", "cbet", "Fcbet", "AF", "nodata%"
+        "{:<28} {:>6} {:>6} {:>6} {:>7} {:>7}",
+        "bot / spot", "cbet", "Fcbet", "AF", "fixed%", "nodata%"
     );
-    let mut rows: Vec<(String, Option<&Profile>)> = vec![("reference".into(), None)];
-    rows.extend(
-        selected(&profiles, &o.only)
-            .into_iter()
-            .map(|(p, _, _)| (p.id.clone(), Some(p))),
-    );
-    for (id, p) in rows {
-        let (total, per_spot) = flop_stats(&trees, &full, &published, p)?;
-        print_flop(&id, &total);
+    let print = |id: &str, (total, per_spot): (FlopSums, BTreeMap<String, FlopSums>)| {
+        print_flop(id, &total);
         for (spot, s) in &per_spot {
             print_flop(&format!("  {spot}"), s);
+        }
+    };
+    if !o.stored {
+        let p = plan(&trees, &published, None, None)?;
+        print("reference", flop_stats(&trees, &p, recompute(None)));
+    }
+    for (prof, _, _) in selected(&profiles, &o.only) {
+        if o.stored {
+            // What the build stored, with the knobs it was built with.
+            let Some(sec) = trees[0].sections.iter().find(|s| s.id == prof.id) else {
+                eprintln!("{}: not in the library, skipped", prof.id);
+                continue;
+            };
+            let built = Profile::from_toml(&sec.profile)?;
+            let p = plan(&trees, &published, Some(&built), Some(&prof.id))?;
+            let id = prof.id.clone();
+            let stats = flop_stats(&trees, &p, |t: &FlopTree| {
+                postflop::Source::Stored(t.sections.iter().find(|s| s.id == id).expect("planned"))
+            });
+            print(&format!("{} (stored)", prof.id), stats);
+        } else {
+            let p = plan(&trees, &published, Some(prof), None)?;
+            print(&prof.id, flop_stats(&trees, &p, recompute(Some(prof))));
         }
     }
     Ok(())
@@ -304,9 +383,8 @@ fn cmd_tune(o: &Opts) -> Result<(), String> {
     let targets_text =
         std::fs::read_to_string(&o.targets).map_err(|e| format!("{}: {e}", o.targets.display()))?;
     let targets = tune::load_targets(&targets_text)?;
-    let full = chart("preflop-full.tafl")?;
     let published = chart("preflop.tafl")?;
-    let prep = preflop::Prepared::new(&full);
+    let prep = preflop::Prepared::new(&published);
     let trees = match &o.library {
         Some(lib) => Some(load_library(lib)?),
         None => None,
@@ -323,7 +401,7 @@ fn cmd_tune(o: &Opts) -> Result<(), String> {
         let pre = tune_preflop(&prep, &mut p, t);
         let mut ok = pre;
         if let Some(trees) = &trees {
-            ok &= tune_postflop(trees, &full, &published, &mut p, t)?;
+            ok &= tune_postflop(trees, &published, &mut p, t)?;
         }
         all_ok &= ok;
         let ps = preflop::stats(&prep, Some(&p));
@@ -429,21 +507,24 @@ fn tune_preflop(prep: &preflop::Prepared<'_>, p: &mut Profile, t: &Targets) -> b
         && tune::within(s.threebet, t.threebet)
 }
 
-/// Tune `fold_to_cbet` and `aggression` on the flop.
+/// Tune `fold_to_cbet` and `aggression` on the flop. The preflop knobs
+/// stay fixed meanwhile, so the seats and ranges are planned once.
 fn tune_postflop(
     trees: &[FlopTree],
-    full: &PreflopChart,
     published: &PreflopChart,
     p: &mut Profile,
     t: &Targets,
 ) -> Result<bool, String> {
-    let stats = |q: &Profile| flop_stats(trees, full, published, Some(q)).map(|(s, _)| s);
+    let seats = plan(trees, published, Some(p), None)?;
+    let stats = |q: &Profile| flop_stats(trees, &seats, recompute(Some(q))).0;
     for round in 0..3 {
-        let s = stats(p)?;
+        let s = stats(p);
         eprintln!(
-            "  flop round {round}: fold to cbet {} AF {}",
+            "  flop round {round}: fold to cbet {} AF {} (fixed {:.1}%, no data {:.1}%)",
             fmt(s.fold_to_cbet_pct(), 1),
-            fmt(s.af(), 2)
+            fmt(s.af(), 2),
+            100.0 * s.fixed / (s.decisions() + s.missing),
+            100.0 * s.missing / (s.decisions() + s.missing),
         );
         if tune::within(
             s.fold_to_cbet_pct(),
@@ -452,27 +533,20 @@ fn tune_postflop(
         {
             break;
         }
-        let mut err = None;
         let x = tune::bisect(-1.0, 1.0, false, STEPS, t.fold_to_cbet[0], |x| {
             let mut q = p.clone();
             q.postflop.fold_to_cbet = x;
-            stats(&q)
-                .map_err(|e| err = Some(e))
-                .ok()?
-                .fold_to_cbet_pct()
+            stats(&q).fold_to_cbet_pct()
         });
         p.postflop.fold_to_cbet = tune::round3(x);
         let x = tune::bisect(-1.0, 1.0, false, STEPS, t.af[0], |x| {
             let mut q = p.clone();
             q.postflop.aggression = x;
-            stats(&q).map_err(|e| err = Some(e)).ok()?.af()
+            stats(&q).af()
         });
         p.postflop.aggression = tune::round3(x);
-        if let Some(e) = err {
-            return Err(e);
-        }
     }
-    let s = stats(p)?;
+    let s = stats(p);
     Ok(tune::within(s.fold_to_cbet_pct(), t.fold_to_cbet) && tune::within(s.af(), t.af))
 }
 

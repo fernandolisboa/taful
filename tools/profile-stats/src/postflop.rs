@@ -152,8 +152,11 @@ pub struct FlopSums {
     pub calls: f64,
     /// Checks and folds on the flop (for the aggression frequency).
     pub passive_other: f64,
-    /// Share of the bot's flop mass at combos the file has no data for.
+    /// Bot mass at combos the file has no data for (left out).
     pub missing: f64,
+    /// Bot mass at combos played with the stored strategy because the
+    /// reference has no row for them ([`Source::Recompute`]).
+    pub fixed: f64,
 }
 
 impl FlopSums {
@@ -166,6 +169,7 @@ impl FlopSums {
         self.calls += w * o.calls;
         self.passive_other += w * o.passive_other;
         self.missing += w * o.missing;
+        self.fixed += w * o.fixed;
     }
     pub fn cbet_pct(&self) -> Option<f64> {
         (self.cbet_opp > 1e-12).then(|| 100.0 * self.cbet / self.cbet_opp)
@@ -173,54 +177,99 @@ impl FlopSums {
     pub fn fold_to_cbet_pct(&self) -> Option<f64> {
         (self.fcb_opp > 1e-12).then(|| 100.0 * self.fcb / self.fcb_opp)
     }
-    /// Aggression factor: bets and raises per call.
+    /// Aggression factor: bets and raises per call (infinite when the bot
+    /// bets but never calls).
     pub fn af(&self) -> Option<f64> {
-        (self.calls > 1e-12).then(|| self.aggr / self.calls)
+        if self.calls > 1e-12 {
+            Some(self.aggr / self.calls)
+        } else {
+            (self.aggr > 1e-12).then_some(f64::INFINITY)
+        }
+    }
+    /// Bot decision mass (decisions weighted by how often they come up).
+    pub fn decisions(&self) -> f64 {
+        self.aggr + self.calls + self.passive_other
     }
 }
 
-/// One file, the bot in seat `pos` playing `profile` (`None` = reference),
-/// its flop range from the published preflop chart `chart` (D15). Mass is
-/// normalized so the bot's hands at the flop add up to 1.
-pub fn measure(
+/// Where the bot's strategy at its flop nodes comes from.
+#[derive(Clone, Copy)]
+pub enum Source<'a> {
+    /// The stored reference strategy.
+    Reference,
+    /// The profile's transform of the stored reference strategy and EVs.
+    /// Combos the reference has no row for (the seeded part of a loose
+    /// profile's range, D15) play `stored`'s strategy when it has one:
+    /// fixed at the knobs the file was built with, and counted as such.
+    Recompute {
+        profile: &'a Profile,
+        stored: Option<&'a ProfileSection>,
+    },
+    /// What the build stored for a profile (exact for the knobs it was
+    /// built with, including seeded combos).
+    Stored(&'a ProfileSection),
+}
+
+/// The bot's range at the flop root when it plays `profile` (`None` = the
+/// reference): its own preflop range for the spot's line in the published
+/// chart (D15), as the build computes it.
+pub fn bot_range(
     tree: &FlopTree,
     pos: Position,
     profile: Option<&Profile>,
     chart: &PreflopChart,
-) -> Result<FlopSums, String> {
-    let mut bot: Vec<f32> = profile_line_range(chart, &tree.line, pos, profile)?;
+) -> Result<Vec<f32>, String> {
+    profile_line_range(chart, &tree.line, pos, profile)
+}
+
+/// The range a stored profile section brought to the flop.
+pub fn stored_range(tree: &FlopTree, pos: Position, section: &ProfileSection) -> Vec<f32> {
+    match section.root_ranges.iter().find(|(p, _)| *p == pos) {
+        Some((_, r)) => r.iter().map(|&x| f32::from(x) / 255.0).collect(),
+        None => tree.root(pos).to_vec(),
+    }
+}
+
+/// One file, the bot in seat `pos` with flop range `range` (any scale)
+/// playing `source`. Mass is normalized so the bot's hands at the flop add
+/// up to 1; an empty range gives empty sums.
+pub fn measure(tree: &FlopTree, pos: Position, range: &[f32], source: Source<'_>) -> FlopSums {
+    let mut bot: Vec<f32> = range.to_vec();
     for (h, w) in bot.iter_mut().enumerate() {
         if tree.dead[h] {
             *w = 0.0;
         }
     }
+    let mut sums = FlopSums::default();
     let total: f64 = bot.iter().map(|&w| f64::from(w)).sum();
+    let Some(opp_pos) = tree.players().into_iter().find(|&p| p != pos) else {
+        return sums;
+    };
     if total <= 0.0 {
-        return Err(format!(
-            "{} {}: empty range for {pos}",
-            tree.spot, tree.flop
-        ));
+        return sums;
     }
     bot.iter_mut()
         .for_each(|w| *w = (f64::from(*w) / total) as f32);
-    let opp_pos = tree
-        .players()
-        .into_iter()
-        .find(|&p| p != pos)
-        .ok_or("seat")?;
-    let opp = tree.root(opp_pos).to_vec();
+    let mut opp = tree.root(opp_pos).to_vec();
+    for (h, w) in opp.iter_mut().enumerate() {
+        if tree.dead[h] {
+            *w = 0.0;
+        }
+    }
     let opp_total: f64 = opp.iter().map(|&w| f64::from(w)).sum();
-    let mut sums = FlopSums::default();
+    if opp_total <= 0.0 {
+        return sums;
+    }
     let mut ctx = Ctx {
         tree,
         pos,
-        profile,
+        source,
         aggressor: tree.aggressor == pos,
         opp_total,
         sums: &mut sums,
     };
     ctx.visit(0, &bot, &opp, St::default());
-    Ok(sums)
+    sums
 }
 
 #[derive(Clone, Copy, Default)]
@@ -233,13 +282,84 @@ struct St {
 struct Ctx<'a> {
     tree: &'a FlopTree,
     pos: Position,
-    profile: Option<&'a Profile>,
+    source: Source<'a>,
     aggressor: bool,
     opp_total: f64,
     sums: &'a mut FlopSums,
 }
 
 impl Ctx<'_> {
+    /// The bot's strategy at `node` (`NUM_COMBOS × k`) and its weights,
+    /// zeroed where no strategy is known. Adds to `missing` and `fixed`.
+    fn bot_strategy(
+        &mut self,
+        id: usize,
+        node: &Node,
+        actions: &[Action],
+        facing: usize,
+        bot: &[f32],
+        others: f64,
+    ) -> (Vec<f32>, Vec<f32>) {
+        let k = actions.len();
+        let mut weights = bot.to_vec();
+        let mut out = vec![0.0f32; NUM_COMBOS * k];
+        let stored_row =
+            |sec: &ProfileSection, h: usize| sec.nodes.get(id).and_then(|pn| pn.strategy(h, k));
+        match self.source {
+            Source::Stored(sec) => {
+                for h in 0..NUM_COMBOS {
+                    if weights[h] <= 0.0 {
+                        continue;
+                    }
+                    match stored_row(sec, h) {
+                        Some(r) => out[h * k..(h + 1) * k].copy_from_slice(&r),
+                        None => {
+                            self.sums.missing += f64::from(weights[h]) * others;
+                            weights[h] = 0.0;
+                        }
+                    }
+                }
+            }
+            Source::Reference | Source::Recompute { .. } => {
+                let mut ev = vec![0.0f32; NUM_COMBOS * k];
+                let mut fixed: Vec<(usize, Vec<f32>, f32)> = Vec::new();
+                for h in 0..NUM_COMBOS {
+                    if weights[h] <= 0.0 {
+                        continue;
+                    }
+                    match (node.strategy(h), node.ev(h, self.tree.ev_scale)) {
+                        (Some(s), Some(e)) => {
+                            out[h * k..(h + 1) * k].copy_from_slice(&s);
+                            ev[h * k..(h + 1) * k].copy_from_slice(&e);
+                        }
+                        _ => {
+                            let w = weights[h];
+                            weights[h] = 0.0;
+                            match self.source {
+                                Source::Recompute {
+                                    stored: Some(sec), ..
+                                } => match stored_row(sec, h) {
+                                    Some(r) => fixed.push((h, r, w)),
+                                    None => self.sums.missing += f64::from(w) * others,
+                                },
+                                _ => self.sums.missing += f64::from(w) * others,
+                            }
+                        }
+                    }
+                }
+                if let Source::Recompute { profile, .. } = self.source {
+                    out = profile.postflop_strategy(actions, &out, &ev, &weights, facing);
+                }
+                for (h, r, w) in fixed {
+                    out[h * k..(h + 1) * k].copy_from_slice(&r);
+                    weights[h] = w;
+                    self.sums.fixed += f64::from(w) * others;
+                }
+            }
+        }
+        (out, weights)
+    }
+
     fn visit(&mut self, id: usize, bot: &[f32], opp: &[f32], st: St) {
         let Some(node) = self.tree.nodes[id].as_ref() else {
             return;
@@ -269,32 +389,9 @@ impl Ctx<'_> {
             return;
         }
         let others = opp.iter().map(|&w| f64::from(w)).sum::<f64>() / self.opp_total;
-        let mut weights = bot.to_vec();
-        let mut missing = 0.0f64;
-        let mut strategy = vec![0.0f32; NUM_COMBOS * k];
-        let mut ev = vec![0.0f32; NUM_COMBOS * k];
-        for h in 0..NUM_COMBOS {
-            if weights[h] <= 0.0 {
-                continue;
-            }
-            match (node.strategy(h), node.ev(h, self.tree.ev_scale)) {
-                (Some(s), Some(e)) => {
-                    strategy[h * k..(h + 1) * k].copy_from_slice(&s);
-                    ev[h * k..(h + 1) * k].copy_from_slice(&e);
-                }
-                _ => {
-                    missing += f64::from(weights[h]);
-                    weights[h] = 0.0;
-                }
-            }
-        }
-        let s = match self.profile {
-            Some(p) => p.postflop_strategy(&actions, &strategy, &ev, &weights, st.facing),
-            None => strategy,
-        };
+        let (s, weights) = self.bot_strategy(id, node, &actions, st.facing, bot, others);
         let mass: Vec<f64> = weights.iter().map(|&w| f64::from(w) * others).collect();
         let total: f64 = mass.iter().sum();
-        self.sums.missing += missing * others;
         if total <= 1e-15 {
             return;
         }
@@ -361,8 +458,10 @@ pub fn line_probability(
                     .flat_map(|c| node.strategy(c).unwrap_or_else(|| vec![0.0; k]))
                     .collect(),
             };
+            // A class the chart has no data for stays out, as in
+            // `profile_line_range`.
             for (c, r) in reach.iter_mut().enumerate() {
-                *r *= f64::from(s[c * k + a]);
+                *r *= node.strategy(c).map_or(0.0, |_| f64::from(s[c * k + a]));
             }
         } else {
             let range = chart.acting_range(id);
@@ -509,8 +608,23 @@ mod tests {
         let chart = published();
         let t = tree("Tc9c6d");
         for pos in t.players() {
-            let r = measure(&t, pos, None, &chart).unwrap();
-            let n = measure(&t, pos, Some(&neutral()), &chart).unwrap();
+            let n = neutral();
+            let r = measure(
+                &t,
+                pos,
+                &bot_range(&t, pos, None, &chart).unwrap(),
+                Source::Reference,
+            );
+            let range = bot_range(&t, pos, Some(&n), &chart).unwrap();
+            let n = measure(
+                &t,
+                pos,
+                &range,
+                Source::Recompute {
+                    profile: &n,
+                    stored: None,
+                },
+            );
             assert!(
                 (r.aggr - n.aggr).abs() < 1e-3 && (r.calls - n.calls).abs() < 1e-3,
                 "{r:?} {n:?}"
@@ -524,8 +638,15 @@ mod tests {
         let chart = published();
         let t = tree("Kc7c2c");
         // btn-sb-3bp: SB 3-bet, so SB c-bets and BTN faces the c-bet.
-        let sb = measure(&t, Position::Sb, None, &chart).unwrap();
-        let btn = measure(&t, Position::Btn, None, &chart).unwrap();
+        let m = |pos| {
+            measure(
+                &t,
+                pos,
+                &bot_range(&t, pos, None, &chart).unwrap(),
+                Source::Reference,
+            )
+        };
+        let (sb, btn) = (m(Position::Sb), m(Position::Btn));
         assert!(
             (sb.cbet_opp - 1.0).abs() < 1e-6,
             "OOP aggressor acts first: {sb:?}"
@@ -543,7 +664,16 @@ mod tests {
             let mut p = neutral();
             p.postflop.fold_to_cbet = f;
             p.postflop.aggression = a;
-            measure(&t, pos, Some(&p), &chart).unwrap()
+            let range = bot_range(&t, pos, Some(&p), &chart).unwrap();
+            measure(
+                &t,
+                pos,
+                &range,
+                Source::Recompute {
+                    profile: &p,
+                    stored: None,
+                },
+            )
         };
         let base = m(0.0, 0.0, Position::Btn);
         assert!(m(0.5, 0.0, Position::Btn).fold_to_cbet_pct() > base.fold_to_cbet_pct());
@@ -562,6 +692,44 @@ mod tests {
             let (_, mean) = diff_vs_stored(&t, s).unwrap();
             assert!(mean < 0.01, "{}: {mean}", s.id);
         }
+    }
+
+    #[test]
+    fn stored_fallback_fills_combos_the_reference_has_no_row_for() {
+        let t = tree("Kc7c2c");
+        let sec = t.sections.iter().find(|s| s.id == "maniac").unwrap();
+        let p = Profile::from_toml(&sec.profile).unwrap();
+        let range = stored_range(&t, Position::Btn, sec);
+        let bare = measure(
+            &t,
+            Position::Btn,
+            &range,
+            Source::Recompute {
+                profile: &p,
+                stored: None,
+            },
+        );
+        let filled = measure(
+            &t,
+            Position::Btn,
+            &range,
+            Source::Recompute {
+                profile: &p,
+                stored: Some(sec),
+            },
+        );
+        let stored = measure(&t, Position::Btn, &range, Source::Stored(sec));
+        assert!(bare.missing > 0.0 && bare.fixed == 0.0, "{bare:?}");
+        assert!(
+            filled.fixed > 0.0 && filled.missing < bare.missing,
+            "{filled:?}"
+        );
+        // Same knobs as the build: the fill-in measures close to the stored data.
+        let (a, b) = (
+            filled.fold_to_cbet_pct().unwrap(),
+            stored.fold_to_cbet_pct().unwrap(),
+        );
+        assert!((a - b).abs() < 3.0, "{a} vs {b}");
     }
 
     #[test]
