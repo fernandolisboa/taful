@@ -685,12 +685,38 @@ mod tests {
 
     #[test]
     fn recomputed_strategy_is_close_to_what_the_build_stored() {
-        // The fixture predates seeding, so loose profiles miss data at many
-        // combos; the tight ones show the recomputation itself is faithful.
-        let t = tree("Tc9c6d");
-        for s in t.sections.iter().filter(|s| s.id == "nit" || s.id == "tag") {
-            let (_, mean) = diff_vs_stored(&t, s).unwrap();
-            assert!(mean < 0.01, "{}: {mean}", s.id);
+        // The build works on unquantized solver data and the stored
+        // strategy is rounded, so hands at the edge of a shift can differ;
+        // on the coarse fixture a few percent of the range does. What a HUD
+        // shows must agree closely.
+        for flop in ["Tc9c6d", "Kc7c2c"] {
+            let t = tree(flop);
+            for s in t.sections.iter().filter(|s| s.id == "nit" || s.id == "tag") {
+                let (_, mean) = diff_vs_stored(&t, s).unwrap();
+                assert!(mean < 0.03, "{flop} {}: {mean}", s.id);
+                let p = Profile::from_toml(&s.profile).unwrap();
+                for pos in t.players() {
+                    let range = stored_range(&t, pos, s);
+                    let re = measure(
+                        &t,
+                        pos,
+                        &range,
+                        Source::Recompute {
+                            profile: &p,
+                            stored: Some(s),
+                        },
+                    );
+                    let st = measure(&t, pos, &range, Source::Stored(s));
+                    for (a, b) in [
+                        (re.fold_to_cbet_pct(), st.fold_to_cbet_pct()),
+                        (re.cbet_pct(), st.cbet_pct()),
+                    ] {
+                        if let (Some(a), Some(b)) = (a, b) {
+                            assert!((a - b).abs() < 5.0, "{flop} {} {pos}: {a} vs {b}", s.id);
+                        }
+                    }
+                }
+            }
         }
     }
 

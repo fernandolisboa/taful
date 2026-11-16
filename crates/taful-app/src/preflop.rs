@@ -276,6 +276,11 @@ impl From<EngineError> for PreflopError {
 pub struct ProfileChart {
     pub bot: ProfiledBot,
     pub chart: Arc<PreflopChart>,
+    /// Per node: whether hero can meet this node against a table of this
+    /// profile. A line the profile (almost) never plays, such as a calling
+    /// station folding to a raise, gets no best-response EVs (all zero),
+    /// so its spots would grade every answer Best.
+    pub reachable: Vec<bool>,
 }
 
 /// Chart + thresholds: grading and lookups shared by both modes.
@@ -348,10 +353,20 @@ impl PreflopTrainer {
                 )));
             }
         }
+        let reachable = (0..br.len())
+            .map(|id| {
+                let n = br.node(id);
+                n.live.iter().any(|&row| {
+                    n.ev(usize::from(row), 1.0)
+                        .is_some_and(|e| e.iter().any(|&x| x != 0.0))
+                })
+            })
+            .collect();
         self.profiles.retain(|p| p.bot.profile().id != profile.id);
         self.profiles.push(ProfileChart {
             bot: ProfiledBot::new(profile),
             chart: Arc::new(br),
+            reachable,
         });
         self.profiles
             .sort_by(|a, b| a.bot.profile().id.cmp(&b.bot.profile().id));
@@ -640,6 +655,7 @@ impl PreflopTrainer {
     /// As [`spot`](Self::spot), against `opponent` (`None` = the
     /// reference). Against a table key (#29) only nodes where exactly the
     /// key's opponents are still in the hand qualify: the key's table.
+    /// Against one profile, nodes its table never reaches are left out.
     pub fn spot_against(
         &self,
         kind: SpotKind,
@@ -655,8 +671,12 @@ impl PreflopTrainer {
             )),
             None => None,
         };
+        // Against one profile, only nodes its table can reach.
+        let profile = opponent
+            .filter(|_| table.is_none())
+            .and_then(|id| self.profile(id));
         let fits = |node: NodeId| match &table {
-            None => true,
+            None => profile.is_none_or(|p| p.reachable[node]),
             Some((key, seats)) => {
                 let hero = self.seat_of(self.chart.node(node).player);
                 seats[hero].is_none()
@@ -919,18 +939,19 @@ mod tests {
 mod demo {
     use super::*;
 
-    /// #25 demo: against a calling station the big blind 3-bets KTs for
-    /// value over a BTN open. The reference flats it; against the station
-    /// the 3-bet is Best and the payload shows the GTO line next to it.
+    /// #25 demo, retold for the calibrated station (#31): it calls almost
+    /// any raise, so the big blind stops 3-bet bluffing it. Over an SB open,
+    /// JTs is a GTO 3-bet; against the station the flat is Best and the
+    /// payload shows the GTO line next to it.
     #[test]
-    fn value_three_bet_against_a_calling_station() {
+    fn no_three_bet_bluffs_against_a_calling_station() {
         let t = PreflopTrainer::builtin().unwrap();
         let node = t
-            .node_at(&"UTG:f,HJ:f,CO:f,BTN:r250,SB:f".parse().unwrap())
+            .node_at(&"UTG:f,HJ:f,CO:f,BTN:f,SB:r300".parse().unwrap())
             .unwrap();
         assert_eq!(
             SpotKind::classify(&t.chart().line(node), Position::Bb),
-            SpotKind::VsOpen
+            SpotKind::BlindVsBlind
         );
         let n = t.chart().node(node);
         let call = n.action_index(Action::Call).unwrap();
@@ -939,28 +960,47 @@ mod demo {
             .iter()
             .position(|a| matches!(a.action, Action::Raise(_)))
             .unwrap();
-        let hand: Hand = "KcTc".parse().unwrap();
-        let three_bet = t
-            .grade_vs(node, hand, raise, Some("calling-station"))
-            .unwrap();
-        assert_eq!(three_bet.grade, Grade::Best, "{three_bet:?}");
-        let vs = three_bet.vs_profile.as_ref().unwrap();
-        assert_eq!((vs.gto, vs.exploit), (call, raise));
-        assert!(vs.ev_gap_bb > 0.1, "{vs:?}");
-        assert!(three_bet.hand_freqs[call] > 0.9);
-        // The GTO flat loses EV against the station; against the reference
-        // it is the right play and the 3-bet is not.
+        let hand: Hand = "JcTc".parse().unwrap();
         let flat = t
             .grade_vs(node, hand, call, Some("calling-station"))
             .unwrap();
-        assert!(flat.grade > Grade::Best, "{flat:?}");
-        assert_eq!(t.grade(node, hand, call).unwrap().grade, Grade::Best);
-        assert!(t.grade(node, hand, raise).unwrap().grade > Grade::Best);
-        // And the station's bluff-catching flaw: JTs, a GTO 3-bet bluff, is
-        // a flat against it.
-        let jt: Hand = "JcTc".parse().unwrap();
-        let g = t.grade_vs(node, jt, call, Some("calling-station")).unwrap();
+        assert_eq!(flat.grade, Grade::Best, "{flat:?}");
+        let vs = flat.vs_profile.as_ref().unwrap();
+        assert_eq!((vs.gto, vs.exploit), (raise, call));
+        assert!(vs.ev_gap_bb > 0.5, "{vs:?}");
+        assert!(flat.hand_freqs[raise] > 0.9);
+        // The GTO 3-bet loses EV against the station; against the reference
+        // it is the right play.
+        let three_bet = t
+            .grade_vs(node, hand, raise, Some("calling-station"))
+            .unwrap();
+        assert!(three_bet.grade > Grade::Best, "{three_bet:?}");
+        assert_eq!(t.grade(node, hand, raise).unwrap().grade, Grade::Best);
+        // Aces still 3-bet for value.
+        let aces: Hand = "AdAc".parse().unwrap();
+        let g = t
+            .grade_vs(node, aces, raise, Some("calling-station"))
+            .unwrap();
         assert_eq!(g.grade, Grade::Best);
-        assert_eq!(g.vs_profile.unwrap().gto, raise);
+    }
+
+    /// A station calls almost every raise, so lines where it folds to one
+    /// never happen against its table: they get no best-response EVs and
+    /// spot drills against it skip them.
+    #[test]
+    fn spots_against_a_profile_skip_lines_its_table_never_plays() {
+        let t = PreflopTrainer::builtin().unwrap();
+        let station = t.profile("calling-station").unwrap();
+        let node = t
+            .node_at(&"UTG:f,HJ:f,CO:f,BTN:r250,SB:f".parse().unwrap())
+            .unwrap();
+        assert!(!station.reachable[node], "SB station folds to a BTN open");
+        assert!(t.profile("tag").unwrap().reachable[node]);
+        for seed in 0..200 {
+            let s = t
+                .spot_against(SpotKind::VsOpen, Some("calling-station"), seed)
+                .unwrap();
+            assert!(station.reachable[s.node], "seed {seed}");
+        }
     }
 }
