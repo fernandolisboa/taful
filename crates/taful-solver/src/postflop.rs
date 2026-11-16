@@ -422,24 +422,24 @@ mod tests {
     #[test]
     fn loose_profiles_widen_the_line_range() {
         let c = chart();
-        let line: Line = "UTG:f,HJ:f,CO:f,BTN:r250,SB:r950,BB:f,BTN:c"
-            .parse()
-            .unwrap();
+        // The big blind defending a BTN open: a station (#31: it opens
+        // tight and calls almost any raise) brings far more hands here.
+        let line: Line = "UTG:f,HJ:f,CO:f,BTN:r250,SB:f,BB:c".parse().unwrap();
         let bots = concat!(env!("CARGO_MANIFEST_DIR"), "/../../content/bots");
         let load = |id: &str| {
             Profile::from_toml(&std::fs::read_to_string(format!("{bots}/{id}.toml")).unwrap())
                 .unwrap()
         };
         let total = |r: &[f32]| r.iter().sum::<f32>();
-        let reference = line_range(&c, &line, Position::Btn).unwrap();
+        let reference = line_range(&c, &line, Position::Bb).unwrap();
         // The reference is a profile-free line range.
         assert_eq!(
-            profile_line_range(&c, &line, Position::Btn, None).unwrap(),
+            profile_line_range(&c, &line, Position::Bb, None).unwrap(),
             reference
         );
         let station =
-            profile_line_range(&c, &line, Position::Btn, Some(&load("calling-station"))).unwrap();
-        let nit = profile_line_range(&c, &line, Position::Btn, Some(&load("nit"))).unwrap();
+            profile_line_range(&c, &line, Position::Bb, Some(&load("calling-station"))).unwrap();
+        let nit = profile_line_range(&c, &line, Position::Bb, Some(&load("nit"))).unwrap();
         assert!(total(&station) > 1.2 * total(&reference));
         assert!(total(&nit) < total(&reference));
         // The station plays combos the reference never brings here.

@@ -434,3 +434,33 @@ The only user today is the author, on his own PC. Signing certificates, hosting 
 ### Implications
 - `target_exploitability_pct` is part of the manifest hash, so files built before and after this change carry different hashes in their headers. Output paths and existence-based skipping do not depend on the hash, so the build resumes in the same folder.
 - Exploitability is not monotone across checks; the build stops at the first check at or below the target, as before.
+
+
+---
+
+## D17 — Bot profiles calibrated to HUD targets
+
+**Date:** 2026-11-16 · **Ref:** #31, PRs #66, #67
+
+### Decision
+- The four bot profiles are tuned automatically, not by playing: `tools/profile-stats` measures what a HUD would show for each bot and bisects the knobs toward `tools/profile-stats/targets.toml`. Fernando approved the target table (2026-11-15). It uses the usual HUD reads for each player type in 6-max cash at 100bb, not anyone's feel.
+
+| Profile | VPIP | PFR | 3-bet | Fold to flop c-bet | Flop AF |
+|---|---|---|---|---|---|
+| nit | 13 ±2 | 10 ±2 | 3 ±1 | 60 ±5 | 2.0 ±0.5 |
+| tag | 22 ±2 | 18 ±2 | 7.5 ±1.5 | 45 ±5 | 3.0 ±0.5 |
+| calling-station | 45 ±5 | 10 ±3 | 2 ±1 | 22 ±7 | 0.8 ±0.3 |
+| maniac | 50 ±5 | 40 ±5 | 18 ±3 | 28 ±6 | 5.0 ±1.0 |
+
+- Tuned knobs: `threebet_mult`, `vpip_mult`, `pfr_mult`, `fold_to_cbet` and `aggression`. `fold_to_raise`, `bluff_value_shift` and sizing have no HUD target and stay as they were. Fold to 3-bet and flop c-bet follow from the tuned knobs and are only reported.
+- `MAX_MULT` went from 5 to 10 (PR #66). The tree has no limps, so a station gets into pots by calling raises, and it needs `vpip_mult` ≈ 7.5 to reach VPIP 45 with PFR 10.
+
+### Result (2026-11-16, on the 245 first-slice files built with the old knobs)
+- Preflop is exact (published chart, bot in each seat vs five reference players): nit 13.1/10.0/3.2, tag 21.9/18.0/7.5, station 45.3/10.0/2.0, maniac 49.5/40.0/18.1 (VPIP/PFR/3-bet).
+- Flop numbers are estimates. The reference stores no rows for the seeded combos a loose bot adds (D15), so those combos keep the strategy the old build stored: about a third of station and maniac flop decisions. Estimates: fold to c-bet / AF nit 60.0/2.00, tag 44.6/3.00, station 22.1/0.80, maniac 26.9/5.00.
+- Before: station PFR was 20.4 (pfr_mult 1.3 made it a loose opener) and maniac flop AF was 8.8.
+
+### Implications
+- The 245 are re-solved with the new profiles into a fresh folder. Afterwards `profile-stats postflop --stored` measures the flop numbers exactly. A stat outside its band means one more tune and re-solve before the library grows.
+- The profiles are frozen once that check passes (#31 acceptance).
+- A profile can make lines its table never plays (the station never folds to a raise). Their best-response EVs are all zero, so spot drills and review items against that profile skip those nodes. A full hand only gets there if a bot samples a near-zero action; it is graded as before rather than ended.

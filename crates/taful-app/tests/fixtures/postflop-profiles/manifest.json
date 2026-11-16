@@ -1,14 +1,14 @@
 {
   "files": [
     {
-      "blake3": "e4c96318d568254cdd513766d7932a49368adcea05d7dadf010e2585e6bd5b6b",
+      "blake3": "76ad4f9a5e31e9a7ee3fb0f169182ccdefbdbaf207440ca054c229e91fb99c1f",
       "path": "v1/c1c6782d353382947a3bbcf1493b6a17155b2e63a7218bf8f54cc38be59cf37f/btn-sb-3bp/Kc7c2c.tafl",
-      "size": 1171255
+      "size": 907074
     },
     {
-      "blake3": "1f57514e5438127f162cfdfdf3c466eb8c870128818599dfe14d177429f44ca9",
+      "blake3": "da0a3003d87a988c6a9b287449b9ca8ed4b2dd10d338efea945c968350464890",
       "path": "v1/c1c6782d353382947a3bbcf1493b6a17155b2e63a7218bf8f54cc38be59cf37f/btn-sb-3bp/Tc9c6d.tafl",
-      "size": 1923972
+      "size": 1877240
     }
   ]
 }

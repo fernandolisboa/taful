@@ -155,8 +155,9 @@ mod tests {
             "{} !> {reference}",
             open("maniac")
         );
-        // No limps in the tree: a station's loose limps are loose opens.
-        assert!(open("calling-station") > reference);
+        // No limps in the tree: a station opens tight and gets into pots
+        // by calling raises (#31).
+        assert!(open("calling-station") < reference);
         // Facing a BTN open, the station calls more and 3-bets less than
         // the reference big blind.
         let node = match chart.find(&"UTG:f,HJ:f,CO:f,BTN:r250,SB:f".parse().unwrap()) {
