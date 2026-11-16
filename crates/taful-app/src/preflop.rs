@@ -277,9 +277,13 @@ pub struct ProfileChart {
     pub bot: ProfiledBot,
     pub chart: Arc<PreflopChart>,
     /// Per node: whether hero can meet this node against a table of this
-    /// profile. A line the profile (almost) never plays, such as a calling
-    /// station folding to a raise, gets no best-response EVs (all zero),
-    /// so its spots would grade every answer Best.
+    /// profile. A line the profile never plays, such as a calling station
+    /// folding to a raise, gets no best-response EVs (all zero), so its
+    /// spots would grade every answer Best. Spot drills and review items
+    /// skip them. A full hand can still get there when a bot samples a
+    /// near-zero action; grading there stays as it is (every answer Best),
+    /// since failing would end the hand. Lines it plays very rarely stay
+    /// reachable; their EVs are just less certain.
     pub reachable: Vec<bool>,
 }
 
@@ -354,13 +358,7 @@ impl PreflopTrainer {
             }
         }
         let reachable = (0..br.len())
-            .map(|id| {
-                let n = br.node(id);
-                n.live.iter().any(|&row| {
-                    n.ev(usize::from(row), 1.0)
-                        .is_some_and(|e| e.iter().any(|&x| x != 0.0))
-                })
-            })
+            .map(|id| br.node(id).ev.iter().any(|&e| e != 0))
             .collect();
         self.profiles.retain(|p| p.bot.profile().id != profile.id);
         self.profiles.push(ProfileChart {

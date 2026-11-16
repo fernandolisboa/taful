@@ -711,6 +711,7 @@ mod tests {
                         (re.fold_to_cbet_pct(), st.fold_to_cbet_pct()),
                         (re.cbet_pct(), st.cbet_pct()),
                     ] {
+                        assert_eq!(a.is_some(), b.is_some(), "{flop} {} {pos}", s.id);
                         if let (Some(a), Some(b)) = (a, b) {
                             assert!((a - b).abs() < 5.0, "{flop} {} {pos}: {a} vs {b}", s.id);
                         }

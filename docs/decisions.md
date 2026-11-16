@@ -440,7 +440,7 @@ The only user today is the author, on his own PC. Signing certificates, hosting 
 
 ## D17 — Bot profiles calibrated to HUD targets
 
-**Date:** 2026-11-16 · **Ref:** #31, PR #66
+**Date:** 2026-11-16 · **Ref:** #31, PRs #66, #67
 
 ### Decision
 - The four bot profiles are tuned automatically, not by playing: `tools/profile-stats` measures what a HUD would show for each bot and bisects the knobs toward `tools/profile-stats/targets.toml`. Fernando approved the target table (2026-11-15). It uses the usual HUD reads for each player type in 6-max cash at 100bb, not anyone's feel.
@@ -453,7 +453,7 @@ The only user today is the author, on his own PC. Signing certificates, hosting 
 | maniac | 50 ±5 | 40 ±5 | 18 ±3 | 28 ±6 | 5.0 ±1.0 |
 
 - Tuned knobs: `threebet_mult`, `vpip_mult`, `pfr_mult`, `fold_to_cbet` and `aggression`. `fold_to_raise`, `bluff_value_shift` and sizing have no HUD target and stay as they were. Fold to 3-bet and flop c-bet follow from the tuned knobs and are only reported.
-- `MAX_MULT` goes from 5 to 10. The tree has no limps, so a station gets into pots by calling raises, and it needs `vpip_mult` ≈ 7.5 to reach VPIP 45 with PFR 10.
+- `MAX_MULT` went from 5 to 10 (PR #66). The tree has no limps, so a station gets into pots by calling raises, and it needs `vpip_mult` ≈ 7.5 to reach VPIP 45 with PFR 10.
 
 ### Result (2026-11-16, on the 245 first-slice files built with the old knobs)
 - Preflop is exact (published chart, bot in each seat vs five reference players): nit 13.1/10.0/3.2, tag 21.9/18.0/7.5, station 45.3/10.0/2.0, maniac 49.5/40.0/18.1 (VPIP/PFR/3-bet).
@@ -463,3 +463,4 @@ The only user today is the author, on his own PC. Signing certificates, hosting 
 ### Implications
 - The 245 are re-solved with the new profiles into a fresh folder. Afterwards `profile-stats postflop --stored` measures the flop numbers exactly. A stat outside its band means one more tune and re-solve before the library grows.
 - The profiles are frozen once that check passes (#31 acceptance).
+- A profile can make lines its table never plays (the station never folds to a raise). Their best-response EVs are all zero, so spot drills and review items against that profile skip those nodes. A full hand only gets there if a bot samples a near-zero action; it is graded as before rather than ended.

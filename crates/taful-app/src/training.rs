@@ -108,6 +108,16 @@ impl Trainers {
             if self.preflop.chart().node(node).player != t.hero {
                 return Err(TemplateError::Gone);
             }
+            // A line this profile's table no longer plays (it was
+            // recalibrated, #31) has no best response: the item is gone.
+            if let Some(p) = t
+                .opponent
+                .as_deref()
+                .and_then(|id| self.preflop.profile(id))
+                && !p.reachable[node]
+            {
+                return Err(TemplateError::Gone);
+            }
             let spot = self
                 .preflop
                 .spot_at(node, seed)
@@ -805,7 +815,11 @@ mod tests {
         let pre = &t.preflop;
         let mut checked = 0;
         for seed in 0..40 {
-            let spot = pre.spot(SpotKind::VsOpen, seed).unwrap();
+            // Spots the station's table reaches (#31: it never folds to a
+            // raise, so some reference spots never happen against it).
+            let spot = pre
+                .spot_against(SpotKind::VsOpen, Some("calling-station"), seed)
+                .unwrap();
             let station =
                 DrillSpot::Preflop(Box::new(spot.clone().against(Some("calling-station"))));
             let reference = DrillSpot::Preflop(Box::new(spot.clone()));
