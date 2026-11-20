@@ -46,6 +46,7 @@ baralho-home-review-go = Começar revisão
 baralho-home-review-none-title = Nada pra revisar
 baralho-home-review-none-body = Sua fila está em dia.
 baralho-home-practice = Praticar · seu maior vazamento
+baralho-home-practice-nth = Praticar · { $n }º vazamento
 baralho-home-leak-body =
     { $where }: { $mistakes ->
         [1] 1 erro

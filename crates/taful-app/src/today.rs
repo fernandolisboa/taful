@@ -1,5 +1,5 @@
 //! The day at a glance: the next lesson with its place in its track, the
-//! reviews due now and tomorrow, the biggest leak with its recent grades,
+//! reviews due now and tomorrow, the top leaks with their recent grades,
 //! and the mental-math pace. The Baralho style's home (D19) deals these
 //! as four cards.
 
@@ -55,8 +55,9 @@ pub struct Today {
     /// Reviews that fall due during tomorrow.
     pub due_tomorrow: u32,
     pub next_due: Option<Millis>,
-    /// The biggest leak and the grades of its decisions, oldest first.
-    pub leak: Option<(Leak, Vec<Grade>)>,
+    /// The top leaks, biggest first, each with the grades of its
+    /// decisions, oldest first.
+    pub leaks: Vec<(Leak, Vec<Grade>)>,
     pub calc: Option<CalcPace>,
     /// Three exercise kinds to practice: the least accurate recently.
     pub calc_focus: [ExerciseKind; 3],
@@ -127,29 +128,33 @@ impl App {
 
         // The lessons and reviews still show when the leaks cannot be read
         // (a library that fails to open).
-        let leak = match self.leaks().unwrap_or_default().into_iter().next() {
-            Some(leak) => {
-                let b = &leak.bucket;
-                let raw = self.store.bucket_stats(LEAK_WINDOW)?.into_iter().find(|r| {
-                    r.spot == b.spot
-                        && r.street == street_id(b.street)
-                        && r.node_type == b.node_type.id()
-                        && r.texture == b.texture
-                        && r.opponent == opponent_id(b.opponent.as_deref())
-                });
-                let grades = match raw {
-                    Some(raw) => self
-                        .store
-                        .bucket_grades(LEAK_WINDOW, &raw)?
-                        .iter()
-                        .filter_map(|id| Grade::ALL.into_iter().find(|g| g.id() == id))
-                        .collect(),
-                    None => Vec::new(),
-                };
-                Some((leak, grades))
-            }
-            None => None,
+        let top = self.leaks().unwrap_or_default();
+        let raw = if top.is_empty() {
+            Vec::new()
+        } else {
+            self.store.bucket_stats(LEAK_WINDOW)?
         };
+        let mut leaks = Vec::new();
+        for leak in top {
+            let b = &leak.bucket;
+            let row = raw.iter().find(|r| {
+                r.spot == b.spot
+                    && r.street == street_id(b.street)
+                    && r.node_type == b.node_type.id()
+                    && r.texture == b.texture
+                    && r.opponent == opponent_id(b.opponent.as_deref())
+            });
+            let grades = match row {
+                Some(row) => self
+                    .store
+                    .bucket_grades(LEAK_WINDOW, row)?
+                    .iter()
+                    .filter_map(|id| Grade::ALL.into_iter().find(|g| g.id() == id))
+                    .collect(),
+                None => Vec::new(),
+            };
+            leaks.push((leak, grades));
+        }
 
         let recent = self.store.recent_calc_attempts(CALC_RECENT)?;
         let kind_of = |id: &str| ExerciseKind::ALL.into_iter().find(|k| k.id() == id);
@@ -194,7 +199,7 @@ impl App {
             due_now: self.store.count_due(now, kinds)?,
             due_tomorrow,
             next_due: self.store.next_due_after(now)?,
-            leak,
+            leaks,
             calc,
             calc_focus: [picks[0], picks[1], picks[2]],
         })
@@ -214,7 +219,7 @@ mod tests {
         assert_eq!(t.lessons_done(), 0);
         assert!(t.lessons_total() > 0);
         assert_eq!((t.due_now, t.due_tomorrow), (0, 0));
-        assert!(t.leak.is_none() && t.calc.is_none());
+        assert!(t.leaks.is_empty() && t.calc.is_none());
         assert_eq!(t.calc_focus, CALC_DEFAULT);
         assert!((1..=7).contains(&t.date.weekday));
         assert!((1..=12).contains(&t.date.month));
@@ -259,7 +264,7 @@ mod tests {
     }
 
     #[test]
-    fn the_biggest_leak_comes_with_its_grades() {
+    fn leaks_come_with_their_grades() {
         use taful_store::{DecisionContext, NewDecision};
 
         let (mut a, clock) = app_at(1_800_000_000_000);
@@ -294,10 +299,14 @@ mod tests {
         decide("unopened", "blunder", 3.0);
         decide("unopened", "inaccuracy", 0.4);
         let t = a.today(Locale::SOURCE).unwrap();
-        let (leak, grades) = t.leak.expect("decisions with mistakes were stored");
+        // The biggest first, each with its own decisions, oldest first.
+        assert_eq!(t.leaks.len(), 2);
+        let (leak, grades) = &t.leaks[0];
         assert_eq!(leak.bucket.node_type.id(), "unopened");
         assert_eq!((leak.decisions, leak.mistakes), (3, 2));
-        // Its own decisions only, oldest first.
-        assert_eq!(grades, [Grade::Best, Grade::Blunder, Grade::Inaccuracy]);
+        assert_eq!(grades, &[Grade::Best, Grade::Blunder, Grade::Inaccuracy]);
+        let (leak, grades) = &t.leaks[1];
+        assert_eq!(leak.bucket.node_type.id(), "vs-raise");
+        assert_eq!(grades, &[Grade::Mistake]);
     }
 }

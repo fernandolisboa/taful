@@ -195,6 +195,8 @@ pub struct ShellState {
         (usize, taful_app::i18n::Locale),
         Rc<taful_app::today::Today>,
     )>,
+    /// Which of the top leaks the home's card shows (0 is the biggest).
+    pub(crate) leak: usize,
 }
 
 /// Chrome and content: everything under the tour and update overlays.
@@ -235,7 +237,8 @@ pub fn felt_table(
     let bx = bx(ui);
     let w = HOOK_TABLE_W * s;
     tabletop::fitted(w, w * tabletop::H / tabletop::W, || {
-        tabletop::table(ui, p, &bx, state, hero, reveal, extra, None)
+        // A revealed table is a hand that is over: nobody is to act.
+        tabletop::table(ui, p, &bx, state, hero, reveal, extra, None, !reveal)
     })
 }
 
