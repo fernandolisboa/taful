@@ -73,6 +73,12 @@ settings-animations-body = Screen fades, cards being dealt and chips moving to t
 settings-animations-on = On
 settings-animations-reduced = Reduced
 settings-animations-off = Off
+settings-animation-speed = Animation speed
+settings-animation-speed-body = How fast the animations run and the table replays the action up to your turn.
+settings-animation-speed-slow = Slow
+settings-animation-speed-normal = Normal
+settings-animation-speed-fast = Fast
+settings-animation-speed-fastest = Very fast
 
 # Tabs (D18).
 settings-tab-general = General

@@ -1,7 +1,8 @@
 //! Animations (#59, spec §15.2): a screen fade on navigation, cards dealt
 //! onto the felt, chips slid toward the pot and the pot slid to the
 //! winner. The `ui.animations` setting picks [`Motion::On`], `Reduced`
-//! (fades only) or `Off`.
+//! (fades only) or `Off`; `ui.animation_speed` picks a [`Speed`] that
+//! scales every animation and the table replay's pace.
 //!
 //! GPUI restarts an animation when its element id is new, so each helper
 //! takes an id that changes exactly when the thing should animate again
@@ -51,10 +52,68 @@ impl Motion {
     }
 }
 
+/// How fast animations and the table replay run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Speed {
+    Slow,
+    Normal,
+    Fast,
+    Fastest,
+}
+
+impl Speed {
+    pub const ALL: [Speed; 4] = [Speed::Slow, Speed::Normal, Speed::Fast, Speed::Fastest];
+
+    /// The stored setting value (unknown or unset = normal).
+    pub fn from_setting(s: Option<&str>) -> Speed {
+        match s {
+            Some("slow") => Speed::Slow,
+            Some("fast") => Speed::Fast,
+            Some("fastest") => Speed::Fastest,
+            _ => Speed::Normal,
+        }
+    }
+
+    pub fn setting(self) -> &'static str {
+        match self {
+            Speed::Slow => "slow",
+            Speed::Normal => "normal",
+            Speed::Fast => "fast",
+            Speed::Fastest => "fastest",
+        }
+    }
+
+    /// Fluent id of the option's label.
+    pub fn label_key(self) -> &'static str {
+        match self {
+            Speed::Slow => "settings-animation-speed-slow",
+            Speed::Normal => "settings-animation-speed-normal",
+            Speed::Fast => "settings-animation-speed-fast",
+            Speed::Fastest => "settings-animation-speed-fastest",
+        }
+    }
+
+    /// Duration multiplier.
+    fn factor(self) -> f32 {
+        match self {
+            Speed::Slow => 1.6,
+            Speed::Normal => 1.0,
+            Speed::Fast => 0.6,
+            Speed::Fastest => 0.3,
+        }
+    }
+
+    /// `d` at this speed.
+    pub fn scale(self, d: Duration) -> Duration {
+        d.mul_f32(self.factor())
+    }
+}
+
 thread_local! {
-    // A process-wide preference read by free drawing functions (`felt`),
+    // Process-wide preferences read by free drawing functions (`felt`),
     // which have no `App` to look a global up in.
     static LEVEL: Cell<Motion> = const { Cell::new(Motion::On) };
+    static SPEED: Cell<Speed> = const { Cell::new(Speed::Normal) };
 }
 
 /// The current level.
@@ -67,9 +126,24 @@ pub fn set(m: Motion) {
     LEVEL.with(|l| l.set(m));
 }
 
-/// Fades take this long.
+/// The current speed.
+pub fn speed() -> Speed {
+    SPEED.with(Cell::get)
+}
+
+/// Sets the speed (startup and the settings control).
+pub fn set_speed(s: Speed) {
+    SPEED.with(|c| c.set(s));
+}
+
+/// `d` at the current speed (animations and the table replay).
+pub fn scaled(d: Duration) -> Duration {
+    speed().scale(d)
+}
+
+/// Fades take this long (at normal speed).
 const FADE: Duration = Duration::from_millis(180);
-/// Moves (deal, chips) take this long.
+/// Moves (deal, chips) take this long (at normal speed).
 const MOVE: Duration = Duration::from_millis(260);
 
 fn ease_out(t: f32) -> f32 {
@@ -84,9 +158,11 @@ where
     if level() == Motion::Off {
         return el.into_any_element();
     }
-    el.with_animation(id, Animation::new(FADE).with_easing(ease_out), |e, d| {
-        e.opacity(d)
-    })
+    el.with_animation(
+        id,
+        Animation::new(scaled(FADE)).with_easing(ease_out),
+        |e, d| e.opacity(d),
+    )
     .into_any_element()
 }
 
@@ -102,7 +178,7 @@ where
         Motion::On => el
             .with_animation(
                 id,
-                Animation::new(MOVE).with_easing(ease_out),
+                Animation::new(scaled(MOVE)).with_easing(ease_out),
                 move |e, d| e.relative().top(px(-dy * (1. - d))).opacity(d),
             )
             .into_any_element(),
@@ -122,7 +198,7 @@ where
         Motion::On => el
             .with_animation(
                 id,
-                Animation::new(MOVE).with_easing(ease_out),
+                Animation::new(scaled(MOVE)).with_easing(ease_out),
                 move |e, d| {
                     let x = from.0 + (to.0 - from.0) * d;
                     let y = from.1 + (to.1 - from.1) * d;
@@ -144,5 +220,19 @@ mod tests {
         }
         assert_eq!(Motion::from_setting(None), Motion::On);
         assert_eq!(Motion::from_setting(Some("bogus")), Motion::On);
+    }
+
+    #[test]
+    fn speed_round_trips_and_scales() {
+        for s in Speed::ALL {
+            assert_eq!(Speed::from_setting(Some(s.setting())), s);
+        }
+        assert_eq!(Speed::from_setting(None), Speed::Normal);
+        assert_eq!(Speed::from_setting(Some("bogus")), Speed::Normal);
+        let d = Duration::from_millis(1000);
+        assert_eq!(Speed::Normal.scale(d), d);
+        // Slower to faster: strictly shorter durations.
+        let ds: Vec<_> = Speed::ALL.iter().map(|s| s.scale(d)).collect();
+        assert!(ds.windows(2).all(|w| w[0] > w[1]));
     }
 }

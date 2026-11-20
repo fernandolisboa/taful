@@ -73,6 +73,12 @@ settings-animations-body = Transição entre telas, cartas sendo distribuídas e
 settings-animations-on = Ligadas
 settings-animations-reduced = Reduzidas
 settings-animations-off = Desligadas
+settings-animation-speed = Velocidade das animações
+settings-animation-speed-body = A rapidez das animações e do replay da mesa até a sua vez.
+settings-animation-speed-slow = Lenta
+settings-animation-speed-normal = Normal
+settings-animation-speed-fast = Rápida
+settings-animation-speed-fastest = Muito rápida
 
 # Abas (D18).
 settings-tab-general = Geral

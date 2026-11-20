@@ -103,6 +103,10 @@ impl Shell {
             app.string_setting(taful_app::keys::UI_ANIMATIONS)
                 .as_deref(),
         ));
+        crate::motion::set_speed(crate::motion::Speed::from_setting(
+            app.string_setting(taful_app::keys::UI_ANIMATION_SPEED)
+                .as_deref(),
+        ));
         let auto_replay =
             app.string_setting(taful_app::keys::TABLE_REPLAY).as_deref() != Some("off");
         let table = cx.new(|cx| TableScreen::new(ui.clone(), trainers, layout, auto_replay, cx));
@@ -944,6 +948,17 @@ impl Shell {
             .set_string_setting(taful_app::keys::UI_ANIMATIONS, m.setting())
         {
             eprintln!("taful: storing the animation setting failed: {e}");
+        }
+    }
+
+    /// Stores and applies the animation speed (settings).
+    pub(crate) fn set_motion_speed(&mut self, s: crate::motion::Speed) {
+        crate::motion::set_speed(s);
+        if let Err(e) = self
+            .app
+            .set_string_setting(taful_app::keys::UI_ANIMATION_SPEED, s.setting())
+        {
+            eprintln!("taful: storing the animation speed failed: {e}");
         }
     }
 }

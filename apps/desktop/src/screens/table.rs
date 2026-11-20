@@ -173,7 +173,8 @@ pub(crate) struct StoryTag {
 }
 
 /// Replay pace (#53): the pause before the first action, then per action
-/// (folds go faster) and per dealt street.
+/// (folds go faster) and per dealt street, at normal speed (scaled by the
+/// animation speed setting).
 const REPLAY_START: std::time::Duration = std::time::Duration::from_millis(500);
 const REPLAY_FOLD: std::time::Duration = std::time::Duration::from_millis(300);
 const REPLAY_ACTION: std::time::Duration = std::time::Duration::from_millis(800);
@@ -492,7 +493,7 @@ impl TableScreen {
         if let Some(p) = &mut self.playback {
             p.ticking = true;
         }
-        let mut delay = REPLAY_START;
+        let mut delay = crate::motion::scaled(REPLAY_START);
         self._ticker = Some(cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(delay).await;
@@ -502,11 +503,11 @@ impl TableScreen {
                     p.ticking = p.playing();
                     cx.notify();
                     let next = p.story.events.get(p.at)?;
-                    Some(match next {
+                    Some(crate::motion::scaled(match next {
                         StoryEvent::Dealt { .. } => REPLAY_DEAL,
                         StoryEvent::Action(a) if a.action == Action::Fold => REPLAY_FOLD,
                         StoryEvent::Action(_) => REPLAY_ACTION,
-                    })
+                    }))
                 });
                 match next {
                     Ok(Some(d)) => delay = d,
