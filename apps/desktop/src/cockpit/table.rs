@@ -1260,8 +1260,10 @@ pub fn table(
             window_layer().position(point(px(0.), px(0.))).child(
                 div()
                     .id("menu_scrim")
-                    .w(vp.width)
-                    .h(vp.height)
+                    // The whole window, title bar included: the layer is in
+                    // window coordinates.
+                    .w(window.viewport_size().width)
+                    .h(window.viewport_size().height)
                     .occlude()
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.cockpit.menu = None;

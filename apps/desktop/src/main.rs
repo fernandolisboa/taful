@@ -136,15 +136,18 @@ fn main() {
         // Fit small screens (CI runners default to 1024×768). An explicit
         // TAFUL_WINDOW is taken as given.
         let (want_w, want_h) = style::window_size(ui.style).unwrap_or((1280., 800.));
-        let (w, h) = window_override().unwrap_or_else(|| {
-            cx.primary_display()
-                .map(|d| d.bounds().size)
-                .map(|s| (f32::from(s.width) * 0.95, f32::from(s.height) * 0.9))
-                .map_or((want_w, want_h), |(w, h)| (w.min(want_w), h.min(want_h)))
-        });
-        // The sizes above are the room the styles draw in; the app's own
-        // title bar comes on top (D22).
-        let bounds = Bounds::centered(None, size(px(w), px(h + caption::HEIGHT)), cx);
+        // Sizes are the room the styles draw in; the app's own title bar
+        // comes on top (D22). The display cap holds for the whole window.
+        let (w, h) = window_override()
+            .map(|(w, h)| (w, h + caption::HEIGHT))
+            .unwrap_or_else(|| {
+                let want_h = want_h + caption::HEIGHT;
+                cx.primary_display()
+                    .map(|d| d.bounds().size)
+                    .map(|s| (f32::from(s.width) * 0.95, f32::from(s.height) * 0.9))
+                    .map_or((want_w, want_h), |(w, h)| (w.min(want_w), h.min(want_h)))
+            });
+        let bounds = Bounds::centered(None, size(px(w), px(h)), cx);
         let title = ui.i18n.tr("window-title");
         let app = app.take().expect("run callback runs once");
         cx.open_window(

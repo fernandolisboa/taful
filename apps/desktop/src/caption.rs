@@ -62,6 +62,9 @@ pub fn bar(shell: &Shell, window: &Window) -> AnyElement {
     );
     let red = crate::theme::caption_close_hover();
     let on_red = crate::theme::caption_close_glyph();
+    // A restored window leaves the top band to the system for resizing,
+    // over the buttons too.
+    let band = if maximized { 0. } else { RESIZE_BAND };
     let button = |id: &'static str, icon: &'static str, area, (hover, hover_glyph, pressed)| {
         div()
             .id(id)
@@ -74,10 +77,15 @@ pub fn bar(shell: &Shell, window: &Window) -> AnyElement {
             .group(id)
             .hover(move |s| s.bg(hover))
             .active(move |s| s.bg(pressed))
-            // In front of the drag area: the button, not the caption,
-            // answers here.
-            .occlude()
-            .window_control_area(area)
+            .child(
+                div()
+                    .absolute()
+                    .left_0()
+                    .top(px(band))
+                    .w_full()
+                    .h(px(HEIGHT - band))
+                    .window_control_area(area),
+            )
             .child(
                 svg()
                     .path(icon)
@@ -107,23 +115,26 @@ pub fn bar(shell: &Shell, window: &Window) -> AnyElement {
     );
     div()
         .id("caption")
+        // Nothing behind the strip answers a press: on Windows a press the
+        // app handles (the root view takes focus on mouse down) never
+        // reaches the system, and the window would not move, maximize or
+        // resize.
+        .occlude()
         .relative()
         .flex_none()
         .w_full()
         .h(px(HEIGHT))
         .flex()
         .bg(p.background)
-        .child(drag_area(maximized))
+        .child(drag_area(band))
         .child(min)
         .child(max)
         .child(close)
         .into_any_element()
 }
 
-/// Everything left of the buttons. A restored window keeps a thin band at
-/// the top for resizing from the top edge, as the system bar does.
-fn drag_area(maximized: bool) -> impl IntoElement {
-    let band = if maximized { 0. } else { RESIZE_BAND };
+/// Everything left of the buttons, below the resize `band`.
+fn drag_area(band: f32) -> impl IntoElement {
     let area = div()
         .id("caption_drag")
         .flex_1()
