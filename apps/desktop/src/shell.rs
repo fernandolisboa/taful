@@ -448,7 +448,7 @@ impl Shell {
 
     pub(crate) fn nav(&mut self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let (p, t, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
-        let short = f32::from(window.viewport_size().height) < NAV_SHORT;
+        let short = f32::from(crate::caption::viewport(window).height) < NAV_SHORT;
         let due = self.app.due_count().unwrap_or(0);
         // The lesson reader lives under the lessons item.
         let current = if self.screen == Screen::Lesson {
@@ -748,7 +748,9 @@ impl Shell {
         let clamp_x = |x: f32| x.clamp(GAP, (vw - CARD_W - GAP).max(GAP));
         // The card always stays inside the window, even when the anchor
         // is scrolled out of view (e.g. the quiz button under a long text).
-        let clamp_y = |y: f32| y.clamp(GAP, (vh - CARD_H - GAP).max(GAP));
+        // Below the title bar (D22).
+        let top_min = crate::caption::HEIGHT + GAP;
+        let clamp_y = |y: f32| y.clamp(top_min, (vh - CARD_H - GAP).max(top_min));
         // Tall anchors (nav, felt): beside them; others: below, or above
         // when there is no room below.
         // `None`: above the anchor, the card's bottom edge on its top.
@@ -758,7 +760,7 @@ impl Shell {
             (bx - CARD_W - GAP, Some(by + 40.))
         } else if by + bh + GAP + CARD_H < vh {
             (clamp_x(bx), Some(by + bh + GAP))
-        } else if by - GAP - CARD_H >= GAP && by <= vh {
+        } else if by - GAP - CARD_H >= top_min && by <= vh {
             (clamp_x(bx), None)
         } else {
             (clamp_x(bx), Some(by - GAP - CARD_H))
@@ -877,7 +879,7 @@ impl Shell {
             let t = &self.ui.theme;
             (t.spacing.xl, t.spacing.xxl, t.spacing.lg)
         };
-        let viewport = f32::from(window.viewport_size().width);
+        let viewport = f32::from(crate::caption::viewport(window).width);
         let pane = (viewport - NAV_WIDTH).max(0.);
         if matches!(
             self.screen,
@@ -966,6 +968,7 @@ impl Shell {
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         crate::tour::begin_frame();
+        let caption = crate::caption::bar(self, window);
         let frame = by_style!(self.ui.style, frame(self, window, cx));
         let tour = self.tour_overlay(window, cx);
         let update_card = self.update_card(window, cx);
@@ -980,7 +983,11 @@ impl Render for Shell {
             })
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::on_key))
+            // The styles draw below the title bar (D22), laid out exactly as
+            // in a window without it.
+            .pt(px(crate::caption::HEIGHT))
             .child(frame)
+            .child(div().absolute().top_0().left_0().w_full().child(caption))
             .children(update_card)
             .children(tour)
     }

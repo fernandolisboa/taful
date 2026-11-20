@@ -39,7 +39,7 @@ pub fn frame(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>) ->
     super::state::sync(shell);
     let pal = Pal::new(&shell.ui);
     let view = view(shell, &pal, window, cx);
-    let wide = f32::from(window.viewport_size().width) - RAIL >= WIDE_PANE;
+    let wide = f32::from(crate::caption::viewport(window).width) - RAIL >= WIDE_PANE;
     let table_crumb = (shell.screen == Screen::Table)
         .then(|| super::table::crumb(shell.table.read(cx)))
         .flatten();
@@ -333,7 +333,7 @@ fn bar(shell: &Shell, table_crumb: Option<String>, wide: bool, pal: &Pal) -> Div
 /// The current screen on the dotted backdrop.
 fn view(shell: &mut Shell, pal: &Pal, window: &mut Window, cx: &mut Context<Shell>) -> Div {
     let t = shell.ui.theme.clone();
-    let vp = window.viewport_size();
+    let vp = crate::caption::viewport(window);
     let (w, h) = (
         (f32::from(vp.width) - RAIL).max(0.),
         (f32::from(vp.height) - BAR).max(0.),

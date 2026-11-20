@@ -560,3 +560,22 @@ The styles were built at the mockups' size (D19). In a narrow window Salão's ho
   - Baralho: the whole canvas scales with the window, as before; at the minimum its text is small.
 - The reviews and the hand review, drawn the same in every style, read the room they have from `Shell::room_w`, which the style's frame sets: their cards follow it, and their table keeps the explanation beside it for as long as the table stays readable, then lets it wrap below.
 - `Style::default()` is Salão. A stored `ui.style` always wins, so a user who picked Classic keeps it.
+
+---
+
+## D22 — The app draws its own title bar
+
+**Date:** 2026-11-20 · **Ref:** D19, D21
+
+### Decision
+- The window has no system title bar. A 32 px strip in the active style's background color takes its place, with the window's minimize, maximize/restore and close buttons on the right. The rest of the strip drags the window.
+- On Windows the strip and the buttons are window control areas, so the system treats them as its own caption: double-click to maximize, Aero Snap, the snap layouts flyout on the maximize button, and resizing from the top edge of a restored window behave as before.
+- The strip is the system bar's height, so every style keeps the room it had: the minimum window and a style's preferred size grow by the strip's height, and the styles lay out in the window below it.
+
+### Why
+The author asked to hide the blue Windows title bar: it clashed with the dark styles. Floating the buttons over the content instead would have covered parts of the mockups (Salão's "Editar layout" at the top right) and left only scraps of the top edge to drag the window by.
+
+### Implications
+- `apps/desktop/src/caption.rs` draws the strip; `caption::viewport(window)` is the room the styles draw in. A style asks it, not `window.viewport_size()`.
+- The window title is still set: it names the window in the taskbar and Alt+Tab.
+- `TAFUL_WINDOW=1600x900` sizes the room below the strip, so screenshots of a style at its mockup size are unchanged below the strip.
