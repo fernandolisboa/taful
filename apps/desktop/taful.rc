@@ -1,0 +1,6 @@
+// Resources compiled into taful.exe (see build.rs).
+//
+// The app icon. GPUI gives its windows the icon with resource id 1 (title
+// bar, taskbar, Alt+Tab), and Explorer shows an executable's first icon, so
+// this one entry covers every place Windows shows the app.
+1 ICON "assets/icon/taful.ico"

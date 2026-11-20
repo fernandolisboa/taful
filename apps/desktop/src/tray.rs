@@ -21,10 +21,24 @@ pub enum TrayCommand {
 #[cfg(windows)]
 mod imp {
     use super::*;
+    use taful_app::logo::{self, Ground};
     use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
     use tray_icon::{
         Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent,
     };
+
+    /// The icon's size in pixels (Windows scales it to the tray).
+    const ICON_SIZE: u32 = 32;
+
+    /// Whether Windows draws the taskbar light (the "Windows mode" of
+    /// Settings › Personalization › Colors). Read once, when the icon is
+    /// made; dark when Windows does not say.
+    fn taskbar_is_light() -> bool {
+        windows_registry::CURRENT_USER
+            .open(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+            .and_then(|key| key.get_u32("SystemUsesLightTheme"))
+            .is_ok_and(|light| light != 0)
+    }
 
     pub struct Tray {
         _icon: TrayIcon,
@@ -34,12 +48,7 @@ mod imp {
     }
 
     impl Tray {
-        pub fn new(
-            i18n: &Localizer,
-            pixels: Vec<u8>,
-            size: u32,
-            tx: UnboundedSender<TrayCommand>,
-        ) -> Option<Tray> {
+        pub fn new(i18n: &Localizer, tx: UnboundedSender<TrayCommand>) -> Option<Tray> {
             let open = MenuItem::with_id("open", i18n.tr("tray-open"), true, None);
             let update = MenuItem::with_id("update", i18n.tr("tray-check-updates"), true, None);
             let quit = MenuItem::with_id("quit", i18n.tr("tray-quit"), true, None);
@@ -72,9 +81,14 @@ mod imp {
                     let _ = tx.unbounded_send(TrayCommand::Open);
                 }
             }));
+            let ground = if taskbar_is_light() {
+                Ground::Light
+            } else {
+                Ground::Dark
+            };
             // Bound first: the color-literal lint flags any call ending in `rgba(`.
             let from_pixels = Icon::from_rgba;
-            let icon = from_pixels(pixels, size, size).ok()?;
+            let icon = from_pixels(logo::pixels(ICON_SIZE, ground), ICON_SIZE, ICON_SIZE).ok()?;
             let tray = TrayIconBuilder::new()
                 .with_menu(Box::new(menu))
                 .with_menu_on_left_click(false)
@@ -115,12 +129,7 @@ mod imp {
     pub struct Tray;
 
     impl Tray {
-        pub fn new(
-            _: &Localizer,
-            _: Vec<u8>,
-            _: u32,
-            _: UnboundedSender<TrayCommand>,
-        ) -> Option<Tray> {
+        pub fn new(_: &Localizer, _: UnboundedSender<TrayCommand>) -> Option<Tray> {
             None
         }
 

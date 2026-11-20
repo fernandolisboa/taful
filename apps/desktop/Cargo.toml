@@ -25,3 +25,8 @@ image = { version = "0.25", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 tray-icon.workspace = true
+windows-registry.workspace = true
+
+# Any host: a Windows build needs its icon wherever it is made.
+[build-dependencies]
+embed-resource.workspace = true
