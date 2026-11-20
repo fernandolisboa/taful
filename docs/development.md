@@ -63,10 +63,10 @@ The `release` job of CI publishes GitHub Releases the app updates from:
 
 | Trigger | Version | Release |
 |---|---|---|
-| push to `main` (CI green) | `<workspace>-alpha.<run>` | pre-release; only the 10 newest alphas are kept |
-| *Run workflow* on `main`, `release: beta` | `<workspace>-beta.<run>` | pre-release |
+| push to `main` (CI green) | `<workspace>-<run>.alpha` | pre-release; only the 10 newest alphas are kept |
+| *Run workflow* on `main`, `release: beta` | `<workspace>-<run>.beta` | pre-release |
 | *Run workflow* on `main`, `release: stable` | `<workspace>` | latest release; bump the workspace version afterwards |
-| pull request | `<workspace>-alpha.0.pr<n>.<run>` | none (artifact only) |
+| pull request | `<workspace>-0.pr<n>.<run>` | none (artifact only) |
 
 Each release has the installer and `<installer>.sha256`. The app (Settings › Updates) checks at startup and every 6 hours, downloads to `%LOCALAPPDATA%\Taful\updates`, verifies the hash, and runs the installer with `/WAITPID=<pid>` (the installer waits for the app to exit) and `/RELAUNCH=1` for *Restart and update*. The tray icon's menu has *Check for updates*.
 

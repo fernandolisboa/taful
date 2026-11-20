@@ -16,9 +16,11 @@ on:
         options: [none, beta, stable]
         default: none
 
+# PR runs cancel older runs of the same PR. Runs on main queue instead, so a
+# push never cancels a release run (D18) or the other way round.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -82,8 +84,9 @@ jobs:
 
       # The build's version (D18), compiled into the app as TAFUL_VERSION and
       # used for the installer: main pushes are alphas, a manual run may be a
-      # beta or the stable workspace version, and PR builds sort below every
-      # alpha of the same version so an installed PR build still updates.
+      # beta or the stable workspace version. The run number leads the
+      # pre-release so builds sort by run whatever their kind (an alpha after
+      # a beta is newer), and PR builds (`0.pr…`) sort below all of them.
       - name: Version
         id: version
         shell: pwsh
@@ -96,13 +99,13 @@ jobs:
           $ws = (cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json).packages |
             Where-Object name -eq 'taful-desktop' | Select-Object -ExpandProperty version
           $version = switch ($env:EVENT) {
-            'push' { "$ws-alpha.$env:RUN" }
-            'pull_request' { "$ws-alpha.0.pr$env:PR.$env:RUN" }
+            'push' { "$ws-$env:RUN.alpha" }
+            'pull_request' { "$ws-0.pr$env:PR.$env:RUN" }
             default {
               switch ($env:RELEASE) {
                 'stable' { $ws }
-                'beta' { "$ws-beta.$env:RUN" }
-                default { "$ws-alpha.0.dev.$env:RUN" }
+                'beta' { "$ws-$env:RUN.beta" }
+                default { "$ws-0.dev.$env:RUN" }
               }
             }
           }
@@ -254,7 +257,7 @@ jobs:
         run: |
           set -euo pipefail
           gh release list --limit 200 --json tagName,createdAt \
-            --jq '[.[] | select(.tagName | test("-alpha\\."))] | sort_by(.createdAt) | reverse | .[10:] | .[].tagName' |
+            --jq '[.[] | select(.tagName | test("\\.alpha$"))] | sort_by(.createdAt) | reverse | .[10:] | .[].tagName' |
             while read -r tag; do
               echo "Deleting $tag"
               gh release delete "$tag" --yes --cleanup-tag

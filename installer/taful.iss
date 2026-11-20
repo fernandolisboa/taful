@@ -5,7 +5,7 @@
 ;
 ; Auto-update (D18): the app downloads this setup from GitHub Releases and
 ; runs it with /SILENT (or /VERYSILENT) /SUPPRESSMSGBOXES /NORESTART
-; /WAITPID=<app pid> [/RELAUNCH=1]. Setup waits (up to 60 s) for that process
+; /WAITPID=<app pid> [/RELAUNCH=1]. Setup waits (up to 2 min, else it quits) for that process
 ; to exit before it replaces taful.exe, and starts the new version when
 ; /RELAUNCH=1 is given.
 ; The app keeps its data in %APPDATA%\Taful (database, backups, default
@@ -50,6 +50,9 @@ WizardStyle=modern
 ; Pick the language from Windows; ask only when it is neither pt-BR nor English.
 ShowLanguageDialog=auto
 UninstallDisplayIcon={app}\taful.exe
+; An update started from the app reopens it itself (/RELAUNCH=1): Restart
+; Manager must not start a second copy.
+RestartApplications=no
 
 [Languages]
 Name: "ptbr"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
@@ -69,6 +72,7 @@ Filename: "{app}\taful.exe"; Flags: nowait; Check: ShouldRelaunch
 [Code]
 const
   SYNCHRONIZE = $00100000;
+  WAIT_TIMEOUT = $00000102;
 
 function OpenProcess(dwDesiredAccess: Cardinal; bInheritHandle: LongBool; dwProcessId: Cardinal): THandle;
   external 'OpenProcess@kernel32.dll stdcall';
@@ -92,7 +96,13 @@ begin
     if Process <> 0 then
     begin
       Log(Format('Waiting for process %d to exit', [Pid]));
-      WaitForSingleObject(Process, 60000);
+      // Still open after 2 minutes (a stuck backup): give up rather than
+      // replace files under a running app. The app offers the update again.
+      if WaitForSingleObject(Process, 120000) = WAIT_TIMEOUT then
+      begin
+        Log('Timed out; update cancelled');
+        Result := False;
+      end;
       CloseHandle(Process);
     end;
   end;

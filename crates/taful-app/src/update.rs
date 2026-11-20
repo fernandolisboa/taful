@@ -2,9 +2,11 @@
 //! running build, and the user's update preferences.
 //!
 //! Releases are GitHub Releases of the public repository, published by CI:
-//! every push to `main` publishes an alpha (`<version>-alpha.<run>`), and a
-//! manual CI run publishes a beta (`<version>-beta.<run>`) or a stable
-//! release (`<version>`). Each release carries the installer
+//! every push to `main` publishes an alpha (`<version>-<run>.alpha`), and a
+//! manual CI run publishes a beta (`<version>-<run>.beta`) or a stable
+//! release (`<version>`). The CI run number comes first so pre-releases of
+//! one version sort by build, whatever their kind: an alpha built after a
+//! beta is newer than it. Each release carries the installer
 //! `taful-setup-<version>.exe` and `taful-setup-<version>.exe.sha256`.
 //!
 //! This module is pure: it parses the GitHub API answer, picks the update and
@@ -84,7 +86,10 @@ impl Channel {
         let pre = v.pre.as_str();
         if pre.is_empty() {
             Channel::Stable
-        } else if pre.starts_with("beta") || pre.starts_with("rc") {
+        } else if pre
+            .split('.')
+            .any(|id| id == "beta" || id.starts_with("rc"))
+        {
             Channel::Beta
         } else {
             Channel::Alpha
@@ -385,17 +390,17 @@ mod tests {
     #[test]
     fn channels() {
         assert_eq!(Channel::of(&v("0.1.0")), Channel::Stable);
-        assert_eq!(Channel::of(&v("0.1.0-beta.3")), Channel::Beta);
+        assert_eq!(Channel::of(&v("0.1.0-13.beta")), Channel::Beta);
         assert_eq!(Channel::of(&v("0.1.0-rc.1")), Channel::Beta);
-        assert_eq!(Channel::of(&v("0.1.0-alpha.12")), Channel::Alpha);
-        assert_eq!(Channel::of(&v("0.1.0-alpha.0.pr70.5")), Channel::Alpha);
+        assert_eq!(Channel::of(&v("0.1.0-12.alpha")), Channel::Alpha);
+        assert_eq!(Channel::of(&v("0.1.0-0.pr70.5")), Channel::Alpha);
 
         assert!(Channel::Stable.accepts(&v("1.0.0")));
-        assert!(!Channel::Stable.accepts(&v("1.0.0-beta.1")));
-        assert!(Channel::Beta.accepts(&v("1.0.0-beta.1")));
+        assert!(!Channel::Stable.accepts(&v("1.0.0-1.beta")));
+        assert!(Channel::Beta.accepts(&v("1.0.0-1.beta")));
         assert!(Channel::Beta.accepts(&v("1.0.0")));
-        assert!(!Channel::Beta.accepts(&v("1.0.0-alpha.9")));
-        assert!(Channel::Alpha.accepts(&v("1.0.0-alpha.9")));
+        assert!(!Channel::Beta.accepts(&v("1.0.0-9.alpha")));
+        assert!(Channel::Alpha.accepts(&v("1.0.0-9.alpha")));
 
         for c in Channel::ALL {
             assert_eq!(Channel::from_setting(c.setting()), Some(c));
@@ -404,15 +409,17 @@ mod tests {
 
     #[test]
     fn version_order_matches_the_ci_scheme() {
-        // A PR build is older than every alpha of the same version, alphas
-        // are older than betas, betas than the stable release.
+        // A PR build is older than every published pre-release of the same
+        // version; pre-releases sort by CI run (an alpha after a beta is
+        // newer); the stable release is newer than all of them.
         let order = [
-            "0.1.0-alpha.0.pr70.99",
-            "0.1.0-alpha.5",
-            "0.1.0-alpha.12",
-            "0.1.0-beta.13",
+            "0.1.0-0.pr70.99",
+            "0.1.0-5.alpha",
+            "0.1.0-12.alpha",
+            "0.1.0-13.beta",
+            "0.1.0-14.alpha",
             "0.1.0",
-            "0.1.1-alpha.20",
+            "0.1.1-20.alpha",
         ];
         for w in order.windows(2) {
             assert!(v(w[0]) < v(w[1]), "{} < {}", w[0], w[1]);
@@ -422,7 +429,7 @@ mod tests {
     #[test]
     fn parses_github_releases() {
         let json = serde_json::Value::Array(vec![
-            full("v0.2.0-alpha.7"),
+            full("v0.2.0-7.alpha"),
             gh(
                 "v0.3.0",
                 true,
@@ -436,46 +443,46 @@ mod tests {
         let rs = parse_releases(&json).unwrap();
         let versions: Vec<String> = rs.iter().map(|r| r.version.to_string()).collect();
         // Draft, missing checksum and a non-version tag are left out.
-        assert_eq!(versions, ["0.2.0-alpha.7", "0.1.0"]);
+        assert_eq!(versions, ["0.2.0-7.alpha", "0.1.0"]);
         let r = &rs[0];
-        assert_eq!(r.installer.name, "taful-setup-0.2.0-alpha.7.exe");
+        assert_eq!(r.installer.name, "taful-setup-0.2.0-7.alpha.exe");
         assert_eq!(
             r.installer.url,
-            "https://example.test/dl/taful-setup-0.2.0-alpha.7.exe"
+            "https://example.test/dl/taful-setup-0.2.0-7.alpha.exe"
         );
-        assert_eq!(r.checksum.name, "taful-setup-0.2.0-alpha.7.exe.sha256");
+        assert_eq!(r.checksum.name, "taful-setup-0.2.0-7.alpha.exe.sha256");
         assert_eq!(r.installer.size, 42);
-        assert_eq!(r.page, "https://example.test/v0.2.0-alpha.7");
+        assert_eq!(r.page, "https://example.test/v0.2.0-7.alpha");
         assert!(parse_releases("{\"message\": \"rate limited\"}").is_err());
     }
 
     #[test]
     fn picks_the_newest_offered_release() {
         let json = serde_json::Value::Array(vec![
-            full("v0.2.1-alpha.9"),
-            full("v0.2.0-beta.8"),
+            full("v0.2.1-9.alpha"),
+            full("v0.2.0-8.beta"),
             full("v0.1.0"),
-            full("v0.1.0-alpha.3"),
+            full("v0.1.0-3.alpha"),
         ])
         .to_string();
         let rs = parse_releases(&json).unwrap();
         let pick_v = |cur: &str, c: Channel| pick(&rs, &v(cur), c).map(|r| r.version.to_string());
         assert_eq!(
-            pick_v("0.1.0-alpha.3", Channel::Alpha).as_deref(),
-            Some("0.2.1-alpha.9")
+            pick_v("0.1.0-3.alpha", Channel::Alpha).as_deref(),
+            Some("0.2.1-9.alpha")
         );
         assert_eq!(
-            pick_v("0.1.0-alpha.3", Channel::Beta).as_deref(),
-            Some("0.2.0-beta.8")
+            pick_v("0.1.0-3.alpha", Channel::Beta).as_deref(),
+            Some("0.2.0-8.beta")
         );
         assert_eq!(
-            pick_v("0.1.0-alpha.3", Channel::Stable).as_deref(),
+            pick_v("0.1.0-3.alpha", Channel::Stable).as_deref(),
             Some("0.1.0")
         );
         assert_eq!(pick_v("0.1.0", Channel::Stable), None);
-        assert_eq!(pick_v("0.2.1-alpha.9", Channel::Alpha), None);
+        assert_eq!(pick_v("0.2.1-9.alpha", Channel::Alpha), None);
         // Never a downgrade, even when the channel narrows.
-        assert_eq!(pick_v("0.2.1-alpha.9", Channel::Stable), None);
+        assert_eq!(pick_v("0.2.1-9.alpha", Channel::Stable), None);
     }
 
     #[test]
@@ -514,8 +521,8 @@ mod tests {
         assert_eq!(installer_args(7, false, true)[0], "/VERYSILENT");
         assert_eq!(installer_args(7, false, true).len(), 4);
         assert_eq!(
-            installer_version("taful-setup-0.1.0-alpha.3.exe"),
-            Some(v("0.1.0-alpha.3"))
+            installer_version("taful-setup-0.1.0-3.alpha.exe"),
+            Some(v("0.1.0-3.alpha"))
         );
         assert_eq!(
             installer_version(&installer_name(&v("1.2.3"))),
@@ -530,7 +537,7 @@ mod tests {
         let app = App::open_in_memory(Arc::new(|| 0)).unwrap();
         let p = app.update_prefs();
         assert_eq!(p, Prefs::default());
-        assert_eq!(p.channel_for(&v("0.1.0-beta.2")), Channel::Beta);
+        assert_eq!(p.channel_for(&v("0.1.0-2.beta")), Channel::Beta);
         assert!(p.downloads());
 
         let q = Prefs {
@@ -546,7 +553,7 @@ mod tests {
         assert!(q.is_skipped(&v("0.2.0")));
         assert!(!q.is_skipped(&v("0.2.1")));
         assert!(q.downloads(), "installing on exit implies downloading");
-        assert_eq!(q.channel_for(&v("0.1.0-alpha.1")), Channel::Stable);
+        assert_eq!(q.channel_for(&v("0.1.0-1.alpha")), Channel::Stable);
 
         app.set_update_prefs(&Prefs::default()).unwrap();
         assert_eq!(app.update_prefs(), Prefs::default());

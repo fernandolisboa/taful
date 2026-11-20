@@ -22,7 +22,7 @@ use crate::shell::Shell;
 use crate::widgets::{button, card, muted, segment, segmented, title, toggle};
 
 /// The version of this build: `TAFUL_VERSION` set by CI (e.g.
-/// `0.1.0-alpha.42`), else the workspace version.
+/// `0.1.0-42.alpha`), else the workspace version.
 pub fn current_version() -> Version {
     let raw = option_env!("TAFUL_VERSION")
         .filter(|v| !v.is_empty())
@@ -88,6 +88,9 @@ pub struct Updater {
     offered: Option<Version>,
     /// The installer was started; nothing else may start it again.
     launched: bool,
+    /// Bumped by every check and channel change: results of an older check
+    /// or download are dropped.
+    generation: u64,
 }
 
 impl Updater {
@@ -105,6 +108,7 @@ impl Updater {
             dismissed: false,
             offered: None,
             launched: false,
+            generation: 0,
         }
     }
 
@@ -120,6 +124,17 @@ impl Updater {
         match self.last_check {
             None => self.started.elapsed() >= FIRST_CHECK_AFTER,
             Some(t) => t.elapsed().as_millis() >= update::CHECK_EVERY_MS as u128,
+        }
+    }
+
+    /// The downloaded installer, if one is ready and still on the chosen
+    /// channel.
+    fn ready_path(&self) -> Option<PathBuf> {
+        match &self.status {
+            Status::Ready { release, path } if self.channel().accepts(&release.version) => {
+                Some(path.clone())
+            }
+            _ => None,
         }
     }
 
@@ -187,7 +202,7 @@ fn fetch_releases() -> Result<Vec<Release>, String> {
 
 /// Downloads and verifies `r`'s installer into `dir` (blocking). A file
 /// already there with the right hash is reused.
-fn download(r: &Release, dir: &Path, done: &AtomicU64) -> Result<PathBuf, String> {
+fn download(r: &Release, dir: &Path, generation: u64, done: &AtomicU64) -> Result<PathBuf, String> {
     let agent = agent(DOWNLOAD_TIMEOUT);
     let sum_text = agent
         .get(&r.checksum.url)
@@ -202,7 +217,8 @@ fn download(r: &Release, dir: &Path, done: &AtomicU64) -> Result<PathBuf, String
         done.store(r.installer.size, Ordering::Relaxed);
         return Ok(path);
     }
-    let part = dir.join(format!("{}.part", r.installer.name));
+    // Per attempt, so an abandoned download never shares the file.
+    let part = dir.join(format!("{}.{generation}.part", r.installer.name));
     let result = (|| -> Result<(), String> {
         let mut resp = agent
             .get(&r.installer.url)
@@ -274,6 +290,8 @@ impl Shell {
             Status::Ready { .. } => Some(u.status.clone()),
             _ => None,
         };
+        u.generation += 1;
+        let generation = u.generation;
         u.status = Status::Checking;
         u.last_check = Some(Instant::now());
         let task = cx
@@ -282,7 +300,10 @@ impl Shell {
         cx.spawn(async move |this, cx| {
             let fetched = task.await;
             this.update(cx, |s, cx| {
-                s.on_checked(fetched, manual, ready, cx);
+                if s.updater.generation == generation {
+                    s.on_checked(fetched, manual, ready, cx);
+                    s.sync_tray();
+                }
                 cx.notify();
             })
             .ok();
@@ -334,6 +355,7 @@ impl Shell {
             return;
         };
         let done = Arc::new(AtomicU64::new(0));
+        let generation = self.updater.generation;
         self.updater.status = Status::Downloading {
             release: release.clone(),
             done: done.clone(),
@@ -341,10 +363,13 @@ impl Shell {
         let r = release.clone();
         let task = cx
             .background_executor()
-            .spawn(async move { download(&r, &updates_dir(), &done) });
+            .spawn(async move { download(&r, &updates_dir(), generation, &done) });
         cx.spawn(async move |this, cx| {
             let result = task.await;
             this.update(cx, |s, cx| {
+                if s.updater.generation != generation {
+                    return;
+                }
                 s.updater.status = match result {
                     Ok(path) => Status::Ready { release, path },
                     Err(e) => {
@@ -364,16 +389,20 @@ impl Shell {
     /// Runs the downloaded installer and quits; the installer starts the new
     /// version when it is done.
     pub(crate) fn install_update(&mut self, cx: &mut Context<Self>) {
-        let Status::Ready { path, .. } = &self.updater.status else {
+        if self.updater.launched {
+            return;
+        }
+        let Some(path) = self.updater.ready_path() else {
             return;
         };
-        match launch_installer(path, true, false) {
+        match launch_installer(&path, true, false) {
             Ok(()) => {
                 self.updater.launched = true;
                 cx.quit();
             }
             Err(e) => {
                 self.updater.status = Status::Failed(e.to_string());
+                self.sync_tray();
                 cx.notify();
             }
         }
@@ -385,8 +414,8 @@ impl Shell {
         if u.launched || !u.prefs.auto_install {
             return;
         }
-        if let Status::Ready { path, .. } = &u.status {
-            match launch_installer(path, false, true) {
+        if let Some(path) = u.ready_path() {
+            match launch_installer(&path, false, true) {
                 Ok(()) => u.launched = true,
                 Err(e) => eprintln!("taful: starting the update failed: {e}"),
             }
@@ -416,10 +445,11 @@ impl Shell {
         self.updater.prefs = prefs;
         self.save_update_prefs();
         if channel_changed {
-            if !matches!(self.updater.status, Status::Downloading { .. }) {
-                self.updater.status = Status::Idle;
-            }
+            // Drop whatever the old channel was checking or downloading.
+            self.updater.generation += 1;
+            self.updater.status = Status::Idle;
             self.check_updates(true, cx);
+            self.sync_tray();
         } else if now_downloads && matches!(self.updater.status, Status::Available(_)) {
             self.download_update(cx);
         }
@@ -758,20 +788,20 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("taful-update-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         for name in [
-            "taful-setup-0.1.0-alpha.1.exe",
-            "taful-setup-0.1.0-alpha.9.exe",
-            "taful-setup-0.1.0-alpha.9.exe.part",
+            "taful-setup-0.1.0-1.alpha.exe",
+            "taful-setup-0.1.0-9.alpha.exe",
+            "taful-setup-0.1.0-9.alpha.exe.3.part",
             "notes.txt",
         ] {
             std::fs::write(dir.join(name), b"x").unwrap();
         }
-        cleanup(&dir, &Version::parse("0.1.0-alpha.5").unwrap());
+        cleanup(&dir, &Version::parse("0.1.0-5.alpha").unwrap());
         let mut left: Vec<String> = std::fs::read_dir(&dir)
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
             .collect();
         left.sort();
-        assert_eq!(left, ["notes.txt", "taful-setup-0.1.0-alpha.9.exe"]);
+        assert_eq!(left, ["notes.txt", "taful-setup-0.1.0-9.alpha.exe"]);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
