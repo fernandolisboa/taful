@@ -5,7 +5,7 @@
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, Context, Div, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, Context, Div, SharedString, Stateful, Window, div, prelude::*, px};
 
 use super::kit::{self, Raised};
 use super::{Bx, CANVAS_W, bx, fit, paint, typo, u};
@@ -73,6 +73,30 @@ pub fn frame(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>) ->
                 .child(nav),
         )
         .into_any_element()
+}
+
+/// The pill that plays the screen's tour again.
+fn tour_pill(shell: &Shell, bx: &Bx, cx: &mut Context<Shell>) -> Stateful<Div> {
+    typo::text(13., 700)
+        .on(div())
+        .id("tour_replay")
+        .flex_none()
+        .flex()
+        .items_center()
+        .h(u(32.))
+        .px(u(14.))
+        .rounded_full()
+        .bg(alpha(bx.well, 0.5))
+        .border(u(2.))
+        .border_color(bx.deep)
+        .cursor_pointer()
+        .opacity(0.86)
+        .hover(|s| s.opacity(1.))
+        .on_click(cx.listener(|this, _, _, cx| {
+            this.tour_start();
+            cx.notify();
+        }))
+        .child(format!("? {}", shell.ui.i18n.tr("tour-replay")))
 }
 
 fn nav(shell: &mut Shell, bx: &Bx, cx: &mut Context<Shell>) -> Div {
@@ -168,7 +192,15 @@ fn nav(shell: &mut Shell, bx: &Bx, cx: &mut Context<Shell>) -> Div {
     for (i, screen) in NAV.into_iter().enumerate() {
         bar = bar.child(item(i, screen, cx));
     }
+    // The screens drawn as mocked have no heading to carry the tour's
+    // pill: it sits here, before the settings.
+    let tour = matches!(
+        shell.screen,
+        Screen::Home | Screen::SkillTree | Screen::Table
+    )
+    .then(|| tour_pill(shell, bx, cx).mr(u(4.)));
     bar.child(div().flex_1())
+        .children(tour)
         .child(item(NAV.len(), crate::screen::NAV_BOTTOM, cx))
 }
 
@@ -250,27 +282,7 @@ fn sheet_page(
         Screen::Calc | Screen::HandReview | Screen::Review | Screen::Settings
     )
     .then(|| SharedString::from(i18n.tr(shell.screen.body_key())));
-    let replay = typo::text(13., 700)
-        .on(div())
-        .id("tour_replay")
-        .flex_none()
-        .flex()
-        .items_center()
-        .h(u(32.))
-        .px(u(14.))
-        .mb(u(4.))
-        .rounded_full()
-        .bg(alpha(bx.well, 0.5))
-        .border(u(2.))
-        .border_color(bx.deep)
-        .cursor_pointer()
-        .opacity(0.86)
-        .hover(|s| s.opacity(1.))
-        .on_click(cx.listener(|this, _, _, cx| {
-            this.tour_start();
-            cx.notify();
-        }))
-        .child(format!("? {}", i18n.tr("tour-replay")));
+    let replay = tour_pill(shell, bx, cx).mb(u(4.));
     let head = heading(i18n.tr(shell.screen.nav_key()), subtitle, bx)
         .child(crate::tour::anchor("screen_title"))
         .when(shell.screen == Screen::Lesson, |d| d.child(div().flex_1()))

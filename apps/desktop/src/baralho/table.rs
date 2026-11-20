@@ -378,6 +378,8 @@ fn question_scene(
                 false,
                 SeatExtras::default(),
                 said,
+                // An answered spot stays as the mockup draws it.
+                chosen.is_none(),
             )
         }),
         actions,
@@ -634,6 +636,7 @@ fn hand_scene(
                     wins: &wins,
                 },
                 None,
+                !over,
             )
         }),
         actions,

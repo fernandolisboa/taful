@@ -342,6 +342,7 @@ fn plate(
     stack: String,
     line: Option<(String, Tone)>,
     kind: Plate,
+    turn: bool,
 ) -> Div {
     let (face, edge, drop, ink, soft) = match kind {
         Plate::Live => (bx.cream, bx.deep, 5., bx.ink, bx.mut_ink),
@@ -417,7 +418,21 @@ fn plate(
     .min_w(u(146.))
     .h(u(58. + drop));
     if kind != Plate::Hero {
-        return seat;
+        if !turn {
+            return seat;
+        }
+        // The seat to act: a thin amber ring around the plate.
+        return div().relative().child(seat.relative()).child(
+            div()
+                .absolute()
+                .top(u(-5.))
+                .left(u(-5.))
+                .right(u(-5.))
+                .bottom(u(-5.))
+                .rounded(u(21.))
+                .border(u(2.))
+                .border_color(bx.amber),
+        );
     }
     // Hero's amber halo, around the plate and down to its drop.
     div()
@@ -516,7 +531,7 @@ pub fn empty(bx: &Bx, text: Option<String>) -> Div {
 
 /// The table at `state`, seen from `hero`'s seat. `reveal` shows every
 /// live hand (the end of a hand); `said` is what hero's plate says when it
-/// is not the last action of `state`.
+/// is not the last action of `state`; `turn` rings the seat to act.
 #[allow(clippy::too_many_arguments)]
 pub fn table(
     ui: &Ui,
@@ -527,6 +542,7 @@ pub fn table(
     reveal: bool,
     extra: SeatExtras<'_>,
     said: Option<String>,
+    turn: bool,
 ) -> Div {
     let SeatExtras { tags, wins } = extra;
     let i18n = &ui.i18n;
@@ -748,6 +764,7 @@ pub fn table(
                 bb(ui, pl.stack),
                 text.map(|t| (t, tone)),
                 kind,
+                turn && state.to_act() == Some(seat),
             )),
         ));
     }

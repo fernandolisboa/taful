@@ -46,6 +46,7 @@ baralho-home-review-go = Start review
 baralho-home-review-none-title = Nothing to review
 baralho-home-review-none-body = Your queue is up to date.
 baralho-home-practice = Practice · your biggest leak
+baralho-home-practice-nth = Practice · leak no. { $n }
 baralho-home-leak-body =
     { $where }: { $mistakes ->
         [1] 1 mistake

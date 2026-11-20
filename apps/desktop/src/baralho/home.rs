@@ -36,6 +36,8 @@ struct Big {
     title: String,
     body: String,
     visual: Option<Div>,
+    /// Small controls in the card's top right corner.
+    corner: Option<Div>,
     button: Stateful<Div>,
 }
 
@@ -93,6 +95,7 @@ fn big(card: Big, slot: usize, bx: &Bx, p: &Palette) -> Div {
                 .child(card.body),
         )
         .children(card.visual.map(|v| v.mt(u(14.))))
+        .children(card.corner.map(|c| c.absolute().top(u(22.)).right(u(22.))))
         .child(div().flex_1())
         .child(card.button.w_full());
     kit::sheet(bx, face)
@@ -352,6 +355,7 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                 title: card.title.clone(),
                 body,
                 visual: Some(strip),
+                corner: None,
                 button: kit::btn(
                     "home_lesson",
                     i18n.tr("baralho-home-lesson-go"),
@@ -372,6 +376,7 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             title: i18n.tr("baralho-home-lessons-done-title"),
             body: i18n.tr("home-lesson-none"),
             visual: None,
+            corner: None,
             button: kit::btn(
                 "home_lesson",
                 i18n.tr("baralho-home-all-lessons"),
@@ -431,6 +436,7 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
         },
         body: review_body,
         visual: pips,
+        corner: None,
         button: kit::btn(
             "home_review",
             i18n.tr("baralho-home-review-go"),
@@ -442,9 +448,49 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     };
 
     // ---- clubs: the biggest leak ---------------------------------------------
-    let practice = match &today.leak {
+    let picked = shell.baralho.leak.min(today.leaks.len().saturating_sub(1));
+    let practice = match today.leaks.get(picked) {
         Some((leak, grades)) => {
             let b = &leak.bucket;
+            // With more than one leak, which one the card shows.
+            let picker = (today.leaks.len() > 1).then(|| {
+                div()
+                    .flex()
+                    .gap(u(5.))
+                    .children((0..today.leaks.len()).map(|i| {
+                        let on = i == picked;
+                        typo::text(12.5, 800)
+                            .on(div())
+                            .id(("home_leak", i))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .size(u(24.))
+                            .rounded_full()
+                            .border(u(2.))
+                            .border_color(bx.deep)
+                            .cursor_pointer()
+                            .map(|d| {
+                                if on {
+                                    d.bg(bx.ink).text_color(bx.cream)
+                                } else {
+                                    d.bg(bx.cream_hi)
+                                        .text_color(bx.ink2)
+                                        .hover(|s| s.bg(bx.cream2))
+                                }
+                            })
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.baralho.leak = i;
+                                cx.notify();
+                            }))
+                            .child((i + 1).to_string())
+                    }))
+            });
+            let eyebrow = if picked == 0 {
+                i18n.tr("baralho-home-practice")
+            } else {
+                i18n.tr_args("baralho-home-practice-nth", &[("n", (picked + 1).into())])
+            };
             let place = [
                 i18n.tr(&format!(
                     "baralho-on-street-{}",
@@ -474,10 +520,11 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             Big {
                 pip: Pip::Club,
                 index: leak.mistakes.to_string(),
-                eyebrow: i18n.tr("baralho-home-practice"),
+                eyebrow,
                 title: crate::felt::spot_label(&ui, &b.spot),
                 body,
                 visual: Some(dots),
+                corner: picker,
                 button: kit::btn(
                     "home_drill",
                     i18n.tr("home-leak-drill"),
@@ -499,6 +546,7 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             title: i18n.tr("baralho-home-practice-none-title"),
             body: i18n.tr("home-leaks-body"),
             visual: None,
+            corner: None,
             button: kit::btn(
                 "home_drill",
                 i18n.tr("baralho-home-practice-none-go"),
@@ -536,6 +584,7 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             None => i18n.tr("home-calc-short"),
         },
         visual: Some(pills),
+        corner: None,
         button: kit::btn(
             "home_calc",
             i18n.tr("home-calc-start"),
