@@ -67,6 +67,9 @@ pub struct TableState {
     insights: Vec<Option<Rc<Insight>>>,
     /// A question's story with hero's answer played.
     after: Option<Rc<Story>>,
+    /// After an answer, show the table hero decided on (one step back
+    /// from the answer) instead of the answer played.
+    pub(super) back: bool,
     /// The seed of the first deal seen, to number the deals.
     first_seed: Option<u64>,
 }
@@ -77,7 +80,7 @@ pub(super) struct Ev {
     pub step: usize,
     pub street: Street,
     pub seat: Seat,
-    /// Position, or positions when folds are grouped.
+    /// The seat's position.
     pub who: String,
     /// `open 2,5`, `call 7`, `fold`.
     pub what: String,
@@ -153,7 +156,8 @@ fn word(ui: &Ui, story: &Story, hero: Seat, grades: &[(usize, Grade)]) -> (Vec<E
             }),
             StoryEvent::Action(a) => {
                 let preflop = a.street == Street::Preflop;
-                let opening_fold = preflop && !opened && a.action == Action::Fold;
+                // Hero's own fold is a graded decision: it stays apart.
+                let opening_fold = preflop && !opened && a.action == Action::Fold && a.seat != hero;
                 opened |= a.action != Action::Fold;
                 if preflop && matches!(a.action, Action::Raise(_)) {
                     raises += 1;
@@ -203,7 +207,9 @@ fn word(ui: &Ui, story: &Story, hero: Seat, grades: &[(usize, Grade)]) -> (Vec<E
 
 /// Reads the decision points the panels need, once per deal and decision.
 fn sync(screen: &mut TableScreen, t: &Trainers) {
+    let stepping = screen.answer.is_some() && !screen.playing();
     let st = &mut screen.cockpit;
+    st.back &= stepping;
     st.first_seed.get_or_insert(screen.seed);
     let deal = match screen.mode {
         Mode::Hand => screen.hand.as_ref().map(|h| Deal::Hand(h.seed)),
@@ -365,6 +371,14 @@ pub(super) fn key(screen: &mut TableScreen, key: &str, cx: &mut Context<TableScr
     true
 }
 
+/// One opponent for the whole table replaces the per-seat choice of a full
+/// hand; the other modes leave that choice alone.
+fn leave_per_seat(screen: &mut TableScreen) {
+    if screen.mode == Mode::Hand {
+        screen.seats = None;
+    }
+}
+
 /// A picker: its caption, its value and, when it has options, a caret.
 fn select(
     id: &'static str,
@@ -518,7 +532,6 @@ fn strip(
         Box<dyn Fn(&mut TableScreen, &mut Context<TableScreen>)>,
     );
     let mut strip = div()
-        .relative()
         .child(crate::tour::anchor("table_controls"))
         .absolute()
         .top(px(STRIP_TOP))
@@ -605,7 +618,7 @@ fn strip(
             name(None),
             !per_seat && screen.opponent.is_none(),
             Box::new(|this, cx| {
-                this.seats = None;
+                leave_per_seat(this);
                 this.set_opponent(None, cx);
             }),
         )];
@@ -615,7 +628,7 @@ fn strip(
                 name(Some(&id)),
                 !per_seat && screen.opponent.as_deref() == Some(id.as_str()),
                 Box::new(move |this, cx| {
-                    this.seats = None;
+                    leave_per_seat(this);
                     this.set_opponent(Some(id.clone()), cx);
                 }),
             ));
@@ -624,7 +637,11 @@ fn strip(
             rows.push((
                 i18n.tr("table-seats-each"),
                 per_seat,
-                Box::new(|this, cx| this.set_per_seat(true, cx)),
+                Box::new(|this, cx| {
+                    if this.seats.is_none() {
+                        this.set_per_seat(true, cx);
+                    }
+                }),
             ));
         }
         let value = if per_seat {
@@ -842,7 +859,12 @@ fn actbar(
                 pal,
             ));
         }
-    } else if let Some(text) = screen.hand.as_ref().and_then(|h| screen.end_text(h)) {
+    } else if let Some(text) = screen
+        .hand
+        .as_ref()
+        .filter(|_| screen.mode == Mode::Hand)
+        .and_then(|h| screen.end_text(h))
+    {
         left = left.child(message(text));
     } else if let Some(busy) = screen.busy {
         left = left.child(message(i18n.tr(match busy {
@@ -992,11 +1014,26 @@ fn table_head(screen: &TableScreen, scene: Option<&Scene<'_>>, pal: &Pal) -> Div
     kit::head(&title, Some(note.into_any_element()), true, pal)
 }
 
+/// A question is answered and the table shows the answer played (the
+/// replay is at its end and `‹` has not stepped back from the answer).
+pub(super) fn shows_answer(screen: &TableScreen) -> bool {
+    answered(screen) && !screen.cockpit.back
+}
+
+/// A question is answered, its answer can be shown played, and the replay
+/// is at its end.
+pub(super) fn answered(screen: &TableScreen) -> bool {
+    screen.mode != Mode::Hand
+        && screen.answer.is_some()
+        && screen.cockpit.after.is_some()
+        && !screen.playing()
+}
+
 /// Index of the state hero's last decision was made on: the story's end,
 /// or one before it when the story ends with hero's answer.
 fn decision_index(screen: &TableScreen, sc: &Scene<'_>) -> usize {
     let last = sc.story.states.len() - 1;
-    if screen.mode != Mode::Hand && screen.answer.is_some() && screen.cockpit.after.is_some() {
+    if shows_answer(screen) {
         last.saturating_sub(1)
     } else {
         last
@@ -1041,7 +1078,7 @@ pub fn table(
         .cockpit
         .after
         .as_deref()
-        .filter(|_| screen.mode != Mode::Hand && screen.answer.is_some() && !playing);
+        .filter(|_| shows_answer(screen));
     let story = after.or(screen.playback.as_ref().map(|p| &p.story));
     let hero = match (hand, &screen.question) {
         (Some(h), _) => Some(h.hero),

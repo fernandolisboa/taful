@@ -2,8 +2,9 @@
 //! frequency and EV with hero's hand, and the range hero was in at that
 //! point with the reference mix of each hand, hero's equity and the price.
 //!
-//! Before hero answers, the panel shows the same frame without the
-//! strategy: what hero holds, the options and the price.
+//! Before hero answers a question, the panel shows the same frame without
+//! the strategy: what hero holds, the options and the price. In a full
+//! hand it keeps the last graded decision until the next one is graded.
 
 use gpui::{Div, FontWeight, SharedString, Stateful, div, prelude::*, px, relative};
 use taful_app::dashboard::HandClass;
@@ -57,7 +58,11 @@ impl Kind {
     fn name_key(self, actions: &[Action]) -> &'static str {
         let has = |f: fn(&Action) -> bool| actions.iter().any(f);
         match self {
-            Kind::Raise if has(|a| matches!(a, Action::Bet(_))) => "cockpit-kind-bet",
+            // With nothing to call, the aggressive action is a bet (an
+            // all-in over a check included).
+            Kind::Raise if has(|a| matches!(a, Action::Bet(_) | Action::Check)) => {
+                "cockpit-kind-bet"
+            }
             Kind::Raise => "cockpit-kind-raise",
             Kind::Call if has(|a| matches!(a, Action::Check)) => "cockpit-kind-check",
             Kind::Call => "cockpit-kind-call",
@@ -116,7 +121,7 @@ fn swatch(color: Tint) -> Div {
 /// A signed EV difference with a real minus sign.
 fn delta(ui: &Ui, x: f64) -> String {
     let s = num(ui, x.abs(), 2);
-    if x < -0.004 { format!("−{s}") } else { s }
+    if x <= -0.005 { format!("−{s}") } else { s }
 }
 
 /// What hero holds, in words.
@@ -594,10 +599,12 @@ fn range_side(ui: &Ui, insight: Option<&Insight>, mixed: bool, pal: &Pal, tp: &T
             .iter()
             .map(|k| {
                 let at = Kind::ALL.iter().position(|x| x == k).unwrap_or(0);
-                let name = i18n.tr(k.name_key(&i.actions));
-                let letter = if *k == Kind::Call && name.starts_with("Ch") {
+                let key = k.name_key(&i.actions);
+                // A check is X; the others take their name's initial.
+                let letter = if key == "cockpit-kind-check" {
                     "X".to_string()
                 } else {
+                    let name = i18n.tr(key);
                     name.chars().take(1).collect::<String>().to_uppercase()
                 };
                 format!("{letter} {}", percent(f64::from(m[at])))
@@ -719,7 +726,8 @@ fn remarks(screen: &TableScreen, t: &Trainers, graded: Option<&GradedDecision>) 
                 &[("profile", name(id).into())],
             ));
         }
-        let over = h.end.is_some();
+        // The ending stays unsaid while it is still being replayed.
+        let over = h.end.is_some() && !screen.playing();
         let next = screen.table_bots(t);
         if !over && next != h.bots() {
             let first = next.first().cloned().flatten();

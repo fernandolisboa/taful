@@ -103,7 +103,7 @@ impl App {
     }
 
     /// Postflop spot items wait while no library is installed.
-    fn postflop_hold(&mut self) -> Option<Hold<'static>> {
+    pub(crate) fn postflop_hold(&mut self) -> Option<Hold<'static>> {
         (!self.has_postflop()).then_some(Hold {
             kind: SPOT_TEMPLATE,
             key_glob: KEY_GLOB,

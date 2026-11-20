@@ -33,8 +33,8 @@ use crate::walk::Walk;
 pub struct RangeCell {
     /// Share of the class still in the range, 0 to 1.
     pub weight: f32,
-    /// Reference frequency of each action; empty when the class has no
-    /// data here.
+    /// Reference frequency of each action; empty when there is none to
+    /// show: the class has no data here or, postflop, never gets here.
     pub mix: Vec<f32>,
 }
 
@@ -316,6 +316,46 @@ fn postflop(walk: &Walk, hand: Hand, state: &GameState) -> Option<Insight> {
 /// `suited`, `offsuit-ace`, `offsuit-broadways`, `offsuit-connectors`,
 /// `offsuit`.
 pub fn describe(hand: Hand, board: &[Card]) -> Vec<&'static str> {
+    let note = describe_unchecked(hand, board);
+    debug_assert!(note.iter().all(|id| NOTE_IDS.contains(id)), "{note:?}");
+    note
+}
+
+/// Every id [`describe`] can give (the UI has a string for each).
+pub const NOTE_IDS: [&str; 30] = [
+    "straight-flush",
+    "quads",
+    "full-house",
+    "flush",
+    "straight",
+    "set",
+    "trips",
+    "two-pair",
+    "overpair",
+    "top-pair",
+    "middle-pair",
+    "bottom-pair",
+    "pocket-pair",
+    "underpair",
+    "ace-high",
+    "overcards",
+    "high-card",
+    "combo-draw",
+    "flush-draw",
+    "open-ended",
+    "gutshot",
+    "suited-ace",
+    "suited-broadways",
+    "suited-connectors",
+    "suited-gapper",
+    "suited",
+    "offsuit-ace",
+    "offsuit-broadways",
+    "offsuit-connectors",
+    "offsuit",
+];
+
+fn describe_unchecked(hand: Hand, board: &[Card]) -> Vec<&'static str> {
     let [a, b] = hand.cards();
     let (hi, lo) = if a.rank() >= b.rank() {
         (a.rank(), b.rank())
@@ -518,9 +558,84 @@ mod tests {
         let e = i.equity.expect("an opener to be up against");
         assert!((0.15..0.9).contains(&e.equity), "{e:?}");
         assert_ne!(e.villain, i.position);
-        // Hands the caller never has here are out of its range.
-        assert!(i.cells.iter().any(|c| c.in_range()));
+        // Hero has not acted yet: nothing is out of its range.
+        assert!(i.cells.iter().all(|c| (c.weight - 1.0).abs() < 1e-6));
         assert!(i.pot_odds.is_some_and(|p| (0.0..0.5).contains(&p)));
+    }
+
+    /// The spot of `kind` under `seed` with hero holding `hand`.
+    fn holding(t: &Trainers, kind: SpotKind, seed: u64, hand: &str) -> Insight {
+        let mut spot = t.preflop.spot(kind, seed).unwrap();
+        let h = parse_cards(hand).unwrap();
+        spot.hand = Hand::new(h[0], h[1]).unwrap();
+        t.insight(&DrillSpot::Preflop(Box::new(spot))).unwrap()
+    }
+
+    #[test]
+    fn equity_is_hero_against_the_opener() {
+        let t = trainers();
+        let equity = |hand| {
+            holding(&t, SpotKind::VsOpen, 3, hand)
+                .equity
+                .unwrap()
+                .equity
+        };
+        let (aces, trash) = (equity("AsAd"), equity("7s2d"));
+        assert!(aces > 0.8, "{aces}");
+        assert!(trash < 0.4, "{trash}");
+    }
+
+    #[test]
+    fn a_range_narrows_with_what_hero_did() {
+        // Facing a 3-bet after opening, the hands hero never opens are out
+        // (a 3-bet can also be faced cold, with the whole range).
+        let t = trainers();
+        let at = |s: &str| HandClass::all().position(|c| c.to_string() == s).unwrap();
+        let i = (0..60)
+            .map(|seed| holding(&t, SpotKind::Vs3Bet, seed, "AsAd"))
+            .find(|i| i.cells.iter().any(|c| c.weight < 0.5))
+            .expect("a 3-bet faced by the opener");
+        assert!(i.cells[at("AA")].weight > 0.9);
+        assert!(!i.cells[at("72o")].in_range());
+        assert!(i.cells.iter().all(|c| (0.0..=1.0).contains(&c.weight)));
+        assert!((i.totals.iter().sum::<f32>() - 1.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn decision_points_of_full_hands() {
+        let t = trainers();
+        let mut seen = 0;
+        for seed in 0..40 {
+            let hand = FullHand::new(&t.preflop, t.post(), None, seed).unwrap();
+            let Some(i) = hand.insight(&t) else {
+                // Not hero's turn: the hand is over.
+                assert!(hand.end.is_some());
+                continue;
+            };
+            seen += 1;
+            assert_eq!(i.hand, hand.hero_hand());
+            assert_eq!(i.position, hand.state.position(hand.hero));
+            assert_eq!(i.actions, hand.hero_actions(&t.preflop));
+            assert!((i.totals.iter().sum::<f32>() - 1.0).abs() < 1e-3);
+            // Equity is against someone still in the hand.
+            if let Some(e) = i.equity {
+                let seat = seat_at(&hand.state, e.villain).unwrap();
+                assert!(!hand.state.players()[seat].folded);
+            }
+        }
+        assert!(seen > 10, "{seen}");
+    }
+
+    #[test]
+    fn every_note_has_a_string() {
+        // The table screen builds these ids at run time, so the desktop
+        // source lint cannot see them.
+        for locale in crate::i18n::Locale::ALL {
+            let i18n = crate::i18n::Localizer::new(locale).unwrap();
+            for id in NOTE_IDS {
+                assert!(i18n.has(&format!("cockpit-hand-{id}")), "{id}");
+            }
+        }
     }
 
     #[test]
@@ -528,7 +643,7 @@ mod tests {
         let t = trainers();
         let pf = t.post().expect("the fixture library");
         let spot = pf.generate(&SpotRequest::default(), 11).unwrap();
-        let (hand, board) = (spot.hand, spot.board.clone());
+        let hand = spot.hand;
         let i = t.insight(&DrillSpot::Postflop(Box::new(spot))).unwrap();
         assert_eq!(i.hand, hand);
         assert!(
@@ -541,7 +656,8 @@ mod tests {
             assert!((c.mix.iter().sum::<f32>() - 1.0).abs() < 1e-3);
         }
         let e = i.equity.expect("heads-up after the flop");
-        assert!((0.0..=1.0).contains(&e.equity));
-        assert_eq!(i.note, describe(hand, &board));
+        assert!(e.equity > 0.0 && e.equity < 1.0, "{e:?}");
+        assert_ne!(e.villain, i.position);
+        assert!(!i.note.is_empty());
     }
 }

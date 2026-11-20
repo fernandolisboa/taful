@@ -846,6 +846,33 @@ mod tests {
     }
 
     #[test]
+    fn the_grade_of_each_action_agrees_with_grading_it() {
+        let t = trainer();
+        let opponents: Vec<Option<String>> = std::iter::once(None)
+            .chain(
+                t.profiles()
+                    .iter()
+                    .map(|p| Some(p.bot.profile().id.clone())),
+            )
+            .collect();
+        for (n, kind) in SpotKind::ALL.into_iter().enumerate() {
+            for seed in 0..6 {
+                let Ok(spot) = t.spot(kind, seed) else {
+                    continue;
+                };
+                let opponent = opponents[(n + seed as usize) % opponents.len()].as_deref();
+                let actions = t.chart().node(spot.node).actions.len();
+                for chosen in 0..actions {
+                    let d = t.grade_vs(spot.node, spot.hand, chosen, opponent).unwrap();
+                    let all = d.grades(t.thresholds());
+                    assert_eq!(all.len(), actions);
+                    assert_eq!(all[chosen], d.grade, "{kind:?} {seed} {opponent:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn dynamic_fluent_ids_exist() {
         // The table screen builds these ids at run time, so the desktop
         // source lint cannot see them.

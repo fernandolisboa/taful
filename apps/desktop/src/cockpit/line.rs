@@ -19,6 +19,15 @@ const COLUMNS: [(Street, f32); 4] = [
     (Street::River, 0.7),
 ];
 
+/// Where a step button of the replay goes.
+#[derive(Clone, Copy)]
+enum Step {
+    /// A state of the replay.
+    To(usize),
+    /// From the answer played to the table it was made on, or back.
+    Back(bool),
+}
+
 /// The panel's header: its title and the replay's controls.
 pub(super) fn head(screen: &TableScreen, pal: &Pal, cx: &mut Context<TableScreen>) -> Div {
     let i18n = &screen.ui.i18n;
@@ -26,10 +35,33 @@ pub(super) fn head(screen: &TableScreen, pal: &Pal, cx: &mut Context<TableScreen
         .playback
         .as_ref()
         .map_or((0, 0), |p| (p.at, p.last()));
-    let step = |id: &'static str, text: &'static str, to: Option<usize>| {
+    // After an answer the line has one more step than the replay: the
+    // answer played. `‹` first steps back to the table hero decided on.
+    let answered = super::table::answered(screen);
+    let back = screen.cockpit.back;
+    let (prev, next) = if answered && !back {
+        (Some(Step::Back(true)), None)
+    } else if answered {
+        (last.checked_sub(1).map(Step::To), Some(Step::Back(false)))
+    } else {
+        (
+            at.checked_sub(1).map(Step::To),
+            (at < last).then_some(Step::To(at + 1)),
+        )
+    };
+    let step = |id: &'static str, text: &'static str, to: Option<Step>| {
         let b = btn(id, text, None, Btn::Small, pal);
         match to {
-            Some(to) => b.on_click(cx.listener(move |this, _, _, cx| this.jump_to(to, cx))),
+            Some(to) => b.on_click(cx.listener(move |this, _, _, cx| match to {
+                Step::To(at) => {
+                    this.cockpit.back = false;
+                    this.jump_to(at, cx);
+                }
+                Step::Back(back) => {
+                    this.cockpit.back = back;
+                    cx.notify();
+                }
+            })),
             None => b.text_color(pal.dim).cursor_default(),
         }
     };
@@ -38,8 +70,8 @@ pub(super) fn head(screen: &TableScreen, pal: &Pal, cx: &mut Context<TableScreen
         .flex()
         .items_center()
         .gap(px(12.))
-        .child(step("line_prev", "‹", at.checked_sub(1)))
-        .child(step("line_next", "›", (at < last).then_some(at + 1)))
+        .child(step("line_prev", "‹", prev))
+        .child(step("line_next", "›", next))
         .child(
             btn(
                 "line_auto",
@@ -206,7 +238,10 @@ pub(super) fn body(
                         .id(("line_chip", e.step))
                         .flex_none()
                         .cursor_pointer()
-                        .on_click(cx.listener(move |this, _, _, cx| this.jump_to(step, cx)))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.cockpit.back = false;
+                            this.jump_to(step, cx);
+                        }))
                         .child(chip(&who, &e.what, e.hero, e.grade, current, pal))
                 })),
         );

@@ -2,9 +2,10 @@
 //! forecast and recent calc attempts. Like the rest of the crate, nothing
 //! here knows the domain: grades and actions stay strings.
 
-use rusqlite::params;
+use rusqlite::named_params;
 use serde_json::Value;
 
+use crate::repo::{HOLD_FILTER, Hold, kind_filter};
 use crate::{Millis, Result, Store};
 
 /// One decision reduced to what a chart needs.
@@ -57,24 +58,29 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
-    /// Grade ids of the latest `limit` decisions, newest first.
+    /// Grade ids of the latest `limit` decisions, newest first. A hand's
+    /// decisions are written together and can share a timestamp, and ids
+    /// are not ordered within a millisecond: ties go by insertion order.
     pub fn recent_grades(&self, limit: u32) -> Result<Vec<String>> {
         let mut stmt = self.conn().prepare(
             "SELECT grade FROM decisions WHERE deleted_at IS NULL
-             ORDER BY created_at DESC, id DESC LIMIT ?1",
+             ORDER BY created_at DESC, rowid DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map([limit], |r| r.get(0))?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
-    /// The latest `limit` preflop decisions that have a context, newest
-    /// first.
+    /// The latest `limit` preflop decisions against the reference that have
+    /// a context, newest first. Decisions against a bot profile are left
+    /// out: they are graded on the best response to that profile, so their
+    /// distance from the reference mix is not a deviation.
     pub fn recent_preflop_decisions(&self, limit: u32) -> Result<Vec<PreflopDecisionStat>> {
         let mut stmt = self.conn().prepare(
             "SELECT hero_combo, chosen_action, ev_per_action, frequencies, node_type
              FROM decisions
              WHERE deleted_at IS NULL AND street = 'preflop' AND node_type IS NOT NULL
-             ORDER BY created_at DESC, id DESC LIMIT ?1",
+               AND coalesce(opponent, 'reference') = 'reference'
+             ORDER BY created_at DESC, rowid DESC LIMIT ?1",
         )?;
         let json = |s: String| serde_json::from_str(&s).unwrap_or(Value::Null);
         let rows = stmt.query_map([limit], |r| {
@@ -90,21 +96,28 @@ impl Store {
     }
 
     /// Number of review items of `kinds` (all kinds when empty) that become
-    /// due after `from` and at or before `to`.
-    pub fn count_due_between(&self, from: Millis, to: Millis, kinds: &[&str]) -> Result<u32> {
-        let mut stmt = self.conn().prepare(
-            "SELECT kind FROM review_items
-             WHERE deleted_at IS NULL AND due > ?1 AND due <= ?2",
-        )?;
-        let rows = stmt.query_map(params![from, to], |r| r.get::<_, String>(0))?;
-        let mut n = 0;
-        for kind in rows {
-            let kind = kind?;
-            if kinds.is_empty() || kinds.contains(&kind.as_str()) {
-                n += 1;
-            }
-        }
-        Ok(n)
+    /// due after `from` and at or before `to`, without the items `hold`
+    /// matches.
+    pub fn count_due_between(
+        &self,
+        from: Millis,
+        to: Millis,
+        kinds: &[&str],
+        hold: Option<&Hold<'_>>,
+    ) -> Result<u32> {
+        let (k, g, u) = Hold::params(hold);
+        Ok(self.conn().query_row(
+            &format!(
+                "SELECT count(*) FROM review_items
+                 WHERE deleted_at IS NULL AND due > :from AND due <= :to
+                   AND {} AND {HOLD_FILTER}",
+                kind_filter(kinds)
+            ),
+            named_params! {
+                ":from": from, ":to": to, ":hold_kind": k, ":key_glob": g, ":unless_glob": u
+            },
+            |r| r.get(0),
+        )?)
     }
 
     /// Mean best quiz score (0–1) over the lessons that have one, with the
@@ -129,7 +142,7 @@ mod tests {
 
     use serde_json::json;
 
-    use crate::{DecisionContext, LessonState, NewDecision, Store};
+    use crate::{DecisionContext, Hold, LessonState, NewDecision, Store};
 
     fn store() -> (Store, Arc<AtomicI64>) {
         let (clock, t) = crate::test_clock(1_000);
@@ -137,6 +150,10 @@ mod tests {
     }
 
     fn decision(s: &Store, grade: &str, ev_loss: f64, street: &str) {
+        decision_against(s, grade, ev_loss, street, "reference");
+    }
+
+    fn decision_against(s: &Store, grade: &str, ev_loss: f64, street: &str, opponent: &str) {
         s.insert_decision(&NewDecision {
             hand_id: None,
             node_key: "n",
@@ -155,10 +172,31 @@ mod tests {
                 node_type: "rfi",
                 texture: None,
                 step: None,
-                opponent: "reference",
+                opponent,
             }),
         })
         .unwrap();
+    }
+
+    #[test]
+    fn decisions_of_one_instant_keep_their_order() {
+        // A hand's decisions are written in one go, on one timestamp.
+        let (s, _) = store();
+        for grade in ["best", "mistake", "correct", "blunder", "inaccuracy"] {
+            decision(&s, grade, 0.0, "preflop");
+        }
+        assert_eq!(
+            s.recent_grades(5).unwrap(),
+            ["inaccuracy", "blunder", "correct", "mistake", "best"]
+        );
+    }
+
+    #[test]
+    fn deviation_rows_are_against_the_reference_only() {
+        let (s, _) = store();
+        decision(&s, "best", 0.0, "preflop");
+        decision_against(&s, "best", 0.0, "preflop", "nit");
+        assert_eq!(s.recent_preflop_decisions(10).unwrap().len(), 1);
     }
 
     #[test]
@@ -208,10 +246,21 @@ mod tests {
         ] {
             s.ensure_review_item(kind, key, None, due).unwrap();
         }
-        assert_eq!(s.count_due_between(1_000, 3_000, &[]).unwrap(), 3);
-        assert_eq!(s.count_due_between(1_000, 2_500, &[]).unwrap(), 2);
+        assert_eq!(s.count_due_between(1_000, 3_000, &[], None).unwrap(), 3);
+        assert_eq!(s.count_due_between(1_000, 2_500, &[], None).unwrap(), 2);
         assert_eq!(
-            s.count_due_between(0, 3_000, &["calc_exercise"]).unwrap(),
+            s.count_due_between(0, 3_000, &["calc_exercise"], None)
+                .unwrap(),
+            2
+        );
+        // Held items are not forecast.
+        let hold = Hold {
+            kind: "spot_template",
+            key_glob: "*",
+            unless_glob: "",
+        };
+        assert_eq!(
+            s.count_due_between(1_000, 3_000, &[], Some(&hold)).unwrap(),
             2
         );
     }

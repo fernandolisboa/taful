@@ -475,10 +475,12 @@ pub(super) fn stage(sc: &Scene<'_>, w: f32, h: f32) -> Div {
                 .into_any_element(),
         );
 
-        // The profile a bot seat plays, on the side away from the table.
+        // The profile a bot seat plays: over the top seat, under the
+        // others (the side seats' cards sit over their pods).
+        let tag_dy = if side(k, at) == Side::Top { -46. } else { 46. };
         if let Some(tag) = sc.tags.get(seat).and_then(Option::as_ref) {
             layers.push(
-                centered(at.0, at.1 - 46. * inward(at.1), POD_W, s)
+                centered(at.0, at.1 + tag_dy, POD_W, s)
                     .child(
                         div()
                             .flex_none()

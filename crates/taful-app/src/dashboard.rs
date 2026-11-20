@@ -143,9 +143,9 @@ pub enum PlayKind {
     Open,
     ThreeBet,
     FourBet,
-    /// A raise over a 4-bet, or the all-in.
+    /// A raise over a 4-bet.
     Jam,
-    /// Any other raise (blind against blind).
+    /// Any other raise (blind against blind, its all-in included).
     Raise,
 }
 
@@ -354,8 +354,10 @@ fn trend(days: &[Tally], value: impl Fn(&Tally) -> Option<f64>) -> Trend {
 }
 
 impl App {
-    /// A stamp that moves whenever the app writes to its database: a view
-    /// that caches the numbers below reads them again when it changes.
+    /// A stamp that moves when the app writes rows to its database: a view
+    /// that caches the numbers below reads them again when it changes. A
+    /// restored backup replaces the file without moving it, so a view also
+    /// lets its numbers age out.
     pub fn data_stamp(&self) -> u64 {
         self.store.change_count()
     }
@@ -365,7 +367,8 @@ impl App {
         self.dashboard_in(&TimeZone::system())
     }
 
-    /// Today's numbers alone (cheap: the status bar asks on every frame).
+    /// Today's numbers alone, for the status bar (two queries over the
+    /// day's decisions; a view caches them on [`App::data_stamp`]).
     pub fn today(&self) -> Result<Today> {
         self.today_in(&TimeZone::system())
     }
@@ -446,12 +449,16 @@ impl App {
     fn review_forecast(&mut self, now: Millis, today: Date, tz: &TimeZone) -> Result<Reviews> {
         let due_now = self.due_count()?;
         let kinds = crate::review_session::PRESENTABLE;
+        // The items the due count leaves out never come due either.
+        let hold = self.postflop_hold();
         let mut forecast = [0u32; FORECAST_DAYS];
         let mut days = [Day::of(today); FORECAST_DAYS];
         let mut from = now;
         for (i, slot) in forecast.iter_mut().enumerate() {
             let end = day_start(plus_days(today, i as i64 + 1), tz);
-            *slot = self.store.count_due_between(from, end, kinds)?;
+            *slot = self
+                .store
+                .count_due_between(from, end, kinds, hold.as_ref())?;
             days[i] = Day::of(plus_days(today, i as i64));
             from = end;
         }
@@ -647,6 +654,18 @@ mod tests {
 
     use super::*;
     use crate::services::tests::app_at;
+
+    #[test]
+    fn every_play_has_a_string() {
+        // The dashboard builds these ids at run time, so the desktop source
+        // lint cannot see them.
+        for locale in crate::i18n::Locale::ALL {
+            let i18n = crate::i18n::Localizer::new(locale).unwrap();
+            for k in PlayKind::ALL {
+                assert!(i18n.has(&format!("cockpit-play-{}", k.id())), "{k:?}");
+            }
+        }
+    }
 
     const DAY: Millis = 86_400_000;
     /// 2026-11-20 12:00 UTC, a Friday.
