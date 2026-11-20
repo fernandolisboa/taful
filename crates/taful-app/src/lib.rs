@@ -15,6 +15,7 @@
 //!   editor (#23); [`layout_edit`]: the layout edit mode (#22).
 //! - [`update`]: auto-update preferences and release selection (D18).
 //! - [`style`]: the visual styles and their fixed colors (D19).
+//! - [`today`]: the day at a glance, for a home screen made of cards.
 
 pub mod appearance;
 pub mod bots;
@@ -38,6 +39,7 @@ pub mod story;
 pub mod style;
 pub mod template;
 pub mod theme;
+pub mod today;
 pub mod training;
 pub mod update;
 pub mod walk;

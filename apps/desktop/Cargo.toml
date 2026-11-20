@@ -19,6 +19,10 @@ taful-app.workspace = true
 semver.workspace = true
 ureq.workspace = true
 futures.workspace = true
+# Generated textures of the Baralho style (felt glow, card backs). The same
+# versions gpui already links.
+image = { version = "0.25", default-features = false }
+smallvec = "1"
 
 [target.'cfg(windows)'.dependencies]
 tray-icon.workspace = true

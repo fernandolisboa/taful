@@ -5906,7 +5906,9 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "gpui",
+ "image",
  "semver",
+ "smallvec",
  "taful-app",
  "tray-icon",
  "ureq",
