@@ -5912,6 +5912,7 @@ dependencies = [
  "taful-app",
  "tray-icon",
  "ureq",
+ "windows-registry 0.5.3",
 ]
 
 [[package]]

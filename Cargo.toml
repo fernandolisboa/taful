@@ -50,6 +50,8 @@ sha2 = "0.10"
 ureq = "3"
 futures = "0.3"
 tray-icon = { version = "0.26", default-features = false }
+# Desktop (Windows): whether the taskbar is light, for the tray icon (D20).
+windows-registry = "0.5"
 # Desktop build script (Windows): compiles the app icon into taful.exe (D20).
 # The same crate and version gpui's own build script uses.
 embed-resource = "3"

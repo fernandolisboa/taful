@@ -22,6 +22,24 @@ pub const KNOT: Color = Color {
     a: 0xff,
 };
 
+/// The whole mark on a light background, where amber and cream do not show
+/// (dark ink).
+pub const INK: Color = Color {
+    r: 0x16,
+    g: 0x24,
+    b: 0x2b,
+    a: 0xff,
+};
+
+/// What the mark is painted over.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ground {
+    /// A dark surface: amber wings, cream knot.
+    Dark,
+    /// A light surface: the whole mark in dark ink.
+    Light,
+}
+
 /// The mark is drawn on a square box of this many units.
 const BOX: f32 = 24.;
 
@@ -81,10 +99,14 @@ fn in_knot(x: f32, y: f32) -> bool {
     dx / KNOT_HALF.0 + dy / KNOT_HALF.1 <= 1.
 }
 
-/// The mark on a transparent background: `size`×`size` pixels, four bytes
-/// each (red, green, blue, alpha; alpha not premultiplied), rows top to
-/// bottom.
-pub fn pixels(size: u32) -> Vec<u8> {
+/// The mark on a transparent background, in the colors for `ground`:
+/// `size`×`size` pixels, four bytes each (red, green, blue, alpha; alpha not
+/// premultiplied), rows top to bottom.
+pub fn pixels(size: u32, ground: Ground) -> Vec<u8> {
+    let (wing_color, knot_color) = match ground {
+        Ground::Dark => (WINGS, KNOT),
+        Ground::Light => (INK, INK),
+    };
     let unit = BOX / size as f32;
     let step = unit / SAMPLES as f32;
     let total = (SAMPLES * SAMPLES) as f32;
@@ -114,9 +136,9 @@ pub fn pixels(size: u32) -> Vec<u8> {
                 ((u32::from(w) * wings + u32::from(k) * knot) as f32 / covered as f32).round() as u8
             };
             out.extend([
-                mix(WINGS.r, KNOT.r),
-                mix(WINGS.g, KNOT.g),
-                mix(WINGS.b, KNOT.b),
+                mix(wing_color.r, knot_color.r),
+                mix(wing_color.g, knot_color.g),
+                mix(wing_color.b, knot_color.b),
                 (covered as f32 / total * 255.).round() as u8,
             ]);
         }
@@ -136,7 +158,7 @@ mod tests {
     #[test]
     fn draws_a_bow_tie_with_a_knot() {
         for size in [16, 20, 24, 32, 48] {
-            let px = pixels(size);
+            let px = pixels(size, Ground::Dark);
             assert_eq!(px.len(), (size * size * 4) as usize);
             let mid = size / 2;
             // The knot in the middle, a wing on each side of it.
@@ -156,7 +178,7 @@ mod tests {
     #[test]
     fn the_two_wings_mirror_each_other() {
         let size = 32;
-        let px = pixels(size);
+        let px = pixels(size, Ground::Dark);
         for y in 0..size {
             for x in 0..size {
                 assert_eq!(at(&px, size, x, y), at(&px, size, size - 1 - x, y));
@@ -168,7 +190,7 @@ mod tests {
     fn a_gap_separates_the_knot_from_the_wings() {
         // Along the middle row, left to center: wing, clear pixels, knot.
         let size = 32;
-        let px = pixels(size);
+        let px = pixels(size, Ground::Dark);
         let alpha: Vec<u8> = (0..=size / 2)
             .map(|x| at(&px, size, x, size / 2)[3])
             .collect();
@@ -176,5 +198,68 @@ mod tests {
         let clear = alpha[wing..].iter().filter(|&&a| a == 0).count();
         assert!(clear >= 2, "{alpha:?}");
         assert_eq!(alpha[alpha.len() - 1], 255);
+    }
+
+    #[test]
+    fn on_a_light_ground_the_mark_is_one_dark_color() {
+        let size = 32;
+        let (dark, light) = (pixels(size, Ground::Dark), pixels(size, Ground::Light));
+        for (d, l) in dark.chunks(4).zip(light.chunks(4)) {
+            // Same shape, one color.
+            assert_eq!(d[3], l[3]);
+            if l[3] > 0 {
+                assert_eq!(&l[..3], &[INK.r, INK.g, INK.b]);
+            }
+        }
+    }
+
+    /// The numbers of one SVG path, in order.
+    fn numbers(d: &str) -> Vec<f32> {
+        d.split(|c: char| c.is_ascii_alphabetic() || c == ' ' || c == ',')
+            .filter(|t| !t.is_empty())
+            .map(|t| t.parse().unwrap())
+            .collect()
+    }
+
+    /// The outline here is a copy of `mark-small.svg`: a change to the
+    /// drawing has to be made in both.
+    #[test]
+    fn the_outline_follows_the_drawn_mark() {
+        let svg = include_str!("../../../apps/desktop/assets/icon/mark-small.svg");
+        let paths: Vec<&str> = svg
+            .split(" d=\"")
+            .skip(1)
+            .map(|rest| rest.split('"').next().unwrap())
+            .collect();
+        assert_eq!(paths.len(), 2, "wings, then knot");
+
+        // Wings: every point where the left wing's path changes segment
+        // (the first sub-path) is a point of `WING`.
+        let left = paths[0].split('Z').next().unwrap();
+        let mut ends = 0;
+        for coords in left.split(|c: char| c.is_ascii_alphabetic()) {
+            let n = numbers(coords);
+            if n.len() < 2 {
+                continue;
+            }
+            let (x, y) = (n[n.len() - 2], n[n.len() - 1]);
+            assert!(
+                WING.iter()
+                    .any(|&(wx, wy)| (wx - x).abs() < 0.01 && (wy - y).abs() < 0.01),
+                "({x}, {y}) of mark-small.svg is not on WING"
+            );
+            ends += 1;
+        }
+        assert!(ends >= 7, "{ends} segment ends");
+
+        // Knot: a diamond around the center of the box.
+        let k = numbers(paths[1]);
+        assert_eq!(k.len(), 8);
+        let (xs, ys): (Vec<f32>, Vec<f32>) = k.chunks(2).map(|p| (p[0], p[1])).unzip();
+        let span = |v: &[f32]| {
+            v.iter().cloned().fold(f32::MIN, f32::max) - v.iter().cloned().fold(f32::MAX, f32::min)
+        };
+        assert!((span(&xs) / 2. - KNOT_HALF.0).abs() < 0.01);
+        assert!((span(&ys) / 2. - KNOT_HALF.1).abs() < 0.01);
     }
 }

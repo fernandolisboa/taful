@@ -531,6 +531,7 @@ The author found the spade in a chip too close to the PokerStars logo. Of three 
 ### Implications
 - Sources in `apps/desktop/assets/icon/`: `mark.svg` (the mark, for 32 px and up), `mark-small.svg` (a simpler cut for 16 to 24 px), `icon.svg` and `icon-small.svg` (the same two cuts on the tile) and `taful.ico` (16 to 256 px, built from the two icon files).
 - `taful.exe` carries `taful.ico` as icon resource 1, which is the one GPUI gives its windows. Title bar, taskbar, Alt+Tab, Explorer, the Start menu shortcut, the uninstall entry and the installer all show it.
-- The notification-area icon is the small cut with no tile, painted by `taful_app::logo`. It has fixed brand colors and no longer follows the theme.
+- The notification-area icon is the small cut with no tile, painted by `taful_app::logo`. It no longer follows the theme: amber and cream on a dark taskbar, one dark ink on a light one (read from Windows when the icon is made).
+- The mark's colors are brand colors, the same in every theme and style, so they are constants in `taful_app::logo` and not theme tokens. D7's rule for the desktop UI is unchanged.
 - A visual style draws the mark in its navigation in these two colors, with no chip or badge around it.
 
