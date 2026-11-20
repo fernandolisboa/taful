@@ -17,6 +17,7 @@
 mod backup;
 mod repo;
 mod schema;
+mod stats;
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -27,6 +28,7 @@ use rusqlite::{Connection, OpenFlags};
 pub use backup::{BackupPolicy, backup_file_name, parse_backup_name, rotate, snapshot};
 pub use repo::*;
 pub use schema::{MIGRATIONS, SCHEMA_VERSION};
+pub use stats::{DecisionStat, PreflopDecisionStat};
 
 /// Unix time in milliseconds.
 pub type Millis = i64;
