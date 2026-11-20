@@ -57,6 +57,12 @@ CI builds `taful-setup-<version>.exe` with [Inno Setup 6](https://jrsoftware.org
 
 Build it locally (Windows): `cargo build --release -p taful-desktop`, then `ISCC /DAppVersion=0.1.0 installer\taful.iss`; the setup lands in `target\installer\`.
 
+## App icon (D20)
+
+The mark and the app icon are drawn as SVG in `apps/desktop/assets/icon/`. `taful.ico` is rendered from `icon-small.svg` (16, 20, 24 and 32 px) and `icon.svg` (40, 48, 64, 128 and 256 px); render it again whenever one of them changes. Entries below 256 px are 32-bit bitmaps and the 256 px one is a PNG, the layout every Windows tool reads.
+
+`apps/desktop/build.rs` compiles `apps/desktop/taful.rc` into `taful.exe` (Windows builds only; it needs `rc.exe` from the Windows SDK, which the MSVC toolchain already requires). The installer takes the same file as its own icon. The notification-area icon is not a file: `taful_app::logo` paints the small cut from its outline, which must stay in step with `mark-small.svg`.
+
 ## Releases and auto-update (D18)
 
 The `release` job of CI publishes GitHub Releases the app updates from:

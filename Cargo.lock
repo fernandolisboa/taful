@@ -5904,6 +5904,7 @@ dependencies = [
 name = "taful-desktop"
 version = "0.1.0"
 dependencies = [
+ "embed-resource",
  "futures",
  "gpui",
  "image",

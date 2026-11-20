@@ -141,7 +141,7 @@ impl Shell {
         let (tray_tx, mut tray_rx) = futures::channel::mpsc::unbounded();
         let tray = Tray::new(
             &ui.i18n,
-            crate::theme::tray_icon_pixels(&palette, TRAY_ICON_SIZE),
+            taful_app::logo::pixels(TRAY_ICON_SIZE),
             TRAY_ICON_SIZE,
             tray_tx,
         );

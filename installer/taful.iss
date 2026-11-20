@@ -49,6 +49,9 @@ SolidCompression=yes
 WizardStyle=modern
 ; Pick the language from Windows; ask only when it is neither pt-BR nor English.
 ShowLanguageDialog=auto
+; The setup's own icon is the app's (D20). Shortcuts and the uninstall entry
+; take theirs from taful.exe.
+SetupIconFile=..\apps\desktop\assets\icon\taful.ico
 UninstallDisplayIcon={app}\taful.exe
 ; An update started from the app reopens it itself (/RELAUNCH=1): Restart
 ; Manager must not start a second copy.

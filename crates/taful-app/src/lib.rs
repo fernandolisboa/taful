@@ -16,6 +16,7 @@
 //! - [`update`]: auto-update preferences and release selection (D18).
 //! - [`style`]: the visual styles and their fixed colors (D19).
 //! - [`today`]: the day at a glance, for a home screen made of cards.
+//! - [`logo`]: the Taful mark as geometry, for icons painted in code (D20).
 
 pub mod appearance;
 pub mod bots;
@@ -27,6 +28,7 @@ pub mod i18n;
 pub mod layout;
 pub mod layout_edit;
 pub mod lessons;
+pub mod logo;
 pub mod mixed;
 pub mod model;
 pub mod optimizer;
