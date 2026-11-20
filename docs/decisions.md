@@ -501,7 +501,7 @@ The author installs every CI build by hand. GitHub Releases is free, already whe
 - The desktop app has selectable **visual styles**: **Classic** (the look it shipped with), **Salão**, **Cockpit** and **Baralho**. A style is a whole look: navigation, components, fonts and art. It is picked in Settings › Appearance › Visual style (setting `ui.style`) and applies at once.
 - Salão, Cockpit and Baralho are built exactly as the mockups the author approved on 2026-11-20, wired to real data (the mockups' numbers are illustrative).
 - Every style but Classic has **fixed colors**, in `content/styles/<id>.json`: a full set of theme tokens plus the extra colors that style needs. Themes and the theme editor (D7) apply to Classic only; the user's theme choice is kept while another style is active.
-- The house rules hold in every style: no red, the four-color deck, the grade colors. A test checks every style file.
+- The house rules hold in every style: no red, the four-color deck, the grade colors. A test checks every style file for red and for four different suit colors and five different grade colors. A style's colors are an approved design, so the contrast and grade-distance warnings of user themes (D7) are not applied to them.
 - A style that is not finished is not offered in settings.
 
 ### Why

@@ -10,8 +10,10 @@
 //! ```
 //!
 //! `theme` holds the standard tokens (so every screen has colors in that
-//! style) and `extra` the colors the theme schema has no token for. The
-//! house rule "no red" holds for both (tested).
+//! style) and `extra` the colors the theme schema has no token for. Tested
+//! for every file: no red in either part, four different suit colors and
+//! five different grade colors. A style's colors are an approved design, so
+//! the contrast and grade-distance warnings of user themes are not applied.
 
 use std::collections::BTreeMap;
 
@@ -95,16 +97,21 @@ pub struct StyleTokens {
 impl StyleTokens {
     /// Parses a style token file.
     pub fn from_json(text: &str) -> std::result::Result<Self, ThemeError> {
-        let mut v: serde_json::Value = serde_json::from_str(text).map_err(ThemeError::Parse)?;
-        let theme = v
-            .get("theme")
-            .ok_or_else(|| ThemeError::Parse(serde::de::Error::missing_field("theme")))?;
-        let theme = Theme::from_json(&theme.to_string())?;
-        let extra = match v.get_mut("extra") {
-            Some(e) => serde_json::from_value(e.take()).map_err(ThemeError::Parse)?,
-            None => BTreeMap::new(),
-        };
-        Ok(Self { theme, extra })
+        /// The file's top level; a misspelled key is an error, not an
+        /// empty `extra`.
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct File {
+            theme: serde_json::Value,
+            #[serde(default)]
+            extra: BTreeMap<String, Color>,
+        }
+        let file: File = serde_json::from_str(text).map_err(ThemeError::Parse)?;
+        let theme = Theme::from_json(&file.theme.to_string())?;
+        Ok(Self {
+            theme,
+            extra: file.extra,
+        })
     }
 
     /// Names of the tokens (standard and extra) a person would call red.
@@ -150,13 +157,15 @@ mod tests {
         assert_eq!(Style::default(), Style::Classic);
     }
 
-    /// Every file under `content/styles/` belongs to a style, parses, and
-    /// has no red (D7); Classic has no file.
+    /// Every file under `content/styles/` belongs to a style, parses, has
+    /// no red (D7), four suit colors and five grade colors; Classic has no
+    /// file.
     #[test]
     fn style_files_are_valid() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content/styles");
         let mut seen = 0;
-        for entry in std::fs::read_dir(&dir).into_iter().flatten() {
+        // No style has a file yet: the directory may not exist.
+        for entry in std::fs::read_dir(dir).into_iter().flatten() {
             let path = entry.unwrap().path();
             if path.extension().is_none_or(|e| e != "json") {
                 continue;
@@ -167,6 +176,14 @@ mod tests {
             let text = std::fs::read_to_string(&path).unwrap();
             let tokens = StyleTokens::from_json(&text).unwrap_or_else(|e| panic!("{stem}: {e}"));
             assert_eq!(tokens.red_tokens(), Vec::<String>::new(), "{stem}");
+            let c = &tokens.theme.colors;
+            let suits = [c.suit_spades, c.suit_hearts, c.suit_diamonds, c.suit_clubs];
+            let grades = tokens.theme.grade_colors().map(|(_, color)| color);
+            for set in [&suits[..], &grades[..]] {
+                for (i, a) in set.iter().enumerate() {
+                    assert!(!set[i + 1..].contains(a), "{stem}: a color is used twice");
+                }
+            }
             assert_eq!(style.tokens(), Some(tokens), "{stem}: not embedded");
             seen += 1;
         }
@@ -189,6 +206,10 @@ mod tests {
         let t = StyleTokens::from_json(&format!(r#"{{"theme": {theme}}}"#)).unwrap();
         assert!(t.extra.is_empty());
         assert!(StyleTokens::from_json(r#"{"extra": {}}"#).is_err());
+        // A misspelled key is an error, not an empty `extra`.
+        assert!(
+            StyleTokens::from_json(&format!(r#"{{"theme": {theme}, "extras": {{}}}}"#)).is_err()
+        );
     }
 
     #[test]

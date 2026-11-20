@@ -10,8 +10,10 @@ use crate::shell::Shell;
 /// Offered in settings.
 pub const READY: bool = true;
 /// Embedded files as `(path, bytes)`; paths start with the style's id.
+/// Classic's list stays empty: a style that has not defined its own
+/// inherits this one.
 pub const ASSETS: &[(&str, &[u8])] = &[];
-/// Embedded fonts.
+/// Embedded fonts (empty in Classic, for the same reason).
 pub const FONTS: &[&[u8]] = &[];
 /// The window's base font (`None`: the system font).
 pub const FONT_FAMILY: Option<&str> = None;

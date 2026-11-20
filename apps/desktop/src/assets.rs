@@ -17,7 +17,13 @@ impl AssetSource for Assets {
 
     fn list(&self, path: &str) -> Result<Vec<SharedString>> {
         Ok(crate::style::assets()
-            .filter(|(p, _)| p.starts_with(path))
+            // Files under the directory `path`, not paths that merely
+            // start with the same letters.
+            .filter(|(p, _)| {
+                p.strip_prefix(path).is_some_and(|rest| {
+                    path.is_empty() || path.ends_with('/') || rest.starts_with('/')
+                })
+            })
             .map(|(p, _)| SharedString::from(*p))
             .collect())
     }

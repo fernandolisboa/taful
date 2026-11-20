@@ -46,21 +46,25 @@ pub struct Ui {
     pub style: Style,
     /// The style's colors that have no theme token, by name.
     pub extra: Rc<theme::Extra>,
+    /// The style has colors of its own: `theme` is the style's, not the
+    /// user's.
+    pub own_colors: bool,
 }
 
 impl Ui {
     /// `theme` is the user's theme; a style with colors of its own
     /// replaces it.
     pub fn new(locale: Locale, theme: Theme, style: Style) -> Self {
-        let (theme, extra) = match style.tokens() {
-            Some(t) => (t.theme, theme::Extra::new(&t.extra)),
-            None => (theme, theme::Extra::default()),
+        let (theme, extra, own_colors) = match style.tokens() {
+            Some(t) => (t.theme, theme::Extra::new(&t.extra), true),
+            None => (theme, theme::Extra::default(), false),
         };
         Self {
             i18n: Rc::new(Localizer::new(locale).expect("embedded strings are valid (tested)")),
             theme,
             style,
             extra: Rc::new(extra),
+            own_colors,
         }
     }
 
@@ -71,6 +75,7 @@ impl Ui {
             theme,
             style: self.style,
             extra: self.extra.clone(),
+            own_colors: self.own_colors,
         }
     }
 }
@@ -79,7 +84,10 @@ impl Ui {
 fn window_override() -> Option<(f32, f32)> {
     let v = std::env::var("TAFUL_WINDOW").ok()?;
     let (w, h) = v.split_once('x')?;
-    Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
+    let (w, h): (f32, f32) = (w.trim().parse().ok()?, h.trim().parse().ok()?);
+    // Sizes a window can have.
+    let ok = |x: f32| (200. ..=16000.).contains(&x);
+    (ok(w) && ok(h)).then_some((w, h))
 }
 
 fn main() {

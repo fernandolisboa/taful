@@ -169,12 +169,21 @@ gpui 0.2.2 fails on Linux because `xattr` 0.2.3 uses `ENOATTR`. A local copy of 
 The desktop app draws itself through the active visual style (`ui.style`): Classic, Salão, Cockpit or Baralho.
 
 - One module per style: `apps/desktop/src/<id>/mod.rs`. `classic` is the reference set of hooks, listed at the top of `apps/desktop/src/style.rs`. Another style starts as `pub use crate::classic::*;` and replaces a hook by defining an item with the same name. Shared code calls `by_style!(ui.style, hook(args))` and never names a style.
-- Hooks: constants (`READY`, `ASSETS`, `FONTS`, `FONT_FAMILY`, `WINDOW`), state (`ShellState`, `TableState`), views (`frame`, `key`, `home`, `lessons`, `table`), the felt (`felt_table`, `felt_card`, `explanation`, `felt_panel`) and every widget in `widgets.rs`.
-- Colors: `content/styles/<id>.json` holds `{"theme": <theme tokens>, "extra": {"name": "#rrggbb[aa]"}}`. In that style `ui.theme` is the file's theme and `ui.extra.get("name")` gives an extra color. `theme::alpha(color, a)` makes a translucent variant. No color literal outside `theme.rs`, as before.
+- Hooks: constants (`READY`, `ASSETS`, `FONTS`, `FONT_FAMILY`, `WINDOW`), state (`ShellState`, `TableState`), views (`frame`, `key`, `home`, `lessons`, `table`), the felt (`felt_table`, `felt_card`, `explanation`, `felt_panel`) and the widgets the top of `widgets.rs` dispatches (`button`, `chip`, `card`, `title`, `muted`, `answer_box`, `progress`, `eyebrow`, `segmented`, `segment`, `empty_state`, `subhead`, `toggle`). The lesson text renderer (`document`) is shared by every style.
+- Colors: `content/styles/<id>.json` holds `{"theme": <theme tokens>, "extra": {"name": "#rrggbb[aa]"}}`. In that style `ui.theme` is the file's theme and `ui.extra.get("name")` gives an extra color. `theme::alpha(color, a)` makes a translucent variant. No color literal outside `src/theme.rs`, as before. CI builds the desktop app in release mode, where a misspelled extra name draws nothing instead of panicking: give the style a test that checks every name it uses with `ui.extra.contains(name)`.
 - Files: fonts and art live in `apps/desktop/assets/<id>/` and are listed in the style's `ASSETS` (served to `img()` and `svg()`, paths start with `<id>/`) and `FONTS` (added to the text system at startup).
 - Strings only one style shows go in `i18n/<locale>/<id>.ftl`.
 - `READY = true` offers the style in Settings › Appearance.
 - `TAFUL_STYLE=<id>` overrides the saved style and `TAFUL_WINDOW=1600x900` sets the window size (screenshots at a mockup's size).
+
+Writing a style's module, mind how the hooks resolve:
+
+- An item defined in the style's `mod.rs` replaces Classic's hook of the same name. A hook kept in a submodule is re-exported by name (`pub use self::views::home;`): a second glob (`pub use self::views::*;`) is ambiguous with Classic's.
+- Do not import the shared dispatchers by their bare names at the root of the style's module (`use crate::widgets::{button, card};`, `use crate::felt::card;`): the import hides the hook of the same name. Call them by path (`crate::widgets::button(..)`) or import them inside a submodule.
+- A hook must not call the shared function of the same name: `crate::widgets::card` dispatches back to the hook and never returns. Build on Classic's with `crate::classic::card`.
+- `key` runs before the answer box and the theme editor: a style that binds plain characters checks `shell.screen` first.
+- `Shell::content()` and `Shell::header()` are Classic's content pane and title (the reading column assumes Classic's `NAV_WIDTH`). A style with another navigation draws its own in `frame` from `Shell::screen_body()`.
+- Element ids and extra color names use underscores: a `lower-case-with-dashes` string literal must be a Fluent id (lint).
 
 ## Adding a string
 

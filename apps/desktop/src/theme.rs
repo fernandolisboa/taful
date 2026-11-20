@@ -50,9 +50,17 @@ impl Extra {
         Self(colors.iter().map(|(k, c)| (k.clone(), rgba(*c))).collect())
     }
 
+    /// Whether the style file has a color named `name`. A style's tests
+    /// check every name the style asks for (CI builds the desktop app in
+    /// release mode, where [`Extra::get`] does not panic).
+    #[allow(dead_code)] // For the visual styles (D19).
+    pub fn contains(&self, name: &str) -> bool {
+        self.0.contains_key(name)
+    }
+
     /// The color named `name`. A name the style file lacks is a bug in the
-    /// style (its tests look every name up): debug builds panic, release
-    /// builds draw nothing rather than crash.
+    /// style: debug builds panic, release builds draw nothing rather than
+    /// crash.
     #[allow(dead_code)] // For the visual styles (D19).
     pub fn get(&self, name: &str) -> Rgba {
         match self.0.get(name) {

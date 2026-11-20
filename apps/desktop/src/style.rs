@@ -5,7 +5,10 @@
 //! starts as `pub use crate::classic::*;` and replaces what it draws
 //! differently by defining an item with the same name (an explicit item
 //! shadows the glob import). Shared code reaches the active style through
-//! [`by_style!`], so a style never needs an edit outside its own module.
+//! [`by_style!`], so a style never edits shared code: it lives in its own
+//! module, `content/styles/<id>.json`, `i18n/<locale>/<id>.ftl` and
+//! `apps/desktop/assets/<id>/`. `docs/development.md` lists what to mind
+//! when writing one.
 //!
 //! The hooks:
 //!
@@ -17,7 +20,8 @@
 //! - Views: `frame` (chrome and content, under the tour and update
 //!   overlays), `key` (shortcuts), `home`, `lessons`, `table`.
 //! - Felt: `felt_table`, `felt_card`, `explanation`, `felt_panel`.
-//! - Widgets: everything in `widgets.rs`.
+//! - Widgets: the ones the top of `widgets.rs` dispatches (the lesson text
+//!   renderer is shared).
 
 pub use taful_app::style::Style;
 

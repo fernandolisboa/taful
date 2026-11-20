@@ -94,7 +94,7 @@ impl Shell {
         }
         // The user's theme (or the draft being edited): a style with its
         // own colors replaces it inside `Ui::new`.
-        let theme = if self.ui.style.tokens().is_some() {
+        let theme = if self.ui.own_colors {
             self.app.theme()
         } else {
             self.ui.theme.clone()
@@ -484,7 +484,7 @@ impl Shell {
             .collect();
         let rule = || div().h(px(1.)).my(px(t.spacing.sm)).bg(p.border);
         // A style with colors of its own leaves the themes to Classic.
-        let own_colors = ui.style.tokens().is_some();
+        let own_colors = ui.own_colors;
         card(&ui, &p)
             .child(title(ui.i18n.tr("settings-appearance"), &ui))
             .when(styles.len() > 1, |c| {
@@ -492,11 +492,9 @@ impl Shell {
                     .child(muted(ui.i18n.tr("settings-style-body"), &ui, &p))
                     .child(
                         div()
-                            .relative()
                             .flex()
                             .flex_wrap()
                             .gap(px(t.spacing.sm))
-                            .child(crate::tour::anchor("settings_style"))
                             .children(style_chips),
                     )
                     .child(rule())
