@@ -237,7 +237,8 @@ pub fn felt_table(
     let bx = bx(ui);
     let w = HOOK_TABLE_W * s;
     tabletop::fitted(w, w * tabletop::H / tabletop::W, || {
-        tabletop::table(ui, p, &bx, state, hero, reveal, extra, None, true)
+        // A revealed table is a hand that is over: nobody is to act.
+        tabletop::table(ui, p, &bx, state, hero, reveal, extra, None, !reveal)
     })
 }
 

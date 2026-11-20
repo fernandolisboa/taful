@@ -253,6 +253,10 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
         .as_ref()
         .filter(|(at, _)| *at == visit)
         .map(|(_, t)| t.clone());
+    if cached.is_none() {
+        // A new visit ranks the leaks again: back to the biggest.
+        shell.baralho.leak = 0;
+    }
     let today: Rc<Today> = match cached.map_or_else(|| shell.app.today(loc).map(Rc::new), Ok) {
         Ok(t) => {
             shell.baralho.today = Some((visit, t.clone()));

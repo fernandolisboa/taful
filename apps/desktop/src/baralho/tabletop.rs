@@ -776,7 +776,8 @@ pub fn table(
             continue;
         };
         let (x, y) = seat_at(slot(seat), n);
-        let dy = if y < TOP_ROW { -43. } else { 49. };
+        // Over the plate it clears the ring of a seat to act.
+        let dy = if y < TOP_ROW { -48. } else { 49. };
         out = out.child(at(
             (x, y + dy),
             center(
