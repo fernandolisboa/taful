@@ -164,6 +164,18 @@ cargo run --release -p taful-profile-stats -- tune --library <out>        # sear
 
 gpui 0.2.2 fails on Linux because `xattr` 0.2.3 uses `ENOATTR`. A local copy of the crate with `ENOATTR` → `ENODATA` in `src/sys/mod.rs`, wired in through `--config 'patch.crates-io.xattr.path="…"'`, builds it. Never commit that patch or the `Cargo.lock` it produces. Running under Xvfb needs `libxkbcommon-x11-dev`, `mesa-vulkan-drivers` and `libvulkan1`, and the first frame needs a mouse move (`xdotool mousemove`).
 
+## Visual styles (D19)
+
+The desktop app draws itself through the active visual style (`ui.style`): Classic, Salão, Cockpit or Baralho.
+
+- One module per style: `apps/desktop/src/<id>/mod.rs`. `classic` is the reference set of hooks, listed at the top of `apps/desktop/src/style.rs`. Another style starts as `pub use crate::classic::*;` and replaces a hook by defining an item with the same name. Shared code calls `by_style!(ui.style, hook(args))` and never names a style.
+- Hooks: constants (`READY`, `ASSETS`, `FONTS`, `FONT_FAMILY`, `WINDOW`), state (`ShellState`, `TableState`), views (`frame`, `key`, `home`, `lessons`, `table`), the felt (`felt_table`, `felt_card`, `explanation`, `felt_panel`) and every widget in `widgets.rs`.
+- Colors: `content/styles/<id>.json` holds `{"theme": <theme tokens>, "extra": {"name": "#rrggbb[aa]"}}`. In that style `ui.theme` is the file's theme and `ui.extra.get("name")` gives an extra color. `theme::alpha(color, a)` makes a translucent variant. No color literal outside `theme.rs`, as before.
+- Files: fonts and art live in `apps/desktop/assets/<id>/` and are listed in the style's `ASSETS` (served to `img()` and `svg()`, paths start with `<id>/`) and `FONTS` (added to the text system at startup).
+- Strings only one style shows go in `i18n/<locale>/<id>.ftl`.
+- `READY = true` offers the style in Settings › Appearance.
+- `TAFUL_STYLE=<id>` overrides the saved style and `TAFUL_WINDOW=1600x900` sets the window size (screenshots at a mockup's size).
+
 ## Adding a string
 
 1. Add the key to `i18n/en-US/<file>.ftl` and `i18n/pt-BR/<file>.ftl`.

@@ -111,6 +111,8 @@ pub enum Leave {
     Close,
     /// Switch to this theme key.
     Switch(String),
+    /// Switch to this visual style (the editor only exists in Classic).
+    Style(taful_app::style::Style),
 }
 
 /// The open editor: one user theme, its saved tokens and the working draft.
@@ -323,6 +325,7 @@ impl Shell {
         match leave {
             Some(Leave::Close) => self.theme_edit_close(cx),
             Some(Leave::Switch(key)) => self.set_theme(&key, window, cx),
+            Some(Leave::Style(style)) => self.set_style(style, window, cx),
             None => {}
         }
     }

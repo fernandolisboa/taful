@@ -92,8 +92,14 @@ impl Shell {
         if let Err(e) = self.app.set_locale(locale) {
             eprintln!("taful: saving the locale failed: {e}");
         }
-        let theme = self.ui.theme.clone();
-        self.set_ui(Rc::new(Ui::new(locale, theme)), window, cx);
+        // The user's theme (or the draft being edited): a style with its
+        // own colors replaces it inside `Ui::new`.
+        let theme = if self.ui.style.tokens().is_some() {
+            self.app.theme()
+        } else {
+            self.ui.theme.clone()
+        };
+        self.set_ui(Rc::new(Ui::new(locale, theme, self.ui.style)), window, cx);
         // The editor's status line is in the old language.
         if let Some(e) = &mut self.settings.theme_editor {
             e.status = None;
@@ -127,7 +133,27 @@ impl Shell {
             }
         };
         let locale = self.ui.i18n.locale();
-        self.set_ui(Rc::new(Ui::new(locale, theme)), window, cx);
+        self.set_ui(Rc::new(Ui::new(locale, theme, self.ui.style)), window, cx);
+    }
+
+    /// A visual style chip was clicked. Unsaved theme edits ask before they
+    /// are dropped (the editor only exists in the Classic style).
+    fn pick_style(
+        &mut self,
+        style: taful_app::style::Style,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if style == self.ui.style {
+            return;
+        }
+        if let Some(e) = &mut self.settings.theme_editor
+            && e.dirty()
+        {
+            e.confirm_leave = Some(Leave::Style(style));
+            return;
+        }
+        self.set_style(style, window, cx);
     }
 
     /// Hands the active layout to the table screen.
@@ -437,18 +463,66 @@ impl Shell {
                 })),
             );
         }
+        // Visual style (D19): shown once there is more than one to pick.
+        let styles = crate::style::choices();
+        let style_chips: Vec<_> = styles
+            .iter()
+            .enumerate()
+            .map(|(i, &s)| {
+                chip(
+                    ("style", i),
+                    ui.i18n.tr(s.label_key()),
+                    s == ui.style,
+                    &ui,
+                    &p,
+                )
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.pick_style(s, window, cx);
+                    cx.notify();
+                }))
+            })
+            .collect();
+        let rule = || div().h(px(1.)).my(px(t.spacing.sm)).bg(p.border);
+        // A style with colors of its own leaves the themes to Classic.
+        let own_colors = ui.style.tokens().is_some();
         card(&ui, &p)
             .child(title(ui.i18n.tr("settings-appearance"), &ui))
+            .when(styles.len() > 1, |c| {
+                c.child(crate::widgets::subhead(ui.i18n.tr("settings-style"), &ui))
+                    .child(muted(ui.i18n.tr("settings-style-body"), &ui, &p))
+                    .child(
+                        div()
+                            .relative()
+                            .flex()
+                            .flex_wrap()
+                            .gap(px(t.spacing.sm))
+                            .child(crate::tour::anchor("settings_style"))
+                            .children(style_chips),
+                    )
+                    .child(rule())
+            })
             .child(crate::widgets::subhead(ui.i18n.tr("settings-theme"), &ui))
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap(px(t.spacing.sm))
-                    .children(theme_chips),
-            )
-            .child(theme_buttons)
-            .child(div().h(px(1.)).my(px(t.spacing.sm)).bg(p.border))
+            .when(own_colors, |c| {
+                c.child(muted(
+                    ui.i18n.tr_args(
+                        "settings-style-theme-note",
+                        &[("style", ui.i18n.tr(ui.style.label_key()).into())],
+                    ),
+                    &ui,
+                    &p,
+                ))
+            })
+            .when(!own_colors, |c| {
+                c.child(
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .gap(px(t.spacing.sm))
+                        .children(theme_chips),
+                )
+                .child(theme_buttons)
+            })
+            .child(rule())
             .child(crate::widgets::subhead(ui.i18n.tr("settings-layout"), &ui))
             .child(muted(ui.i18n.tr("settings-layout-body"), &ui, &p))
             .child(
@@ -749,7 +823,10 @@ impl Shell {
                                             // (before the report, which `set_ui` clears).
                                             let loc = this.app.locale();
                                             let theme = this.app.theme();
-                                            this.set_ui(Rc::new(Ui::new(loc, theme)), window, cx);
+                                            // The import may hold another style too.
+                                            let style = crate::style::startup(this.app.style());
+                                            let ui = Ui::new(loc, theme, style);
+                                            this.set_ui(Rc::new(ui), window, cx);
                                             this.apply_layout(Ok(()), cx);
                                             this.report(r, |_| Some(f.display().to_string()));
                                         }

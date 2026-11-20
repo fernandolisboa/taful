@@ -82,11 +82,14 @@ macro_rules! sources {
 /// here fails a test.
 pub const SOURCES: &[Source] = sources![
     "app.ftl",
+    "baralho.ftl",
     "calc.ftl",
+    "cockpit.ftl",
     "glossary.ftl",
     "hand.ftl",
     "lessons.ftl",
     "review.ftl",
+    "salao.ftl",
     "settings.ftl",
     "table.ftl",
     "theme.ftl",

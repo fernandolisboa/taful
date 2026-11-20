@@ -80,20 +80,6 @@ impl Screen {
             Screen::Settings => "screen-settings-body",
         }
     }
-
-    /// Milestone that builds the screen (spec §18).
-    pub fn milestone(self) -> &'static str {
-        match self {
-            Screen::Home
-            | Screen::SkillTree
-            | Screen::Lesson
-            | Screen::Calc
-            | Screen::Review
-            | Screen::Settings => "M2",
-            Screen::Table => "M3",
-            Screen::HandReview => "M5",
-        }
-    }
 }
 
 #[cfg(test)]

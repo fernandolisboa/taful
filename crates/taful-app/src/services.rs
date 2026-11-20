@@ -35,6 +35,9 @@ pub mod keys {
     pub const TOUR_SEEN: &str = "tour.seen";
     /// Animations (#59): `on` (default), `reduced` (fades only) or `off`.
     pub const UI_ANIMATIONS: &str = "ui.animations";
+    /// Visual style (D19): a [`crate::style::Style`] id; unset means
+    /// `classic`.
+    pub const UI_STYLE: &str = "ui.style";
     /// Auto-update (D18): `on`/`off` flags, the channel (`stable`, `beta`,
     /// `alpha`; empty follows the running build), `notify`/`silent`, and a
     /// version the user skipped.

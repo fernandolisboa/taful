@@ -11,10 +11,124 @@ use gpui::{
 use taful_app::model::{Block, Document, Span};
 
 use crate::Ui;
+use crate::style::by_style;
 use crate::theme::Palette;
 
-/// A clickable button. `primary` uses the accent fill.
+// ---- the active visual style's widgets (D19) -------------------------------
+//
+// Screens call these; each one hands over to the style's widget of the same
+// name. The functions below them, named `*_classic`, are the Classic style's.
+
+/// A clickable button. `primary` is the screen's main action.
 pub fn button(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    primary: bool,
+    ui: &Ui,
+    p: &Palette,
+) -> Stateful<Div> {
+    let (id, label): (ElementId, SharedString) = (id.into(), label.into());
+    by_style!(ui.style, button(id, label, primary, ui, p))
+}
+
+/// A selectable chip (exercise picker, language).
+pub fn chip(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    selected: bool,
+    ui: &Ui,
+    p: &Palette,
+) -> Stateful<Div> {
+    let (id, label): (ElementId, SharedString) = (id.into(), label.into());
+    by_style!(ui.style, chip(id, label, selected, ui, p))
+}
+
+/// A panel: a column with padding.
+pub fn card(ui: &Ui, p: &Palette) -> Div {
+    by_style!(ui.style, card(ui, p))
+}
+
+/// A section title inside a card.
+pub fn title(text: impl Into<SharedString>, ui: &Ui) -> Div {
+    let text: SharedString = text.into();
+    by_style!(ui.style, title(text, ui))
+}
+
+/// Secondary text.
+pub fn muted(text: impl Into<SharedString>, ui: &Ui, p: &Palette) -> Div {
+    let text: SharedString = text.into();
+    by_style!(ui.style, muted(text, ui, p))
+}
+
+/// The answer box: shows what was typed with a caret. Keys are handled by
+/// the shell (one focus target for the whole window).
+pub fn answer_box(value: &str, hint: impl Into<SharedString>, ui: &Ui, p: &Palette) -> Div {
+    let hint: SharedString = hint.into();
+    by_style!(ui.style, answer_box(value, hint, ui, p))
+}
+
+/// A thin progress bar, `frac` in 0–1.
+pub fn progress(frac: f32, ui: &Ui, p: &Palette) -> Div {
+    by_style!(ui.style, progress(frac, ui, p))
+}
+
+/// A small uppercase label above a card's content.
+pub fn eyebrow(text: impl Into<SharedString>, ui: &Ui, p: &Palette) -> Div {
+    let text: SharedString = text.into();
+    by_style!(ui.style, eyebrow(text, ui, p))
+}
+
+/// A segmented control: one track holding exclusive options.
+pub fn segmented(ui: &Ui, p: &Palette) -> Div {
+    by_style!(ui.style, segmented(ui, p))
+}
+
+/// One option of a [`segmented`] control.
+pub fn segment(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    selected: bool,
+    ui: &Ui,
+    p: &Palette,
+) -> Stateful<Div> {
+    let (id, label): (ElementId, SharedString) = (id.into(), label.into());
+    by_style!(ui.style, segment(id, label, selected, ui, p))
+}
+
+/// An empty state: what is (not) here, what fills it, and what to do now.
+pub fn empty_state(
+    title_text: impl Into<SharedString>,
+    body: impl Into<SharedString>,
+    ui: &Ui,
+    p: &Palette,
+) -> Div {
+    let (title_text, body): (SharedString, SharedString) = (title_text.into(), body.into());
+    by_style!(ui.style, empty_state(title_text, body, ui, p))
+}
+
+/// A heading for a group of controls inside a card.
+pub fn subhead(text: impl Into<SharedString>, ui: &Ui) -> Div {
+    let text: SharedString = text.into();
+    by_style!(ui.style, subhead(text, ui))
+}
+
+/// An on/off switch with its label and an optional explanation below.
+pub fn toggle(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    body: Option<SharedString>,
+    on: bool,
+    ui: &Ui,
+    p: &Palette,
+) -> Stateful<Div> {
+    let (id, label): (ElementId, SharedString) = (id.into(), label.into());
+    by_style!(ui.style, toggle(id, label, body, on, ui, p))
+}
+
+// ---- Classic ---------------------------------------------------------------
+
+/// A clickable button. `primary` uses the accent fill.
+pub fn button_classic(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
     primary: bool,
@@ -51,7 +165,7 @@ pub fn button(
 }
 
 /// A selectable chip (exercise picker, language).
-pub fn chip(
+pub fn chip_classic(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
     selected: bool,
@@ -83,7 +197,7 @@ pub fn chip(
 }
 
 /// A bordered panel.
-pub fn card(ui: &Ui, p: &Palette) -> Div {
+pub fn card_classic(ui: &Ui, p: &Palette) -> Div {
     let t = &ui.theme;
     div()
         .flex()
@@ -97,7 +211,7 @@ pub fn card(ui: &Ui, p: &Palette) -> Div {
 }
 
 /// A section title inside a card.
-pub fn title(text: impl Into<SharedString>, ui: &Ui) -> Div {
+pub fn title_classic(text: impl Into<SharedString>, ui: &Ui) -> Div {
     div()
         .text_size(px(ui.theme.text_size.lg))
         .font_weight(FontWeight::SEMIBOLD)
@@ -105,7 +219,7 @@ pub fn title(text: impl Into<SharedString>, ui: &Ui) -> Div {
 }
 
 /// Secondary text.
-pub fn muted(text: impl Into<SharedString>, ui: &Ui, p: &Palette) -> Div {
+pub fn muted_classic(text: impl Into<SharedString>, ui: &Ui, p: &Palette) -> Div {
     div()
         .text_size(px(ui.theme.text_size.md))
         .text_color(p.text_muted)
@@ -114,7 +228,7 @@ pub fn muted(text: impl Into<SharedString>, ui: &Ui, p: &Palette) -> Div {
 
 /// The answer box: shows what was typed with a caret. Keys are handled by
 /// the shell (one focus target for the whole window).
-pub fn answer_box(value: &str, hint: impl Into<SharedString>, ui: &Ui, p: &Palette) -> Div {
+pub fn answer_box_classic(value: &str, hint: impl Into<SharedString>, ui: &Ui, p: &Palette) -> Div {
     let t = &ui.theme;
     div()
         .flex()
@@ -318,7 +432,7 @@ pub fn document(doc: &Document, ui: &std::rc::Rc<Ui>, p: &Palette) -> Div {
 }
 
 /// A thin progress bar, `frac` in 0–1.
-pub fn progress(frac: f32, ui: &Ui, p: &Palette) -> Div {
+pub fn progress_classic(frac: f32, ui: &Ui, p: &Palette) -> Div {
     let t = &ui.theme;
     let frac = frac.clamp(0., 1.);
     div()
@@ -336,7 +450,7 @@ pub fn progress(frac: f32, ui: &Ui, p: &Palette) -> Div {
 }
 
 /// A small uppercase label above a card's content.
-pub fn eyebrow(text: impl Into<SharedString>, ui: &Ui, p: &Palette) -> Div {
+pub fn eyebrow_classic(text: impl Into<SharedString>, ui: &Ui, p: &Palette) -> Div {
     div()
         .text_size(px(ui.theme.text_size.sm))
         .font_weight(FontWeight::SEMIBOLD)
@@ -345,7 +459,7 @@ pub fn eyebrow(text: impl Into<SharedString>, ui: &Ui, p: &Palette) -> Div {
 }
 
 /// A segmented control: one rounded track holding exclusive options.
-pub fn segmented(ui: &Ui, p: &Palette) -> Div {
+pub fn segmented_classic(ui: &Ui, p: &Palette) -> Div {
     let t = &ui.theme;
     div()
         .flex()
@@ -359,7 +473,7 @@ pub fn segmented(ui: &Ui, p: &Palette) -> Div {
 }
 
 /// One option of a [`segmented`] control.
-pub fn segment(
+pub fn segment_classic(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
     selected: bool,
@@ -387,7 +501,7 @@ pub fn segment(
 }
 
 /// An empty state: what is (not) here, what fills it, and what to do now.
-pub fn empty_state(
+pub fn empty_state_classic(
     title_text: impl Into<SharedString>,
     body: impl Into<SharedString>,
     ui: &Ui,
@@ -402,7 +516,7 @@ pub fn empty_state(
 }
 
 /// A heading for a group of controls inside a card.
-pub fn subhead(text: impl Into<SharedString>, ui: &Ui) -> Div {
+pub fn subhead_classic(text: impl Into<SharedString>, ui: &Ui) -> Div {
     div()
         .text_size(px(ui.theme.text_size.md))
         .font_weight(FontWeight::SEMIBOLD)
@@ -410,7 +524,7 @@ pub fn subhead(text: impl Into<SharedString>, ui: &Ui) -> Div {
 }
 
 /// An on/off switch with its label and an optional explanation below.
-pub fn toggle(
+pub fn toggle_classic(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
     body: Option<SharedString>,

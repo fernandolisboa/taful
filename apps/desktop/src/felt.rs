@@ -10,6 +10,7 @@ use taful_app::preflop::{Action, BB_CHIPS, Card, Chips, GameState, Position, Sea
 
 use crate::Ui;
 use crate::motion;
+use crate::style::by_style;
 use crate::theme::Palette;
 
 pub const FELT_W: f32 = 640.;
@@ -70,8 +71,14 @@ pub fn action_short(ui: &Ui, a: Action) -> String {
     }
 }
 
-/// One card face (or a back for `None`), `s` times the normal size.
+/// One card face (or a back for `None`), `s` times the normal size, in the
+/// active visual style.
 pub fn card(ui: &Ui, p: &Palette, c: Option<Card>, s: f32) -> Div {
+    by_style!(ui.style, felt_card(ui, p, c, s))
+}
+
+/// Classic's [`card`].
+pub fn card_classic(ui: &Ui, p: &Palette, c: Option<Card>, s: f32) -> Div {
     let t = &ui.theme;
     let base = div()
         .w(px(CARD_W * s))
@@ -144,8 +151,21 @@ pub struct SeatExtras<'a> {
 }
 
 /// [`table_scaled`] with a tag over each seat that has one (the bot
-/// profile a seat plays, #28).
+/// profile a seat plays, #28), in the active visual style.
 pub fn table_tagged(
+    ui: &Ui,
+    p: &Palette,
+    state: &GameState,
+    hero: Seat,
+    reveal: bool,
+    s: f32,
+    extra: SeatExtras<'_>,
+) -> Div {
+    by_style!(ui.style, felt_table(ui, p, state, hero, reveal, s, extra))
+}
+
+/// Classic's [`table_tagged`].
+pub fn table_classic(
     ui: &Ui,
     p: &Palette,
     state: &GameState,
@@ -393,7 +413,7 @@ pub fn table_tagged(
         .children(win_els)
 }
 
-fn anim_id(s: String) -> gpui::ElementId {
+pub fn anim_id(s: String) -> gpui::ElementId {
     gpui::ElementId::Name(s.into())
 }
 
@@ -427,7 +447,7 @@ impl<'a> Explain<'a> {
         }
     }
 
-    fn best(&self) -> usize {
+    pub fn best(&self) -> usize {
         (0..self.hand_evs.len())
             .max_by(|&a, &b| self.hand_evs[a].total_cmp(&self.hand_evs[b]))
             .unwrap_or(0)
@@ -439,8 +459,14 @@ pub fn grade_key(g: Grade) -> String {
     format!("table-grade-{}", g.id())
 }
 
-/// Grade, EV loss and the per-action table for one decision (spec §8).
+/// Grade, EV loss and the per-action table for one decision (spec §8), in
+/// the active visual style.
 pub fn explanation(ui: &Ui, p: &Palette, d: &Explain<'_>) -> Div {
+    by_style!(ui.style, explanation(ui, p, d))
+}
+
+/// Classic's [`explanation`].
+pub fn explanation_classic(ui: &Ui, p: &Palette, d: &Explain<'_>) -> Div {
     let (t, i18n) = (&ui.theme, &ui.i18n);
     let best = d.best();
     let header = div()
@@ -579,8 +605,13 @@ pub fn explanation(ui: &Ui, p: &Palette, d: &Explain<'_>) -> Div {
         .children(rows)
 }
 
-/// The side panel next to a table.
+/// The side panel next to a table, in the active visual style.
 pub fn panel(ui: &Ui, p: &Palette) -> Div {
+    by_style!(ui.style, felt_panel(ui, p))
+}
+
+/// Classic's [`panel`].
+pub fn panel_classic(ui: &Ui, p: &Palette) -> Div {
     let t = &ui.theme;
     div()
         .w(px(PANEL_W))

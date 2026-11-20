@@ -6,11 +6,17 @@
 // No console window on Windows release builds; debug builds keep it for logs.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod assets;
+mod baralho;
+mod classic;
+mod cockpit;
 mod felt;
 mod motion;
+mod salao;
 mod screen;
 mod screens;
 mod shell;
+mod style;
 mod theme;
 mod tour;
 mod tray;
@@ -23,33 +29,57 @@ use gpui::{
     App, Application, Bounds, TitlebarOptions, WindowBounds, WindowOptions, prelude::*, px, size,
 };
 use taful_app::i18n::{Locale, Localizer};
+use taful_app::style::Style;
 use taful_app::theme::Theme;
 
-/// Everything views read but never change: strings and tokens. Replaced as
-/// a whole when the locale or the theme changes.
+/// Everything views read but never change: strings, tokens and the visual
+/// style. Replaced as a whole when the locale, the theme or the style
+/// changes.
 pub struct Ui {
     /// Localized strings (shared: the theme editor swaps tokens on every
     /// edit without parsing the strings again).
     pub i18n: Rc<Localizer>,
-    /// Theme tokens.
+    /// Theme tokens: the user's theme in the Classic style, the style's own
+    /// in every other (D19).
     pub theme: Theme,
+    /// The visual style drawing the app.
+    pub style: Style,
+    /// The style's colors that have no theme token, by name.
+    pub extra: Rc<theme::Extra>,
 }
 
 impl Ui {
-    pub fn new(locale: Locale, theme: Theme) -> Self {
+    /// `theme` is the user's theme; a style with colors of its own
+    /// replaces it.
+    pub fn new(locale: Locale, theme: Theme, style: Style) -> Self {
+        let (theme, extra) = match style.tokens() {
+            Some(t) => (t.theme, theme::Extra::new(&t.extra)),
+            None => (theme, theme::Extra::default()),
+        };
         Self {
             i18n: Rc::new(Localizer::new(locale).expect("embedded strings are valid (tested)")),
             theme,
+            style,
+            extra: Rc::new(extra),
         }
     }
 
-    /// The same strings with other tokens (live theme preview).
+    /// The same strings and style with other tokens (live theme preview).
     pub fn with_theme(&self, theme: Theme) -> Self {
         Self {
             i18n: self.i18n.clone(),
             theme,
+            style: self.style,
+            extra: self.extra.clone(),
         }
     }
+}
+
+/// `TAFUL_WINDOW=<width>x<height>` (screenshots at a mockup's size).
+fn window_override() -> Option<(f32, f32)> {
+    let v = std::env::var("TAFUL_WINDOW").ok()?;
+    let (w, h) = v.split_once('x')?;
+    Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
 }
 
 fn main() {
@@ -71,9 +101,17 @@ fn main() {
         .ok()
         .and_then(|id| app.load_theme(&id))
         .unwrap_or_else(|| app.theme());
-    let ui = Rc::new(Ui::new(locale, theme));
+    let style = style::startup(app.style());
+    let ui = Rc::new(Ui::new(locale, theme, style));
     let mut app = Some(app);
-    Application::new().run(move |cx: &mut App| {
+    let gpui_app = Application::new().with_assets(assets::Assets);
+    gpui_app.run(move |cx: &mut App| {
+        let fonts: Vec<_> = style::fonts().map(std::borrow::Cow::Borrowed).collect();
+        if !fonts.is_empty()
+            && let Err(e) = cx.text_system().add_fonts(fonts)
+        {
+            eprintln!("taful: loading the embedded fonts failed: {e}");
+        }
         cx.on_window_closed(|cx| {
             if cx.windows().is_empty() {
                 cx.quit();
@@ -81,12 +119,15 @@ fn main() {
         })
         .detach();
 
-        // Fit small screens (CI runners default to 1024×768).
-        let (w, h) = cx
-            .primary_display()
-            .map(|d| d.bounds().size)
-            .map(|s| (f32::from(s.width) * 0.95, f32::from(s.height) * 0.9))
-            .map_or((1280., 800.), |(w, h)| (w.min(1280.), h.min(800.)));
+        // Fit small screens (CI runners default to 1024×768). An explicit
+        // TAFUL_WINDOW is taken as given.
+        let (want_w, want_h) = style::window_size(ui.style).unwrap_or((1280., 800.));
+        let (w, h) = window_override().unwrap_or_else(|| {
+            cx.primary_display()
+                .map(|d| d.bounds().size)
+                .map(|s| (f32::from(s.width) * 0.95, f32::from(s.height) * 0.9))
+                .map_or((want_w, want_h), |(w, h)| (w.min(want_w), h.min(want_h)))
+        });
         let bounds = Bounds::centered(None, size(px(w), px(h)), cx);
         let title = ui.i18n.tr("window-title");
         let app = app.take().expect("run callback runs once");

@@ -9,7 +9,8 @@ use crate::shell::Shell;
 use crate::widgets::{button, card, muted, progress, title};
 
 impl Shell {
-    pub(crate) fn tree_view(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    /// Classic's lessons tree.
+    pub(crate) fn tree_classic(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let (ui, p) = (self.ui.clone(), self.palette);
         let t = &ui.theme;
         let loc = ui.i18n.locale();
