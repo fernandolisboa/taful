@@ -35,6 +35,9 @@ pub mod keys {
     pub const TOUR_SEEN: &str = "tour.seen";
     /// Animations (#59): `on` (default), `reduced` (fades only) or `off`.
     pub const UI_ANIMATIONS: &str = "ui.animations";
+    /// Animation and table replay speed: `slow`, `normal` (default),
+    /// `fast` or `very_fast`.
+    pub const UI_ANIMATION_SPEED: &str = "ui.animation_speed";
     /// Visual style (D19): a [`crate::style::Style`] id; unset means the
     /// default style (D21).
     pub const UI_STYLE: &str = "ui.style";

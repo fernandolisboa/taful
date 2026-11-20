@@ -1,6 +1,6 @@
 //! Settings (spec §15.1 item 8), in tabs of related settings (D18):
 //!
-//! - General: language, animations, guided tours.
+//! - General: language, animations and their speed, guided tours.
 //! - Appearance: theme (M6) and the theme editor (#23, in
 //!   `theme_editor.rs`), table layout (M6).
 //! - Study: review retention, the FSRS optimizer, the grading thresholds
@@ -900,6 +900,45 @@ impl Shell {
                     ),
                 )
         };
+        let animation_speed = {
+            let speed = crate::motion::speed();
+            card(&ui, &p)
+                .child(title(ui.i18n.tr("settings-animation-speed"), &ui))
+                .child(muted(
+                    ui.i18n
+                        .tr(if crate::motion::level() == crate::motion::Motion::Off {
+                            "settings-animation-speed-body-off"
+                        } else {
+                            "settings-animation-speed-body"
+                        }),
+                    &ui,
+                    &p,
+                ))
+                .child(
+                    div().flex().child(
+                        crate::widgets::segmented(&ui, &p).children(
+                            crate::motion::Speed::ALL
+                                .into_iter()
+                                .enumerate()
+                                .map(|(k, s)| {
+                                    crate::widgets::segment(
+                                        ("motion_speed", k),
+                                        ui.i18n.tr(s.label_key()),
+                                        s == speed,
+                                        &ui,
+                                        &p,
+                                    )
+                                    .on_click(cx.listener(
+                                        move |this, _, _, cx| {
+                                            this.set_motion_speed(s);
+                                            cx.notify();
+                                        },
+                                    ))
+                                }),
+                        ),
+                    ),
+                )
+        };
         let tours = card(&ui, &p)
             .child(title(ui.i18n.tr("tour-reset-title"), &ui))
             .child(
@@ -939,7 +978,11 @@ impl Shell {
             ));
         let column = div().flex().flex_col().gap(px(t.spacing.lg)).child(tabs);
         match tab {
-            Tab::General => column.child(language).child(animations).child(tours),
+            Tab::General => column
+                .child(language)
+                .child(animations)
+                .child(animation_speed)
+                .child(tours),
             Tab::Appearance => {
                 let appearance = self.appearance_card(cx);
                 let theme_editor = self.theme_editor_card(cx);
