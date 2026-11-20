@@ -13,6 +13,7 @@
 //! - [`layout`] and [`appearance`]: table-screen layout presets, saved
 //!   layouts and the theme choice (M6), and user themes from the theme
 //!   editor (#23); [`layout_edit`]: the layout edit mode (#22).
+//! - [`update`]: auto-update preferences and release selection (D18).
 
 pub mod appearance;
 pub mod bots;
@@ -36,6 +37,7 @@ pub mod story;
 pub mod template;
 pub mod theme;
 pub mod training;
+pub mod update;
 pub mod walk;
 
 pub use services::{App, Home, default_data_dir, keys};

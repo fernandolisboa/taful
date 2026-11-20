@@ -135,7 +135,7 @@ pub fn steps(screen: Screen) -> &'static [Step] {
         Screen::Settings => {
             const {
                 &[step(
-                    "screen_title",
+                    "settings_tabs",
                     "tour-settings-title",
                     "tour-settings-body",
                 )]

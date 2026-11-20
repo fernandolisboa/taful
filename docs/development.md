@@ -41,21 +41,36 @@ CI (`.github/workflows/ci.yml`) runs the Linux block on `ubuntu-latest` (plus a 
 
 ## Windows installer (D14)
 
-CI builds `taful-setup-<version>.exe` with [Inno Setup 6](https://jrsoftware.org/isinfo.php) from `installer/taful.iss` and uploads it as the `taful-setup-<version>` artifact of the Windows job (every main build and every PR that is not docs-only). The version is the workspace version in `Cargo.toml`.
+CI builds `taful-setup-<version>.exe` with [Inno Setup 6](https://jrsoftware.org/isinfo.php) from `installer/taful.iss` and uploads it as the `taful-setup-<version>` artifact of the Windows job (every main build and every PR that is not docs-only). The version is the workspace version in `Cargo.toml` plus a pre-release suffix (see [Releases and auto-update](#releases-and-auto-update-d18)); the app shows it in the nav footer.
 
-- **Unsigned, no auto-update.** The postflop library is not bundled: pick its folder in Settings.
+- **Unsigned.** The postflop library is not bundled: pick its folder in Settings.
 - **Per user**, no admin prompt: the app goes to `%LOCALAPPDATA%\Programs\Taful`, the shortcut to your Start menu. Per user is the simpler choice because the data folder is per user anyway (`%APPDATA%\Taful`), and it needs no elevation for installs or upgrades.
 - **Data is never touched.** Install, upgrade and uninstall only write `%LOCALAPPDATA%\Programs\Taful` and the shortcut; `%APPDATA%\Taful` (database, backups, default library folder) stays as it is. `installer/check.ps1` checks this in CI: it installs, installs again over it, uninstalls, and compares a hash of every file in the data folder after each step.
 
 **Installing:**
 
-1. Open the latest green CI run on `main` → *Artifacts* → download `taful-setup-<version>` and unzip it.
-2. Run `taful-setup-<version>.exe`. Windows SmartScreen says "Windows protected your PC" because the file is unsigned: click **More info**, then **Run anyway**.
+1. Download `taful-setup-<version>.exe` from the newest [release](https://github.com/fernandolisboa/taful/releases) (or a CI run's *Artifacts*).
+2. Run it. Windows SmartScreen says "Windows protected your PC" because the file is unsigned: click **More info**, then **Run anyway**.
 3. Launch Taful from the Start menu.
 
-**Upgrading:** run the newer setup over the old one (Taful closes if it is open). **Uninstalling:** Settings → Apps → Installed apps → Taful → Uninstall. To remove your data too, delete `%APPDATA%\Taful` by hand.
+**Upgrading:** the app updates itself (below). By hand: run the newer setup over the old one (Taful closes if it is open). **Uninstalling:** Settings → Apps → Installed apps → Taful → Uninstall. To remove your data too, delete `%APPDATA%\Taful` by hand.
 
-Build it locally (Windows): `cargo build --release -p taful-desktop`, then `ISCC /DAppVersion=0.0.1 installer\taful.iss`; the setup lands in `target\installer\`.
+Build it locally (Windows): `cargo build --release -p taful-desktop`, then `ISCC /DAppVersion=0.1.0 installer\taful.iss`; the setup lands in `target\installer\`.
+
+## Releases and auto-update (D18)
+
+The `release` job of CI publishes GitHub Releases the app updates from:
+
+| Trigger | Version | Release |
+|---|---|---|
+| push to `main` (CI green) | `<workspace>-<run>.alpha` | pre-release; only the 10 newest alphas are kept |
+| *Run workflow* on `main`, `release: beta` | `<workspace>-<run>.beta` | pre-release |
+| *Run workflow* on `main`, `release: stable` | `<workspace>` | latest release; bump the workspace version afterwards |
+| pull request | `<workspace>-0.pr<n>.<run>` | none (artifact only) |
+
+Each release has the installer and `<installer>.sha256`. The app (Settings › Updates) checks at startup and every 6 hours, downloads to `%LOCALAPPDATA%\Taful\updates`, verifies the hash, and runs the installer with `/WAITPID=<pid>` (the installer waits for the app to exit) and `/RELAUNCH=1` for *Restart and update*. The tray icon's menu has *Check for updates*.
+
+Dev overrides: `TAFUL_VERSION` (build time) sets the app's version; `TAFUL_UPDATE_URL` points the check at another release list (e.g. a local `python -m http.server` serving a JSON file shaped like the GitHub API); `TAFUL_SETTINGS_TAB=updates` opens that settings tab.
 
 ## Rules enforced by tests
 

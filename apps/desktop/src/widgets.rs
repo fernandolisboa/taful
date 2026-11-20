@@ -408,3 +408,50 @@ pub fn subhead(text: impl Into<SharedString>, ui: &Ui) -> Div {
         .font_weight(FontWeight::SEMIBOLD)
         .child(text.into())
 }
+
+/// An on/off switch with its label and an optional explanation below.
+pub fn toggle(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    body: Option<SharedString>,
+    on: bool,
+    ui: &Ui,
+    p: &Palette,
+) -> Stateful<Div> {
+    let t = &ui.theme;
+    const TRACK_W: f32 = 36.;
+    const TRACK_H: f32 = 20.;
+    const KNOB: f32 = 14.;
+    let pad = (TRACK_H - KNOB) / 2. - 1.;
+    let track = div()
+        .flex_none()
+        .flex()
+        .items_center()
+        .w(px(TRACK_W))
+        .h(px(TRACK_H))
+        .px(px(pad))
+        .rounded(px(t.radii.pill))
+        .border_1()
+        .when(on, |d| d.justify_end().bg(p.accent).border_color(p.accent))
+        .when(!on, |d| d.bg(p.surface).border_color(p.border))
+        .child(div().size(px(KNOB)).rounded(px(t.radii.pill)).bg(if on {
+            p.on_accent
+        } else {
+            p.text_muted
+        }));
+    div()
+        .id(id.into())
+        .flex()
+        .items_start()
+        .gap(px(t.spacing.md))
+        .cursor_pointer()
+        .child(div().pt(px(2.)).child(track))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(t.spacing.xs))
+                .child(div().child(label.into()))
+                .children(body.map(|b| muted(b, ui, p))),
+        )
+}

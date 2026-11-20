@@ -30,10 +30,16 @@ screen-table-body = Spot mode and full hands against the reference bot, with eve
 screen-hand-review-body = Every decision of a hand with its grade, and a step-by-step replay.
 screen-calc-body = Timed pot-odds, equity and combo exercises, with the exact calculation next to the shortcut.
 screen-review-body = Your spaced-repetition queue: spots you misplayed, missed quiz questions and slow or wrong calc answers, in one session.
-screen-settings-body = Language, layout, theme, backups and the strategy library.
+screen-settings-body = Language, appearance, study, your data and updates, each in its own tab.
 screen-coming-in = Coming in { $milestone }.
 
 ## Footer
 
 footer-version = Version { $version }
 footer-offline = Local-first: your data stays on this computer.
+
+# System tray icon (D18).
+tray-open = Open { -product }
+tray-check-updates = Check for updates
+tray-install-update = Restart and update to { $version }
+tray-quit = Quit

@@ -35,6 +35,15 @@ pub mod keys {
     pub const TOUR_SEEN: &str = "tour.seen";
     /// Animations (#59): `on` (default), `reduced` (fades only) or `off`.
     pub const UI_ANIMATIONS: &str = "ui.animations";
+    /// Auto-update (D18): `on`/`off` flags, the channel (`stable`, `beta`,
+    /// `alpha`; empty follows the running build), `notify`/`silent`, and a
+    /// version the user skipped.
+    pub const UPDATE_AUTO_CHECK: &str = "update.auto_check";
+    pub const UPDATE_CHANNEL: &str = "update.channel";
+    pub const UPDATE_AUTO_DOWNLOAD: &str = "update.auto_download";
+    pub const UPDATE_AUTO_INSTALL: &str = "update.auto_install";
+    pub const UPDATE_MODE: &str = "update.mode";
+    pub const UPDATE_SKIPPED: &str = "update.skipped";
 }
 
 /// The database file name inside the data folder.

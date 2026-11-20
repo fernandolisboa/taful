@@ -56,6 +56,28 @@ Run $Setup ($silent + "/LOG=$PWD\upgrade.log")
 if (-not (Test-Path $exe)) { throw "upgrade: $exe missing" }
 Assert-DataIntact 'upgrade'
 
+# Update started from the app (D18): the app runs setup with /WAITPID=<its
+# pid> /RELAUNCH=1 and exits. Setup must wait for that process, then start
+# the app. A sleeping pwsh stands in for the closing app. The relaunched app
+# gets a scratch data folder so the real one stays untouched.
+$env:TAFUL_DATA_DIR = Join-Path $env:RUNNER_TEMP 'taful-update-check'
+$holder = Start-Process -FilePath pwsh -ArgumentList '-NoProfile', '-Command', 'Start-Sleep -Seconds 8' -PassThru
+$clock = [Diagnostics.Stopwatch]::StartNew()
+# Not Run: Start-Process -Wait would also wait for the relaunched app.
+$p = Start-Process -FilePath $Setup -ArgumentList ($silent + "/WAITPID=$($holder.Id)", '/RELAUNCH=1', "/LOG=$PWD\update.log") -PassThru
+$p.WaitForExit()
+if ($p.ExitCode -ne 0) { throw "update: setup exited with code $($p.ExitCode)" }
+$waited = $clock.Elapsed.TotalSeconds
+if (-not $holder.HasExited -or $waited -lt 6) { throw "update: setup did not wait for process $($holder.Id) (took $([int]$waited) s)" }
+$deadline = (Get-Date).AddSeconds(30)
+while (-not ($app = Get-Process taful -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
+if (-not $app) { throw 'update: setup did not start taful.exe again' }
+$app | Stop-Process -Force
+Start-Sleep -Seconds 2
+Remove-Item Env:TAFUL_DATA_DIR
+Write-Host "ok: update waited $([int]$waited) s for the app to exit and started it again"
+Assert-DataIntact 'update'
+
 # The uninstaller re-launches itself from %TEMP% and returns at once, so wait
 # for the app folder to go away.
 Run (Join-Path $appDir 'unins000.exe') $silent
