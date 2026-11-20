@@ -17,6 +17,7 @@
 //! - [`style`]: the visual styles and their fixed colors (D19).
 //! - [`dashboard`] and [`insight`]: the aggregates behind a dashboard and
 //!   the range, equity and hand description behind a decision.
+//! - [`today`]: the day at a glance, for a home screen made of cards.
 
 pub mod appearance;
 pub mod bots;
@@ -42,6 +43,7 @@ pub mod story;
 pub mod style;
 pub mod template;
 pub mod theme;
+pub mod today;
 pub mod training;
 pub mod update;
 pub mod walk;

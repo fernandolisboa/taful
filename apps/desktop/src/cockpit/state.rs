@@ -78,7 +78,7 @@ pub fn sync(shell: &mut Shell) {
     let log =
         |what: &str, e: &dyn std::fmt::Display| eprintln!("taful: reading {what} failed: {e}");
     if shell.cockpit.today.is_none() {
-        match shell.app.today() {
+        match shell.app.today_numbers() {
             Ok(t) => shell.cockpit.today = Some(Rc::new(t)),
             Err(e) => log("today's numbers", &e),
         }

@@ -369,8 +369,8 @@ impl App {
 
     /// Today's numbers alone, for the status bar (two queries over the
     /// day's decisions; a view caches them on [`App::data_stamp`]).
-    pub fn today(&self) -> Result<Today> {
-        self.today_in(&TimeZone::system())
+    pub fn today_numbers(&self) -> Result<Today> {
+        self.today_numbers_in(&TimeZone::system())
     }
 
     fn last_grades(&self) -> Result<Vec<Grade>> {
@@ -384,7 +384,7 @@ impl App {
         Ok(last)
     }
 
-    pub(crate) fn today_in(&self, tz: &TimeZone) -> Result<Today> {
+    pub(crate) fn today_numbers_in(&self, tz: &TimeZone) -> Result<Today> {
         let today = local_date(self.now(), tz);
         let mut tally = Tally::default();
         for d in self.store.decision_stats_since(day_start(today, tz))? {
@@ -794,7 +794,7 @@ mod tests {
         // Oldest first, the newest decision last.
         assert_eq!(d.today.last.len(), 8);
         assert_eq!(d.today.last.last(), Some(&Grade::Blunder));
-        assert_eq!(app.today_in(&TimeZone::UTC).unwrap(), d.today);
+        assert_eq!(app.today_numbers_in(&TimeZone::UTC).unwrap(), d.today);
 
         // Last 7 days: 3 of 5 accurate; the 7 before: 1 of 2.
         assert!((d.accuracy.value.unwrap() - 0.6).abs() < 1e-9);
