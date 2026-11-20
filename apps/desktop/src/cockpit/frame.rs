@@ -33,6 +33,9 @@ pub fn frame(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>) ->
     super::state::sync(shell);
     let pal = Pal::new(&shell.ui);
     let view = view(shell, &pal, window, cx);
+    let table_crumb = (shell.screen == Screen::Table)
+        .then(|| super::table::crumb(shell.table.read(cx)))
+        .flatten();
     div()
         .size_full()
         .flex()
@@ -47,7 +50,7 @@ pub fn frame(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>) ->
                 .h_full()
                 .flex()
                 .flex_col()
-                .child(bar(shell, &pal))
+                .child(bar(shell, table_crumb, &pal))
                 .child(view),
         )
         .into_any_element()
@@ -194,7 +197,7 @@ pub fn percent(x: f64) -> String {
     format!("{:.0}", x * 100.)
 }
 
-fn bar(shell: &Shell, pal: &Pal) -> Div {
+fn bar(shell: &Shell, table_crumb: Option<String>, pal: &Pal) -> Div {
     let (ui, i18n) = (&shell.ui, &shell.ui.i18n);
     let today = shell.cockpit.today();
     let crumb = match shell.screen {
@@ -208,6 +211,7 @@ fn bar(shell: &Shell, pal: &Pal) -> Div {
                 ],
             )
         }),
+        Screen::Table => table_crumb,
         _ => None,
     };
     let metric = || {
@@ -340,7 +344,11 @@ fn view(shell: &mut Shell, pal: &Pal, window: &mut Window, cx: &mut Context<Shel
             div().flex_none().p(px(EDGE)).child(body),
             fade,
         )),
-        Screen::Table | Screen::HandReview | Screen::Review => {
+        // The table fills the pane, edge to edge.
+        Screen::Table => scroll
+            .overflow_scroll()
+            .child(crate::motion::fade_in(div().flex_none().child(body), fade)),
+        Screen::HandReview | Screen::Review => {
             scroll.overflow_y_scroll().child(crate::motion::fade_in(
                 div()
                     .flex()

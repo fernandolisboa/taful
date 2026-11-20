@@ -27,6 +27,8 @@ pub struct Pal {
     /// Tertiary text: axis labels, indexes, locked items.
     pub dim: Tint,
     pub amber: Tint,
+    /// Amber outlines (hero's actions on the hand line).
+    pub amber_dim: Tint,
     pub on_amber: Tint,
     /// Done (lesson progress).
     pub teal: Tint,
@@ -74,6 +76,7 @@ impl Pal {
             muted: p.text_muted,
             dim: x("dim"),
             amber: p.accent,
+            amber_dim: p.accent_muted,
             on_amber: p.on_accent,
             teal: x("teal"),
             rail_bg: x("rail_bg"),
@@ -111,6 +114,94 @@ impl Pal {
     }
 }
 
+/// The colors only the table screen draws with.
+#[derive(Clone, Copy)]
+pub struct TablePal {
+    /// Actions: bets and raises, checks and calls, folds.
+    pub raise: Tint,
+    pub call: Tint,
+    pub fold: Tint,
+    /// Card tiles by suit index (clubs, diamonds, hearts, spades) and
+    /// their ink.
+    pub tiles: [Tint; 4],
+    pub tile_text: Tint,
+    pub tile_diamonds_text: Tint,
+    pub tile_edge: Tint,
+    /// A face-down card: its two stripes and its edge.
+    pub back: [Tint; 2],
+    pub back_edge: Tint,
+    /// The table: its rim, the felt from top to bottom and its lines.
+    pub oval_rim: Tint,
+    pub felt: [Tint; 2],
+    pub felt_line: Tint,
+    pub felt_dash: Tint,
+    /// A seat, a folded seat and the empty part of a stack bar.
+    pub pod: Tint,
+    pub pod_fold: Tint,
+    pub pod_bar: Tint,
+    /// A bet on the felt.
+    pub bet_bg: Tint,
+    pub bet_edge: Tint,
+    pub bet_shade: Tint,
+    pub pot_label: Tint,
+    pub pot_unit: Tint,
+    /// An empty board slot.
+    pub slot: Tint,
+    pub dealer: Tint,
+    pub dealer_text: Tint,
+    /// The strip under the felt.
+    pub actbar: Tint,
+    /// Text on a grade tag.
+    pub on_grade: Tint,
+    pub shadow: Tint,
+    /// The outline of hero's hand in a range matrix.
+    pub hero_outline: Tint,
+    /// A cell outside the range.
+    pub cell_out: Tint,
+}
+
+impl TablePal {
+    pub fn new(ui: &Ui) -> Self {
+        let x = |name: &str| ui.extra.get(name);
+        Self {
+            raise: x("a_raise"),
+            call: x("a_call"),
+            fold: x("a_fold"),
+            tiles: [
+                x("tile_clubs"),
+                x("tile_diamonds"),
+                x("tile_hearts"),
+                x("tile_spades"),
+            ],
+            tile_text: x("tile_text"),
+            tile_diamonds_text: x("tile_diamonds_text"),
+            tile_edge: x("tile_edge"),
+            back: [x("back_a"), x("back_b")],
+            back_edge: x("back_edge"),
+            oval_rim: x("oval_rim"),
+            felt: [x("felt_top"), x("felt_bottom")],
+            felt_line: x("felt_edge"),
+            felt_dash: x("felt_dash"),
+            pod: x("pod"),
+            pod_fold: x("pod_fold"),
+            pod_bar: x("pod_bar"),
+            bet_bg: x("bet_bg"),
+            bet_edge: x("bet_edge"),
+            bet_shade: x("bet_shade"),
+            pot_label: x("pot_label"),
+            pot_unit: x("pot_unit"),
+            slot: x("slot"),
+            dealer: x("dealer"),
+            dealer_text: x("dealer_text"),
+            actbar: x("actbar"),
+            on_grade: x("on_grade"),
+            shadow: x("shadow"),
+            hero_outline: x("hero_outline"),
+            cell_out: x("cell_out"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use taful_app::i18n::Locale;
@@ -125,6 +216,7 @@ mod tests {
     fn the_style_file_has_every_color() {
         let ui = Ui::new(Locale::SOURCE, Theme::builtin_default(), Style::Cockpit);
         let _ = Pal::new(&ui);
+        let _ = TablePal::new(&ui);
         assert_eq!(ui.theme.warnings(), Vec::new());
     }
 }

@@ -2,11 +2,13 @@
 //! small charts.
 
 use gpui::{
-    AnyElement, Bounds, Div, ElementId, FontWeight, PathBuilder, Pixels, SharedString, Stateful,
-    Svg, canvas, div, fill, linear_color_stop, linear_gradient, point, prelude::*, px, size, svg,
+    AnyElement, Bounds, BoxShadow, Div, ElementId, FontWeight, PathBuilder, Pixels, SharedString,
+    Stateful, Svg, canvas, div, fill, linear_color_stop, linear_gradient, point, prelude::*, px,
+    size, svg,
 };
+use taful_app::preflop::{Card, Suit};
 
-use super::pal::{Pal, Tint};
+use super::pal::{Pal, TablePal, Tint};
 use crate::theme::alpha;
 
 /// The interface font.
@@ -39,6 +41,11 @@ pub fn icon(name: &'static str, size_px: f32, color: Tint) -> Svg {
         "logo_wings" => "cockpit/icons/logo-wings.svg",
         "logo_knot" => "cockpit/icons/logo-knot.svg",
         "lock" => "cockpit/icons/lock.svg",
+        "spade" => "cockpit/icons/spade.svg",
+        "heart" => "cockpit/icons/heart.svg",
+        "diamond" => "cockpit/icons/diamond.svg",
+        "club" => "cockpit/icons/club.svg",
+        "caret" => "cockpit/icons/caret.svg",
         _ => "cockpit/icons/check.svg",
     }
     .into();
@@ -74,6 +81,131 @@ pub fn tracked(text: &str, size_px: f32, em: f32) -> Div {
         });
     }
     row
+}
+
+/// [`tracked`] text that wraps between words.
+pub fn tracked_wrap(text: &str, size_px: f32, em: f32) -> Div {
+    let space = size_px * (MONO_ADVANCE + em);
+    div()
+        .flex()
+        .flex_wrap()
+        .gap_x(px(space))
+        .children(text.split(' ').map(|word| tracked(word, size_px, em)))
+}
+
+/// A drop shadow straight down.
+pub fn shadow(color: Tint, y: f32, blur: f32) -> Vec<BoxShadow> {
+    vec![BoxShadow {
+        color: color.into(),
+        offset: point(px(0.), px(y)),
+        blur_radius: px(blur),
+        spread_radius: px(0.),
+    }]
+}
+
+/// The size of a card [`tile`].
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Tile {
+    /// The board and hero's hand on the felt.
+    Large,
+    /// Opponents' hands and the hand beside a grade.
+    Small,
+    /// Inline, in a line of text.
+    Tiny,
+}
+
+/// The icon of a suit (the fonts have no suit symbols).
+pub fn suit_icon(suit: Suit) -> &'static str {
+    match suit {
+        Suit::SPADES => "spade",
+        Suit::HEARTS => "heart",
+        Suit::DIAMONDS => "diamond",
+        _ => "club",
+    }
+}
+
+/// A card as a colored tile, one color per suit (`None`: face down),
+/// drawn `s` times its size.
+pub fn tile(card: Option<Card>, size: Tile, s: f32, tp: &TablePal) -> Div {
+    let (w, h, radius, rank, pip) = match size {
+        Tile::Large => (56., 76., 6., 31., 21.),
+        Tile::Small => (30., 40., 4., 16., 11.),
+        Tile::Tiny => (20., 24., 3., 12., 8.),
+    };
+    let base = div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .w(px(w * s))
+        .h(px(h * s))
+        .rounded(px(radius * s))
+        .overflow_hidden();
+    let Some(card) = card else {
+        let [a, b] = tp.back;
+        return base
+            .bg(a)
+            .border_1()
+            .border_color(tp.back_edge)
+            .child(stripes(b, 4. * s));
+    };
+    let suit = card.suit();
+    let ink = if suit == Suit::DIAMONDS {
+        tp.tile_diamonds_text
+    } else {
+        tp.tile_text
+    };
+    let name = suit_icon(suit);
+    base.bg(tp.tiles[usize::from(suit.index())])
+        .border_1()
+        .border_color(tp.tile_edge)
+        .when(size != Tile::Tiny, |d| {
+            d.flex_col()
+                .gap(px(s))
+                .shadow(shadow(tp.shadow, 4. * s, 10. * s))
+        })
+        .child(
+            div()
+                .font_family(MONO)
+                .font_weight(FontWeight::BOLD)
+                .text_size(px(rank * s))
+                .line_height(px(rank * s))
+                .text_color(ink)
+                .child(SharedString::from(card.rank().to_char().to_string())),
+        )
+        .child(icon(name, pip * s, ink))
+}
+
+/// Diagonal stripes of `color`, `band` wide with the same gap, over the
+/// whole box.
+fn stripes(color: Tint, band: f32) -> impl IntoElement {
+    canvas(
+        |_, _, _| {},
+        move |bounds: Bounds<Pixels>, _, window, _| {
+            let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+            // A 45° band's horizontal footprint.
+            let step = band * std::f32::consts::SQRT_2;
+            let mut x = -h;
+            while x < w {
+                let mut b = PathBuilder::fill();
+                let at =
+                    |dx: f32, dy: f32| point(bounds.origin.x + px(dx), bounds.origin.y + px(dy));
+                b.move_to(at(x, h));
+                b.line_to(at(x + h, 0.));
+                b.line_to(at(x + h + step, 0.));
+                b.line_to(at(x + step, h));
+                b.close();
+                if let Ok(path) = b.build() {
+                    window.paint_path(path, color);
+                }
+                x += 2. * step;
+            }
+        },
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full()
 }
 
 /// A small upper-case caption.

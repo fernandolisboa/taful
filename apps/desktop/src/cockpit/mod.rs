@@ -1,21 +1,28 @@
 //! The Cockpit visual style (D19): dense and data-first. An icon rail and a
-//! status bar with today's numbers frame every screen; home is a dashboard
-//! and the lessons are one column per track. Everything else is Classic's,
-//! drawn with Cockpit's colors (see `style.rs` for how styles plug in).
+//! status bar with today's numbers frame every screen; home is a dashboard,
+//! the lessons are one column per track, and the table sits beside the
+//! evaluation of each decision and the range it was made in. Everything
+//! else is Classic's, drawn with Cockpit's colors (see `style.rs` for how
+//! styles plug in).
 
 pub use crate::classic::*;
 
+mod eval;
+mod felt;
 mod frame;
 mod home;
 mod kit;
 mod lessons;
+mod line;
 mod pal;
 mod state;
+mod table;
 
 pub use frame::frame;
 pub use home::home;
 pub use lessons::lessons;
 pub use state::ShellState;
+pub use table::{TableState, table};
 
 use gpui::{Context, KeyDownEvent, Window};
 
@@ -23,8 +30,8 @@ use crate::screen::Screen;
 use crate::screens::table::Mode;
 use crate::shell::Shell;
 
-/// Not offered in settings until the table is built.
-pub const READY: bool = false;
+/// Offered in settings.
+pub const READY: bool = true;
 
 macro_rules! assets {
     ($($path:literal),* $(,)?) => {
@@ -45,6 +52,11 @@ pub const ASSETS: &[(&str, &[u8])] = assets![
     "cockpit/icons/logo-knot.svg",
     "cockpit/icons/lock.svg",
     "cockpit/icons/check.svg",
+    "cockpit/icons/spade.svg",
+    "cockpit/icons/heart.svg",
+    "cockpit/icons/diamond.svg",
+    "cockpit/icons/club.svg",
+    "cockpit/icons/caret.svg",
 ];
 
 /// Inter and JetBrains Mono (SIL Open Font License, texts beside the files).
@@ -137,6 +149,7 @@ pub fn key(
             Some((_, to)) => *to,
             None => return false,
         },
+        (Screen::Table, k) => return shell.table.update(cx, |t, cx| table::key(t, k, cx)),
         _ => return false,
     };
     go(shell, to, window, cx);
