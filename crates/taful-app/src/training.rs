@@ -660,6 +660,11 @@ impl App {
     /// least one mistake, by total EV loss. Buckets against a profile this
     /// build no longer ships are left out (they cannot be drilled).
     pub fn leaks(&mut self) -> Result<Vec<Leak>> {
+        self.leaks_top(TOP_LEAKS)
+    }
+
+    /// Like [`App::leaks`], with the number of leaks chosen by the caller.
+    pub fn leaks_top(&mut self, n: usize) -> Result<Vec<Leak>> {
         let trainers = self.trainers()?;
         Ok(self
             .store
@@ -681,7 +686,7 @@ impl App {
                 })
             })
             .filter(|l| trainers.knows_opponent(l.bucket.opponent.as_deref()))
-            .take(TOP_LEAKS)
+            .take(n)
             .collect())
     }
 

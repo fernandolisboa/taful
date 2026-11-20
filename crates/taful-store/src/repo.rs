@@ -986,7 +986,7 @@ pub struct Hold<'a> {
 impl<'a> Hold<'a> {
     /// The values of [`HOLD_FILTER`]'s parameters; `None` holds nothing
     /// (a NULL kind matches no row).
-    fn params(hold: Option<&Hold<'a>>) -> (Option<&'a str>, &'a str, &'a str) {
+    pub(crate) fn params(hold: Option<&Hold<'a>>) -> (Option<&'a str>, &'a str, &'a str) {
         hold.map_or((None, "", ""), |h| {
             (Some(h.kind), h.key_glob, h.unless_glob)
         })
@@ -995,12 +995,12 @@ impl<'a> Hold<'a> {
 
 /// SQL for a [`Hold`], bound by name: `:hold_kind`, `:key_glob`,
 /// `:unless_glob`.
-const HOLD_FILTER: &str =
+pub(crate) const HOLD_FILTER: &str =
     "NOT (kind IS :hold_kind AND item_key GLOB :key_glob AND item_key NOT GLOB :unless_glob)";
 
 /// `kind IN (...)` for a fixed set of kind ids (never user input; quoted
 /// defensively anyway), or `1` for all kinds.
-fn kind_filter(kinds: &[&str]) -> String {
+pub(crate) fn kind_filter(kinds: &[&str]) -> String {
     if kinds.is_empty() {
         return "1".into();
     }

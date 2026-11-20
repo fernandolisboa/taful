@@ -308,6 +308,14 @@ impl FullHand {
         }
     }
 
+    /// The chart node, while the hand is before the flop.
+    pub(crate) fn preflop_node(&self) -> Option<NodeId> {
+        match &self.tree {
+            Some(Tree::Preflop(n)) => Some(*n),
+            _ => None,
+        }
+    }
+
     /// The postflop walk, once the hand is on the flop or later.
     pub fn walk(&self) -> Option<&Walk> {
         match &self.tree {

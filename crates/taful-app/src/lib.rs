@@ -16,15 +16,19 @@
 //! - [`update`]: auto-update preferences and release selection (D18).
 //! - [`style`]: the visual styles and their fixed colors (D19);
 //!   [`overview`]: the fuller home screen some of them show.
+//! - [`dashboard`] and [`insight`]: the aggregates behind a dashboard and
+//!   the range, equity and hand description behind a decision.
 //! - [`today`]: the day at a glance, for a home screen made of cards.
 
 pub mod appearance;
 pub mod bots;
 pub mod calc_trainer;
 pub mod content;
+pub mod dashboard;
 pub mod fmt;
 pub mod hand;
 pub mod i18n;
+pub mod insight;
 pub mod layout;
 pub mod layout_edit;
 pub mod lessons;

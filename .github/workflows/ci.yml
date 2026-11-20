@@ -136,7 +136,7 @@ jobs:
           $env:TAFUL_UPDATE_URL = "http://127.0.0.1:9/none"
           Add-Type -AssemblyName System.Windows.Forms, System.Drawing
           # Once per visual style (D19): each embeds its own fonts and art.
-          foreach ($style in "classic", "salao", "baralho") {
+          foreach ($style in "classic", "salao", "cockpit", "baralho") {
             $env:TAFUL_STYLE = $style
             $shot = if ($style -eq "classic") { "screenshot.png" } else { "screenshot-$style.png" }
             $app = Start-Process -FilePath target\release\taful.exe -PassThru `

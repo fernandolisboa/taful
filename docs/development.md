@@ -187,6 +187,18 @@ Writing a style's module, mind how the hooks resolve:
 - A style's `table` arranges the screen itself and takes its pieces from `TableScreen`: `question_parts`/`hand_parts` (the felt, the action buttons and the side panel, drawn through the felt hooks), `mode_segments`, `kind_chips`, `postflop_chips` and `opponent_chips` (the controls, as widgets of the style), `story_columns` (the hand's story as data, for the `story` hook) and `repeat_spot` (the answered spot again; the second answer is graded and not stored). `render_classic` is the grid of panels: the layout edit mode and layouts other than the built-in default need it.
 - `FELT_SCALE` sizes a felt that is not in a layout cell (reviews, hand review): `felt::natural_scale(ui)`.
 
+### Cockpit
+
+- `apps/desktop/src/cockpit/`: `frame.rs` (icon rail, status bar), `home.rs` (dashboard), `lessons.rs`, and the table in four files: `table.rs` (pickers, action bar, keys, the scene the panels draw from), `felt.rs` (the stage, at the design's coordinates and scaled as a whole), `line.rs` (hand line) and `eval.rs` (evaluation and range). `kit.rs` holds the shared pieces and `pal.rs` every color.
+- Its numbers come from two `taful-app` services: `dashboard` (home: decisions by day, leaks, preflop deviation, review forecast) and `insight` (table: hero's range at a decision, the reference mix per hand class, equity against the last aggressor's range, pot odds). `insight.rs` documents each definition.
+- The table shows nothing of the strategy before the answer: the range matrix is only in or out of range, and the frequencies, EVs and equity appear once the decision is graded.
+- After an answer the felt shows hero's action played; `‹` on the hand line steps back to the table the decision was made on, then through the replay.
+- Keys on the table: `F` fold, `C` check or call, `R` the bet or raise (`1`, `2`, `3`… when there are several sizes), `A` all-in, `Space` next deal or skip the replay, `Backspace` replay again.
+- The bundled fonts have no suit symbols: draw a suit with `kit::suit_icon`.
+- The panels are fixed. "Editar layout" is shown as designed and does nothing in Cockpit yet (the layout editor arranges Classic's panels).
+- The status bar has no button to replay a screen's tour (the mockup has none): tours are reset in Settings.
+- The color lint matches substrings: `anchored()` reads as `red()`, so `table.rs` imports it under another name.
+
 ## Adding a string
 
 1. Add the key to `i18n/en-US/<file>.ftl` and `i18n/pt-BR/<file>.ftl`.
