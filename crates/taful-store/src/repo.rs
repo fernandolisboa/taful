@@ -875,6 +875,32 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
+    /// The grades of one leak bucket's decisions, oldest first, over the
+    /// same window as [`Store::bucket_stats`].
+    pub fn bucket_grades(&self, window: u32, bucket: &BucketStats) -> Result<Vec<String>> {
+        let mut stmt = self.conn().prepare(
+            "SELECT grade
+             FROM (SELECT * FROM decisions
+                   WHERE deleted_at IS NULL AND spot IS NOT NULL
+                   ORDER BY created_at DESC, id DESC LIMIT ?1)
+             WHERE spot = ?2 AND street IS ?3 AND node_type IS ?4 AND texture IS ?5
+                 AND coalesce(opponent, 'reference') = ?6
+             ORDER BY created_at, id",
+        )?;
+        let rows = stmt.query_map(
+            params![
+                window,
+                bucket.spot,
+                bucket.street,
+                bucket.node_type,
+                bucket.texture,
+                bucket.opponent
+            ],
+            |r| r.get(0),
+        )?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     /// Counts a line that left the library (spec §10.2, `solve_candidates`).
     pub fn note_solve_candidate(&self, config_key: &str, line: &str, history: &str) -> Result<()> {
         let now = self.now();
@@ -1291,6 +1317,12 @@ mod tests {
         assert_eq!(b.len(), 2);
         assert_eq!((b[1].opponent.as_str(), b[1].decisions), ("nit", 1));
         assert_eq!((b[0].opponent.as_str(), b[0].decisions), ("reference", 3));
+
+        // A bucket's grades, oldest first, over the same window.
+        let grades = s.bucket_grades(100, &b[0]).unwrap();
+        assert_eq!((grades.len(), grades[0].as_str()), (3, "best"));
+        assert_eq!(s.bucket_grades(100, &b[1]).unwrap(), ["mistake"]);
+        assert!(s.bucket_grades(0, &b[0]).unwrap().is_empty(), "window");
 
         // Foreign keys are enforced.
         assert!(
