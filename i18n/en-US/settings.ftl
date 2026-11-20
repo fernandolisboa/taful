@@ -75,10 +75,11 @@ settings-animations-reduced = Reduced
 settings-animations-off = Off
 settings-animation-speed = Animation speed
 settings-animation-speed-body = How fast the animations run and the table replays the action up to your turn.
+settings-animation-speed-body-off = With animations off, this only sets the pace of the table replay up to your turn.
 settings-animation-speed-slow = Slow
 settings-animation-speed-normal = Normal
 settings-animation-speed-fast = Fast
-settings-animation-speed-fastest = Very fast
+settings-animation-speed-very-fast = Very fast
 
 # Tabs (D18).
 settings-tab-general = General

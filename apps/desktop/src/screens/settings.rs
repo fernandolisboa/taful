@@ -904,7 +904,16 @@ impl Shell {
             let speed = crate::motion::speed();
             card(&ui, &p)
                 .child(title(ui.i18n.tr("settings-animation-speed"), &ui))
-                .child(muted(ui.i18n.tr("settings-animation-speed-body"), &ui, &p))
+                .child(muted(
+                    ui.i18n
+                        .tr(if crate::motion::level() == crate::motion::Motion::Off {
+                            "settings-animation-speed-body-off"
+                        } else {
+                            "settings-animation-speed-body"
+                        }),
+                    &ui,
+                    &p,
+                ))
                 .child(
                     div().flex().child(
                         crate::widgets::segmented(&ui, &p).children(

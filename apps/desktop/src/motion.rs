@@ -58,18 +58,18 @@ pub enum Speed {
     Slow,
     Normal,
     Fast,
-    Fastest,
+    VeryFast,
 }
 
 impl Speed {
-    pub const ALL: [Speed; 4] = [Speed::Slow, Speed::Normal, Speed::Fast, Speed::Fastest];
+    pub const ALL: [Speed; 4] = [Speed::Slow, Speed::Normal, Speed::Fast, Speed::VeryFast];
 
     /// The stored setting value (unknown or unset = normal).
     pub fn from_setting(s: Option<&str>) -> Speed {
         match s {
             Some("slow") => Speed::Slow,
             Some("fast") => Speed::Fast,
-            Some("fastest") => Speed::Fastest,
+            Some("very_fast") => Speed::VeryFast,
             _ => Speed::Normal,
         }
     }
@@ -79,7 +79,7 @@ impl Speed {
             Speed::Slow => "slow",
             Speed::Normal => "normal",
             Speed::Fast => "fast",
-            Speed::Fastest => "fastest",
+            Speed::VeryFast => "very_fast",
         }
     }
 
@@ -89,7 +89,7 @@ impl Speed {
             Speed::Slow => "settings-animation-speed-slow",
             Speed::Normal => "settings-animation-speed-normal",
             Speed::Fast => "settings-animation-speed-fast",
-            Speed::Fastest => "settings-animation-speed-fastest",
+            Speed::VeryFast => "settings-animation-speed-very-fast",
         }
     }
 
@@ -99,7 +99,7 @@ impl Speed {
             Speed::Slow => 1.6,
             Speed::Normal => 1.0,
             Speed::Fast => 0.6,
-            Speed::Fastest => 0.3,
+            Speed::VeryFast => 0.3,
         }
     }
 
