@@ -113,6 +113,8 @@ fn no_color_literals_outside_theme_module() {
         }
         let text = fs::read_to_string(&path).unwrap();
         for (n, line) in code_lines(&text) {
+            // `-> Rgba {` opens a function that returns a color.
+            let line = &line.replace("-> Rgba {", "").replace("-> Hsla {", "");
             let found = COLOR_CALLS
                 .iter()
                 .find(|c| line.contains(*c))

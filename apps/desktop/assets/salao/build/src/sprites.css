@@ -1,0 +1,94 @@
+/* The Salão mockup's own rules for everything the app draws from an image
+   (D19): what GPUI cannot paint itself (radial and conic gradients, blurred
+   inset shadows, rotated elements). Copied from the approved mockup
+   (design-directions/src/salao.css and the three salao-*.html pages); keep
+   the values in step with content/styles/salao.json. */
+@font-face{font-family:'Fraunces';font-style:normal;font-weight:300 800;font-display:block;src:url(fonts/fraunces-roman.woff2) format('woff2')}
+@font-face{font-family:'Fraunces';font-style:italic;font-weight:300 800;font-display:block;src:url(fonts/fraunces-italic.woff2) format('woff2')}
+:root{
+  --bg:#091114; --bg2:#0d181c; --side:#0a1316;
+  --surf:#121e23; --surf2:#172830; --raised:#1d343d; --line:rgba(243,234,211,.08); --line2:rgba(243,234,211,.14);
+  --text:#f3ead3; --muted:#9db0ac; --dim:#6f8581;
+  --gold:#e0a83a; --gold2:#f2c869; --gold-d:#8a6420; --on-gold:#12100a;
+  --felt:#0f5257; --felt-hi:#1a777a; --felt-lo:#093539;
+  --card:#f6efdc; --ink:#1b2630; --hearts:#c4621c; --diamonds:#b08200; --clubs:#1e7a52;
+  --best:#46c9a6; --correct:#9fcd6a; --inacc:#e8cf5a; --mistake:#ee8a42; --blunder:#b994f2;
+  --serif:"Fraunces", "DejaVu Serif", serif; --sans:"Inter", sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:transparent}
+body{font-family:var(--sans);color:var(--text);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+/* One sprite: a box of the image's size, the drawing placed inside it. */
+.box{position:relative;overflow:hidden;margin:0 0 40px 40px}
+.box > *{position:absolute}
+
+/* ---------- window background ---------- */
+.bg{width:1600px;height:900px;background:radial-gradient(1200px 700px at 62% 18%, #12262c 0%, var(--bg2) 45%, var(--bg) 100%)}
+
+/* ---------- playing cards ---------- */
+.pc{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;width:56px;height:78px;border-radius:7px;
+  background:linear-gradient(160deg,#fffaf0 0%, var(--card) 60%, #e9dfc4 100%);box-shadow:0 1px 0 rgba(255,255,255,.9) inset, 0 8px 16px rgba(0,0,0,.45), 0 1px 2px rgba(0,0,0,.5);
+  font-style:normal;color:var(--ink);fill:var(--ink);flex:none}
+.pc b{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1;font-variation-settings:"opsz" 144}
+.pc .pip{width:22px;height:22px}
+.pc.s-h{color:var(--hearts);fill:var(--hearts)} .pc.s-d{color:var(--diamonds);fill:var(--diamonds)} .pc.s-c{color:var(--clubs);fill:var(--clubs)}
+.pc.back{background:
+  repeating-linear-gradient(45deg, rgba(224,168,58,.16) 0 2px, transparent 2px 7px),
+  repeating-linear-gradient(-45deg, rgba(224,168,58,.16) 0 2px, transparent 2px 7px),
+  linear-gradient(160deg,#235a78,#163e55);border:2.5px solid #f1e8d0;box-shadow:0 8px 16px rgba(0,0,0,.45)}
+.pc.lg{width:68px;height:94px;border-radius:8px}.pc.lg b{font-size:36px}.pc.lg .pip{width:26px;height:26px}
+.pc.xl{width:92px;height:128px;border-radius:10px}.pc.xl b{font-size:50px}.pc.xl .pip{width:36px;height:36px}
+.pc.sm{width:38px;height:52px;border-radius:5px;gap:0}.pc.sm b{font-size:20px}.pc.sm .pip{width:15px;height:15px}
+.pc.xs{width:22px;height:30px;border-radius:3.5px;gap:0;box-shadow:0 2px 4px rgba(0,0,0,.4)}.pc.xs b{font-size:12.5px}.pc.xs .pip{width:9px;height:9px}
+/* A card sprite is the blank face (the app sets rank and pip) without its
+   outer shadows (the app casts them). */
+.face{box-shadow:0 1px 0 rgba(255,255,255,.9) inset !important}
+.face.xs,.pc.back.face{box-shadow:none !important}
+
+/* ---------- chips ---------- */
+.chips{display:inline-block;position:relative;width:26px;height:calc(26px + (var(--n) - 1) * 4px)}
+.chip{position:absolute;left:0;bottom:calc(var(--i) * 4px);width:26px;height:26px;border-radius:50%;
+  background:radial-gradient(circle, var(--cc) 0 46%, rgba(255,255,255,.75) 47% 52%, transparent 53%),
+    repeating-conic-gradient(var(--cc) 0 22deg, #f5ecd6 22deg 45deg);
+  box-shadow:0 2px 0 var(--cd), 0 4px 5px rgba(0,0,0,.45)}
+.chip.c1{--cc:#d9cfb4;--cd:#9a9078}.chip.c5{--cc:#c4621c;--cd:#7f3d0e}.chip.c25{--cc:#1e7a52;--cd:#0f4a31}.chip.c100{--cc:#1b2630;--cd:#0a1116}.chip.c500{--cc:#6b4fa0;--cd:#412e68}
+
+/* ---------- home: the hero's art ----------
+   The mockup's panel has room for 441px of the 470px drawing: the text
+   column pushes it right and the panel's edge cuts it. The image is that
+   visible part. */
+.hero-clip{width:441px;height:236px;border-radius:0 13px 13px 0;overflow:hidden}
+.hero-r{width:470px;height:236px;position:relative;
+  background:radial-gradient(360px 240px at 58% 42%, var(--felt-hi) 0%, var(--felt) 45%, var(--felt-lo) 100%)}
+.hero-r::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg, #15252c 0%, rgba(21,37,44,.75) 14%, transparent 40%);z-index:1}
+.hero-r::after{content:"";position:absolute;inset:0;box-shadow:inset 0 0 60px rgba(0,0,0,.55)}
+.fan{position:absolute;left:214px;top:178px;z-index:2}
+.fan .pc{position:absolute;left:-46px;top:-150px;transform-origin:50% 190%;box-shadow:-6px 12px 22px rgba(0,0,0,.45), 0 1px 0 rgba(255,255,255,.9) inset;
+  align-items:flex-start;justify-content:flex-start;padding:9px 0 0 10px;gap:3px}
+.fan .pc b{font-size:34px}.fan .pc .pip{width:24px;height:24px;margin-left:1px}
+.fan .pc:nth-child(1){transform:rotate(-30deg)}.fan .pc:nth-child(2){transform:rotate(-12deg)}
+.fan .pc:nth-child(3){transform:rotate(6deg)}.fan .pc:nth-child(4){transform:rotate(24deg)}
+.pile{position:absolute;z-index:3;display:flex;gap:4px;align-items:flex-end}
+.pile .chips{transform:scale(1.45);transform-origin:bottom left;margin-right:14px}
+
+/* ---------- table: rail and felt (outer shadows are the app's) ---------- */
+.rail{width:780px;height:420px;border-radius:210px;padding:22px;
+  background:linear-gradient(175deg,#4a3524 0%, #2e2015 38%, #1b120b 100%);
+  box-shadow:inset 0 2px 1px rgba(255,220,160,.22), inset 0 -3px 6px rgba(0,0,0,.6)}
+.rail::before{content:"";position:absolute;inset:9px;border-radius:200px;border:1px solid rgba(224,168,58,.35)}
+.felt{width:100%;height:100%;border-radius:190px;position:relative;
+  background:radial-gradient(420px 230px at 50% 44%, #1c8185 0%, var(--felt) 52%, #0a3d42 100%);
+  box-shadow:inset 0 10px 26px rgba(0,0,0,.6), inset 0 0 0 2px rgba(0,0,0,.35)}
+.felt::before{content:"";position:absolute;inset:40px;border-radius:150px;border:1.5px solid rgba(243,234,211,.09)}
+
+/* ---------- discs ---------- */
+.med-done{width:56px;height:56px;border-radius:50%;background:radial-gradient(circle at 35% 28%,#f6d98a,var(--gold) 58%,#a87618)}
+.av-hero{width:40px;height:40px;border-radius:50%;background:linear-gradient(180deg,#f4cd72,var(--gold) 60%,#c98f24);box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
+.dealer{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;color:#3a2a10;
+  background:radial-gradient(circle at 35% 30%,#fff7e0,#e9dcb8);box-shadow:0 2px 0 #9c8c62,0 5px 8px rgba(0,0,0,.5)}
+/* The verdict's seal; --hi, --c and --lo are the grade's light, base and
+   dark, --ink what is drawn on it. The glow around it is the app's. */
+.seal{width:60px;height:60px;border-radius:50%;display:grid;place-items:center;color:var(--ink);
+  background:radial-gradient(circle at 35% 28%,var(--hi),var(--c) 60%,var(--lo));box-shadow:inset 0 -3px 5px rgba(0,0,0,.2)}
+.seal svg{width:30px;height:30px}
+.seal b{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1;font-variation-settings:"opsz" 144;letter-spacing:-.02em}
