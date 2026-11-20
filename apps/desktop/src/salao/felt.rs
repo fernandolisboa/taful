@@ -24,7 +24,30 @@ pub const TOP: f32 = 28.;
 pub const PANEL_W: f32 = 404.;
 /// A table that stands alone (the review screens) is drawn this many
 /// times the size Classic gives it: the pills and their type need it.
+/// A side panel narrower than this has no room for the mockup's rows:
+/// the verdict, the options and the replay's controls take their small
+/// form.
+const NARROW_PANEL_W: f32 = 380.;
+
+thread_local! {
+    /// The width of the side panel being drawn.
+    static PANEL: std::cell::Cell<f32> = const { std::cell::Cell::new(PANEL_W) };
+}
+
+/// Says how wide the side panel drawn next is (the table screen's shrinks
+/// in a small window).
+pub fn set_panel_width(w: f32) {
+    PANEL.with(|c| c.set(w));
+}
+
+/// Whether the side panel being drawn is a narrow one.
+pub fn narrow_panel() -> bool {
+    PANEL.with(std::cell::Cell::get) < NARROW_PANEL_W
+}
+
 pub const FELT_SCALE: f32 = 1.4;
+/// The width of that table at scale 1 (see [`felt_table`]).
+pub const FELT_WIDTH: f32 = W * TABLE_H / H;
 
 /// Where a seat and its things sit: centers, in zone coordinates.
 #[derive(Clone, Copy)]
@@ -755,6 +778,7 @@ pub fn felt_card(_ui: &Ui, p: &Palette, c: Option<Card>, s: f32) -> Div {
 
 /// The side panel next to a table.
 pub fn felt_panel(ui: &Ui, p: &Palette) -> Div {
+    set_panel_width(PANEL_W);
     kit::panel(p)
         .w(px(PANEL_W))
         .flex_none()
@@ -854,31 +878,43 @@ pub fn explanation(ui: &Ui, p: &Palette, d: &Explain<'_>) -> Div {
         (None, None) => what.child(piece(name(d.chosen))),
     };
 
+    // A narrow panel: a smaller seal and grade, the EV lost under them
+    // on a line of its own, no bars in the options.
+    let narrow = narrow_panel();
+    let (seal_size, grade_size) = if narrow { (44., 26.) } else { (60., 34.) };
+    let loss_label = kit::SANS_R14
+        .text(10.5, 2.)
+        .text_color(c.dim)
+        .child(i18n.tr("salao-ev-loss").to_uppercase());
+    let loss = |size: f32| {
+        kit::LOSS.text(size, kit::LEADING).child(format!(
+            "{} {}",
+            num(ui, d.ev_loss_bb, 2),
+            i18n.tr("salao-bb")
+        ))
+    };
     let verdict = div()
         .flex()
         .items_center()
-        .pb(px(18.))
-        .border_b_1()
-        .border_color(c.line)
         .child(
             div()
                 .relative()
                 .flex_none()
-                .size(px(60.))
-                .rounded(px(30.))
+                .size(px(seal_size))
+                .rounded(px(seal_size / 2.))
                 .shadow(vec![kit::shadow(alpha(grade, 0.35), 0., 0., 30., 0.)])
                 .child(
                     div()
                         .absolute()
                         .top(px(-4.))
                         .left(px(-4.))
-                        .size(px(68.))
-                        .rounded(px(34.))
+                        .size(px(seal_size + 8.))
+                        .rounded(px(seal_size / 2. + 4.))
                         .border(px(4.))
                         .border_color(alpha(grade, 0.16)),
                 )
                 .child(
-                    kit::image(seal(d.grade), 60., 60.)
+                    kit::image(seal(d.grade), seal_size, seal_size)
                         .absolute()
                         .top_0()
                         .left_0(),
@@ -887,38 +923,59 @@ pub fn explanation(ui: &Ui, p: &Palette, d: &Explain<'_>) -> Div {
         .child(
             div()
                 .ml(px(16.))
-                .flex_none()
+                .map(|d| {
+                    if narrow {
+                        d.flex_1().min_w_0().overflow_hidden()
+                    } else {
+                        d.flex_none()
+                    }
+                })
                 .child(
                     kit::H1
-                        .text(34., 1.)
+                        .text(grade_size, 1.)
                         .text_color(grade)
                         .whitespace_nowrap()
                         .child(i18n.tr(&grade_key(d.grade))),
                 )
                 .child(what),
-        )
-        .child(div().flex_1().min_w(px(16.)))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .flex_none()
-                .items_end()
-                .whitespace_nowrap()
-                // The label sits on the baseline of a body line: 14 px
-                // down, which this leading gives it.
-                .child(
-                    kit::SANS_R14
-                        .text(10.5, 2.)
-                        .text_color(c.dim)
-                        .child(i18n.tr("salao-ev-loss").to_uppercase()),
-                )
-                .child(kit::LOSS.text(24., kit::LEADING).child(format!(
-                    "{} {}",
-                    num(ui, d.ev_loss_bb, 2),
-                    i18n.tr("salao-bb")
-                ))),
         );
+    let verdict = if narrow {
+        div()
+            .flex()
+            .flex_col()
+            .pb(px(12.))
+            .border_b_1()
+            .border_color(c.line)
+            .child(verdict)
+            .child(
+                div()
+                    .mt(px(8.))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .whitespace_nowrap()
+                    .child(loss_label)
+                    .child(loss(20.)),
+            )
+    } else {
+        verdict
+            .pb(px(18.))
+            .border_b_1()
+            .border_color(c.line)
+            .child(div().flex_1().min_w(px(16.)))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_none()
+                    .items_end()
+                    .whitespace_nowrap()
+                    // The label sits on the baseline of a body line: 14 px
+                    // down, which this leading gives it.
+                    .child(loss_label)
+                    .child(loss(24.)),
+            )
+    };
 
     let rows = d.actions.iter().enumerate().map(|(i, _)| {
         let freq = d.hand_freqs.get(i).copied();
@@ -946,8 +1003,13 @@ pub fn explanation(ui: &Ui, p: &Palette, d: &Explain<'_>) -> Div {
             .child(
                 div()
                     .relative()
-                    .w(px(104.))
-                    .flex_none()
+                    .map(|d| {
+                        if narrow {
+                            d.flex_1().min_w_0().overflow_hidden()
+                        } else {
+                            d.w(px(104.)).flex_none()
+                        }
+                    })
                     .whitespace_nowrap()
                     .child(kit::sans_text(13.5, FontWeight::NORMAL).child(name(i)))
                     .children(mark.map(|(text, color)| {
@@ -957,17 +1019,19 @@ pub fn explanation(ui: &Ui, p: &Palette, d: &Explain<'_>) -> Div {
                             .child(text)
                     })),
             )
-            .child(
-                kit::bar(
-                    freq.unwrap_or(0.),
-                    8.,
-                    alpha(p.text, 0.07),
-                    c.bar_start,
-                    c.gold2,
+            .when(!narrow, |r| {
+                r.child(
+                    kit::bar(
+                        freq.unwrap_or(0.),
+                        8.,
+                        alpha(p.text, 0.07),
+                        c.bar_start,
+                        c.gold2,
+                    )
+                    .relative()
+                    .flex_1(),
                 )
-                .relative()
-                .flex_1(),
-            )
+            })
             .child(
                 div()
                     .relative()
@@ -1041,11 +1105,14 @@ pub fn explanation(ui: &Ui, p: &Palette, d: &Explain<'_>) -> Div {
         .child(
             section(
                 i18n.tr("salao-options"),
-                Some(i18n.tr(if d.vs_profile.is_some() {
-                    "salao-options-note-profile"
-                } else {
-                    "salao-options-note"
-                })),
+                // The note needs the mockup's width beside the heading.
+                (!narrow).then(|| {
+                    i18n.tr(if d.vs_profile.is_some() {
+                        "salao-options-note-profile"
+                    } else {
+                        "salao-options-note"
+                    })
+                }),
             )
             .mt(px(18.))
             .mb(px(8.)),

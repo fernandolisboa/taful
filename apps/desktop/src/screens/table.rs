@@ -10,6 +10,7 @@
 //!
 //! The layout edit mode (#22) lives in `table_edit.rs`.
 
+use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -86,6 +87,13 @@ pub struct TableScreen {
     pub(crate) editing: Option<edit::Editing>,
     /// Grid cell size of the last frame, in pixels (edit-mode drags).
     pub(crate) cell: f32,
+    /// The room the next frame's grid has, in pixels, when a style other
+    /// than Classic draws the grid inside its own chrome (taken by
+    /// [`Self::render_classic`]).
+    pub(crate) grid_room: Option<(f32, f32)>,
+    /// The height of the controls' content on the last frame: in a small
+    /// window they outgrow their panel and push the panels under it down.
+    pub(crate) controls_h: Rc<Cell<f32>>,
     /// Background work in flight, if any.
     pub(crate) busy: Option<Busy>,
     /// Bumped by every deal and action; a background result for an older
@@ -185,8 +193,10 @@ pub(crate) enum Done {
     Acted(Result<FullHand, String>),
 }
 
-/// Smallest grid cell in pixels: below it the window scrolls instead.
-pub(crate) const MIN_CELL: f32 = 14.;
+/// Smallest grid cell in pixels: below it the window scrolls instead. The
+/// built-in layouts are 48 cells wide, which at this size fits the pane of
+/// the smallest window beside Classic's navigation.
+pub(crate) const MIN_CELL: f32 = 13.;
 /// Room the shell takes above the screen (title and gap), in pixels.
 pub(crate) const TITLE_ROOM: f32 = 56.;
 
@@ -245,6 +255,8 @@ impl TableScreen {
             layout,
             editing: None,
             cell: MIN_CELL,
+            grid_room: None,
+            controls_h: Rc::default(),
             busy: None,
             generation: 0,
             _job: None,
@@ -1620,6 +1632,7 @@ impl TableScreen {
         let show_opponents = matches!(self.mode, Mode::Spot | Mode::Postflop | Mode::Hand);
         div()
             .relative()
+            .child(measure_height(self.controls_h.clone()))
             .child(crate::tour::anchor("table_controls"))
             .flex()
             .flex_col()
@@ -1712,10 +1725,39 @@ impl TableScreen {
         let vp = window.viewport_size();
         let editing = self.is_editing();
         let bar = if editing { edit::EDIT_BAR } else { 0. };
-        let w = f32::from(vp.width) - crate::shell::NAV_WIDTH - 2. * th.spacing.xxl;
-        let h = f32::from(vp.height) - 2. * th.spacing.xxl - TITLE_ROOM - bar;
+        let (w, h) = self.grid_room.take().unwrap_or((
+            f32::from(vp.width) - crate::shell::NAV_WIDTH - 2. * th.spacing.xxl,
+            f32::from(vp.height) - 2. * th.spacing.xxl - TITLE_ROOM,
+        ));
+        let h = h - bar;
         let layout = self.shown_layout();
-        let cell = layout.cell_size(w, h, MIN_CELL);
+        // Controls taller than their panel (a small window: the pickers
+        // keep their size and wrap) push the panels under it down, and the
+        // cells shrink to leave them that room. Not while editing: there a
+        // panel is exactly its cells.
+        let controls = layout
+            .panel(PanelId::Controls)
+            .filter(|_| !editing)
+            .map(|c| (c.y + f32::from(c.h), f32::from(c.h)));
+        let mut cell = layout.cell_size(w, h, MIN_CELL);
+        let mut push = 0.;
+        if let Some((_, rows)) = controls {
+            let need = self.controls_h.get();
+            // A smaller cell makes the panel shorter still: a few rounds
+            // settle it.
+            for _ in 0..4 {
+                push = (need - rows * cell).max(0.);
+                cell = layout.cell_size(w, h - push, MIN_CELL);
+            }
+            push = (need - rows * cell).max(0.).ceil();
+        }
+        // The panels that start at or under the controls' bottom edge.
+        let under = |r: Rect| match controls {
+            Some((bottom, _)) if push > 0. && r.y >= bottom * cell - 0.5 => {
+                Rect { y: r.y + push, ..r }
+            }
+            _ => r,
+        };
         self.cell = cell;
         let scale = self
             .panel_rect(&layout, PanelId::Table, cell)
@@ -1729,7 +1771,7 @@ impl TableScreen {
             .relative()
             .flex_none()
             .w(px(cell * f32::from(layout.grid.cols)))
-            .h(px(cell * f32::from(layout.grid.rows)));
+            .h(px(cell * f32::from(layout.grid.rows) + push));
         grid = self.edit_grid(grid, &layout, cell, cx);
         let mut parts = Some(parts);
         let mut controls = Some(controls);
@@ -1738,6 +1780,7 @@ impl TableScreen {
             let Some(r) = self.panel_rect(&layout, id, cell) else {
                 continue;
             };
+            let r = if id == PanelId::Controls { r } else { under(r) };
             let el: Div = match id {
                 PanelId::Controls => match controls.take() {
                     Some(c) => Self::place(r).child(c),
@@ -1808,6 +1851,25 @@ impl TableScreen {
             grid.into_any_element()
         }
     }
+}
+
+/// Writes its parent's height into `height` and asks for one more frame
+/// when it changed (the parent is `relative`).
+pub(crate) fn measure_height(height: Rc<Cell<f32>>) -> impl IntoElement {
+    gpui::canvas(
+        move |bounds, window, _| {
+            let h = f32::from(bounds.size.height);
+            if (height.get() - h).abs() > 0.5 {
+                height.set(h);
+                window.request_animation_frame();
+            }
+        },
+        |_, _, _, _| {},
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full()
 }
 
 /// What the table, actions and explanation panels show.

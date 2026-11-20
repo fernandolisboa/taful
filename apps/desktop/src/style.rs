@@ -15,7 +15,8 @@
 //! - Constants: `READY` (offered in settings), `ASSETS` and `FONTS`
 //!   (embedded files), `FONT_FAMILY` (the window's base font), `WINDOW`
 //!   (preferred size of a new window), `FELT_SCALE` (the size of a table
-//!   that stands alone, against Classic's).
+//!   that stands alone, against Classic's) and `FELT_WIDTH` (that table's
+//!   width, so a narrow window can draw it smaller).
 //! - State: `ShellState` and `TableState`, one slot each on the shell and
 //!   on the table screen, owned by the style.
 //! - Views: `frame` (chrome and content, under the tour and update
@@ -46,13 +47,14 @@ pub fn ready(style: Style) -> bool {
     by_style!(style, READY)
 }
 
-/// The styles settings offers, Classic first.
+/// The styles settings offers: the default first, Classic last.
 pub fn choices() -> Vec<Style> {
     Style::ALL.into_iter().filter(|s| ready(*s)).collect()
 }
 
 /// The saved style, unless `TAFUL_STYLE=<id>` (screenshots, development)
-/// names another. A saved style that is not ready falls back to Classic.
+/// names another. A saved style that is not ready falls back to the
+/// default.
 pub fn startup(saved: Style) -> Style {
     match std::env::var("TAFUL_STYLE")
         .ok()
@@ -60,7 +62,7 @@ pub fn startup(saved: Style) -> Style {
     {
         Some(forced) => forced,
         None if ready(saved) => saved,
-        None => Style::Classic,
+        None => Style::default(),
     }
 }
 
@@ -93,10 +95,14 @@ pub fn fonts() -> impl Iterator<Item = &'static [u8]> {
 mod tests {
     use super::*;
 
+    /// The default style is ready and listed first; Classic stays on
+    /// offer, last.
     #[test]
-    fn classic_is_always_offered_first() {
+    fn the_default_is_offered_first_and_classic_last() {
+        assert!(ready(Style::default()));
+        assert_eq!(choices().first(), Some(&Style::default()));
         assert!(ready(Style::Classic));
-        assert_eq!(choices().first(), Some(&Style::Classic));
+        assert_eq!(choices().last(), Some(&Style::Classic));
     }
 
     /// Asset paths are unique and prefixed with their style's id, so two

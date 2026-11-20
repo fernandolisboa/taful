@@ -254,6 +254,14 @@ pub fn sans_lines(size: f32, weight: FontWeight) -> Div {
     SANS.lines(size, LEADING).font_weight(weight)
 }
 
+/// Body text that wraps where it has to and still takes, on one line, the
+/// box [`sans_text`] gives it: a screen at the mockup's size stays on the
+/// mockup's pixels, and a narrower one wraps.
+pub fn sans_wraps(size: f32, weight: FontWeight) -> Div {
+    let line = size * LEADING;
+    sans_lines(size, weight).mb(px(line - line.round()))
+}
+
 /// An uppercase tracked label.
 pub fn label(face: Face, size: f32, color: Rgba, text: impl Into<SharedString>) -> Div {
     face.text(size, LEADING)

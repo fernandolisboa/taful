@@ -21,6 +21,9 @@ const ROW_H: f32 = 52.;
 const ROW_GAP: f32 = 4.;
 /// From a track's top to the center of its medallion.
 const MEDAL_Y: f32 = 38.;
+/// A column narrower than this lists a track's lessons in one column
+/// instead of the mockup's two.
+const TWO_COLUMNS_W: f32 = 800.;
 
 /// Where a track stands.
 #[derive(Clone, Copy, PartialEq)]
@@ -87,12 +90,16 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             .mt(px(6.))
             .w(px(220.)),
         );
+    // The title's side takes the room the count leaves (its description
+    // wraps in a narrow column).
     let header = div()
         .flex()
         .items_end()
         .justify_between()
-        .child(page_title(shell))
-        .child(overall);
+        .gap(px(24.))
+        .child(page_title(shell).flex_1().min_w_0())
+        .child(overall.flex_none());
+    let two_columns = shell.salao.column >= TWO_COLUMNS_W;
 
     // ---- the tracks ------------------------------------------------------------
     let mut list = div().relative().mt(px(22.)).pl(px(76.)).flex().flex_col();
@@ -120,7 +127,11 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
         // Only the track with the next lesson starts open; a click opens
         // or folds the others.
         let open = stage == Stage::Current || shell.lesson.expanded.contains(&track.id);
-        let rows = count.div_ceil(2);
+        let rows = if two_columns {
+            count.div_ceil(2)
+        } else {
+            count
+        };
         let grid_h = rows as f32 * ROW_H + (rows as f32 - 1.) * ROW_GAP;
 
         let title = kit::TRACK
@@ -239,7 +250,7 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                 .flex()
                 .gap(px(22.))
                 .child(column(left, 0, cx))
-                .child(column(right, rows, cx));
+                .when(two_columns, |d| d.child(column(right, rows, cx)));
             panel = panel.children(bar).child(grid);
         }
         n += count;

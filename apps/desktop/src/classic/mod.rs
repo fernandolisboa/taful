@@ -23,6 +23,10 @@ pub const WINDOW: Option<(f32, f32)> = None;
 /// The scale of a table that stands alone (the review screens), for a
 /// style whose felt needs more room than Classic's.
 pub const FELT_SCALE: f32 = 1.;
+/// The width of that table at scale 1, in window pixels: a pane narrower
+/// than the table at its natural scale gets a smaller one. Zero for a
+/// style that fits its table to the window itself.
+pub const FELT_WIDTH: f32 = crate::felt::TABLE_W;
 
 /// What the style keeps on the shell. (Classic keeps nothing and has no
 /// slot: this is the hook a new style starts with.)

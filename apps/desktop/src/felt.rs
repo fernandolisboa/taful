@@ -117,10 +117,17 @@ pub fn natural_scale(ui: &Ui) -> f32 {
     by_style!(ui.style, FELT_SCALE)
 }
 
-/// Felt, seats, pot and board, at the style's natural scale. `reveal`
-/// shows every live hand (end of hand).
-pub fn table(ui: &Ui, p: &Palette, state: &GameState, hero: Seat, reveal: bool) -> Div {
-    table_scaled(ui, p, state, hero, reveal, natural_scale(ui))
+/// The scale of a table that stands alone in a pane `room` pixels wide:
+/// the style's natural scale, or the one that fits a narrower pane (down
+/// to half of it, where the pane scrolls instead).
+pub fn room_scale(ui: &Ui, room: f32) -> f32 {
+    let natural = natural_scale(ui);
+    let width: f32 = by_style!(ui.style, FELT_WIDTH);
+    if width > 0. {
+        natural.min(room / width).max(natural * 0.5)
+    } else {
+        natural
+    }
 }
 
 /// [`table`] drawn `s` times its normal size (layout panels, spec §15.3).

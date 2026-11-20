@@ -16,6 +16,11 @@ use crate::theme::alpha;
 
 /// The stage at scale 1.
 const STAGE: (f32, f32) = (900., 516.);
+/// The scales the stage is drawn at, and its height at the smallest and at
+/// its natural size.
+const SCALES: (f32, f32) = (0.55, 1.6);
+pub(super) const STAGE_MIN_H: f32 = STAGE.1 * SCALES.0;
+pub(super) const STAGE_H: f32 = STAGE.1;
 const CENTER: (f32, f32) = (450., 249.);
 const POD_W: f32 = 128.;
 /// Where the pot, the board and hero's hand are centered.
@@ -269,7 +274,7 @@ fn bet(text: String, chip: super::pal::Tint, sc: &Scene<'_>, s: f32) -> Div {
 pub(super) fn stage(sc: &Scene<'_>, w: f32, h: f32) -> Div {
     let (ui, pal, tp) = (sc.ui, &sc.pal, &sc.tp);
     let i18n = &ui.i18n;
-    let s = (w / STAGE.0).min(h / STAGE.1).clamp(0.55, 1.6);
+    let s = (w / STAGE.0).min(h / STAGE.1).clamp(SCALES.0, SCALES.1);
     let state = sc.state();
     let n = state.players().len();
     // A new deal animates even where it looks like the last one.

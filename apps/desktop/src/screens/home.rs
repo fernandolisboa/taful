@@ -86,8 +86,11 @@ impl Shell {
                 .font_weight(gpui::FontWeight::BOLD)
                 .child(n)
         };
+        // `min_w_0`: a narrow pane wraps the cards' texts instead of
+        // letting them push the row wider than the column.
         let reviews = card(&ui, &p)
             .flex_1()
+            .min_w_0()
             .child(eyebrow(ui.i18n.tr("home-due-title"), &ui, &p))
             .child(stat(home.due_now.to_string()))
             .child(muted(
@@ -118,6 +121,7 @@ impl Shell {
         let (right, total) = home.calc_recent;
         let calc = card(&ui, &p)
             .flex_1()
+            .min_w_0()
             .child(eyebrow(ui.i18n.tr("home-calc-title"), &ui, &p))
             .child(stat(if total == 0 {
                 "–".to_owned()

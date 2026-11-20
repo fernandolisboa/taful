@@ -535,3 +535,28 @@ The author found the spade in a chip too close to the PokerStars logo. Of three 
 - The mark's colors are brand colors, the same in every theme and style, so they are constants in `taful_app::logo` and not theme tokens. D7's rule for the desktop UI is unchanged.
 - A visual style draws the mark in its navigation in these two colors, with no chip or badge around it.
 
+
+---
+
+## D21 — Small windows, and Salão as the default style
+
+**Date:** 2026-11-20 · **Ref:** D19
+
+### Decision
+- The window is never smaller than **940 × 600**. 940 is what half of a Full HD screen leaves a snapped window.
+- Every visual style lays every screen out from that size up. In a window smaller than its mockup a style keeps its look and adapts: it drops secondary text, steps type and art down, narrows or restacks panels. From the size a style was drawn for (1600 × 900 for Salão, Cockpit and Baralho) the screens are the mockups, unchanged.
+- **Salão** is the style of a new install. Classic stays on offer, last in the list.
+- Whoever never picked a style gets Salão on the next start, with one exception: someone who picked a theme stays on Classic, the only style that shows it.
+
+### Why
+The styles were built at the mockups' size (D19). In a narrow window Salão's home wrapped its headline word by word, labels ran into buttons, and Cockpit scrolled sideways. The author asked for a minimum size and for the screens to hide text or shrink type below the designed size, and for Salão to be what people see first ("Classic only if someone really wants it").
+
+### Implications
+- `MIN_WINDOW` in `apps/desktop/src/main.rs` is the one place the minimum is set; Cockpit derives its narrowest layout from it.
+- How each style adapts:
+  - Classic: the reading column and the cards follow the pane, the table's grid makes room for the controls when they wrap, and the navigation drops its tagline and footer note in a short window.
+  - Salão: a narrower sidebar and margins under 1200 px; the hero's art, type and extras step down with the column; the three numbers stack their captions; lessons go to one column; the table keeps the mockup's arrangement with a narrower side panel and a compact evaluation.
+  - Cockpit: under 1280 px the home, the lessons and the table restack their panels on the whole width and scroll down (never sideways); the status bar drops the last grades.
+  - Baralho: the whole canvas scales with the window, as before; at the minimum its text is small.
+- A screen shared by every style (reviews, hand review, mental math, settings) reads the room it has from `Shell::room_w`, which the style's frame sets.
+- `Style::default()` is Salão. A stored `ui.style` always wins, so a user who picked Classic keeps it.

@@ -13,9 +13,15 @@ use crate::shell::{CONTENT_MAX_WIDTH, Shell};
 /// The rail's width and the status bar's height.
 pub const RAIL: f32 = 76.;
 pub const BAR: f32 = 48.;
-/// The smallest room a Cockpit screen is laid out in; a smaller window
-/// scrolls. The width is what a 1280 px window leaves.
-const MIN_ROOM: (f32, f32) = (1176., 824.);
+/// The room a 1280 px window leaves a screen: from here up the screens are
+/// laid out as designed, and below it they restack their panels.
+pub const WIDE_ROOM: f32 = 1176.;
+/// The pane (the room and its edges) at that width.
+pub const WIDE_PANE: f32 = WIDE_ROOM + 2. * EDGE;
+/// The smallest room a Cockpit screen is laid out in. The width is what
+/// the smallest window leaves; the height is the design's, and a shorter
+/// window scrolls.
+const MIN_ROOM: (f32, f32) = (crate::MIN_WINDOW.0 - RAIL - 2. * EDGE, 824.);
 
 /// The rail's items, top to bottom: screen, icon, short label.
 const ITEMS: [(Screen, &str, &str); 6] = [
@@ -33,6 +39,7 @@ pub fn frame(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>) ->
     super::state::sync(shell);
     let pal = Pal::new(&shell.ui);
     let view = view(shell, &pal, window, cx);
+    let wide = f32::from(window.viewport_size().width) - RAIL >= WIDE_PANE;
     let table_crumb = (shell.screen == Screen::Table)
         .then(|| super::table::crumb(shell.table.read(cx)))
         .flatten();
@@ -50,7 +57,7 @@ pub fn frame(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>) ->
                 .h_full()
                 .flex()
                 .flex_col()
-                .child(bar(shell, table_crumb, &pal))
+                .child(bar(shell, table_crumb, wide, &pal))
                 .child(view),
         )
         .into_any_element()
@@ -197,7 +204,9 @@ pub fn percent(x: f64) -> String {
     format!("{:.0}", x * 100.)
 }
 
-fn bar(shell: &Shell, table_crumb: Option<String>, pal: &Pal) -> Div {
+/// The status bar. In a window narrower than designed (`wide` off) the
+/// crumb gives way and the last grades are left out.
+fn bar(shell: &Shell, table_crumb: Option<String>, wide: bool, pal: &Pal) -> Div {
     let (ui, i18n) = (&shell.ui, &shell.ui.i18n);
     let today = shell.cockpit.today();
     let crumb = match shell.screen {
@@ -272,19 +281,21 @@ fn bar(shell: &Shell, table_crumb: Option<String>, pal: &Pal) -> Div {
                     )],
                 ))),
         )
-        .child(
-            metric()
-                .child(label(&i18n.tr("cockpit-bar-last"), pal))
-                .child(
-                    div().flex().gap(px(4.)).children(
-                        dots.into_iter()
-                            .map(|g| div().size(px(8.)).rounded(px(2.)).bg(pal.grade(g))),
-                    ),
-                )
-                .when(today.as_ref().is_none_or(|t| t.last.is_empty()), |d| {
-                    d.child(number(none()).text_color(pal.muted))
-                }),
-        );
+        .when(wide, |d| {
+            d.child(
+                metric()
+                    .child(label(&i18n.tr("cockpit-bar-last"), pal))
+                    .child(
+                        div().flex().gap(px(4.)).children(
+                            dots.into_iter()
+                                .map(|g| div().size(px(8.)).rounded(px(2.)).bg(pal.grade(g))),
+                        ),
+                    )
+                    .when(today.as_ref().is_none_or(|t| t.last.is_empty()), |d| {
+                        d.child(number(none()).text_color(pal.muted))
+                    }),
+            )
+        });
     div()
         .relative()
         .flex()
@@ -308,9 +319,11 @@ fn bar(shell: &Shell, table_crumb: Option<String>, pal: &Pal) -> Div {
         )
         .children(crumb.map(|c| {
             div()
-                .flex_none()
+                .flex_shrink()
+                .min_w(px(0.))
                 .text_size(px(12.5))
                 .text_color(pal.muted)
+                .truncate()
                 .child(c)
         }))
         .child(div().flex_1())
@@ -329,6 +342,12 @@ fn view(shell: &mut Shell, pal: &Pal, window: &mut Window, cx: &mut Context<Shel
         (w - 2. * EDGE).max(MIN_ROOM.0),
         (h - 2. * EDGE).max(MIN_ROOM.1),
     );
+    // What the shared screens (the ones in a padded column) are left.
+    let column = match shell.screen {
+        Screen::HandReview | Screen::Review => w,
+        _ => w.min(CONTENT_MAX_WIDTH + 2. * t.spacing.xxl),
+    };
+    shell.room_w = (column - 2. * t.spacing.xxl).max(0.);
     let body = shell.screen_body(window, cx);
     let fade = ("screen_fade", shell.screen_visit);
     let scroll = div()
@@ -371,7 +390,7 @@ fn view(shell: &mut Shell, pal: &Pal, window: &mut Window, cx: &mut Context<Shel
                     .flex()
                     .flex_col()
                     .flex_none()
-                    .w(px(w.min(CONTENT_MAX_WIDTH + 2. * t.spacing.xxl)))
+                    .w(px(column))
                     .p(px(t.spacing.xxl))
                     .child(body),
                 fade,

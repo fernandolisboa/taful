@@ -6,7 +6,7 @@ use std::cell::Cell;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-use gpui::{AnyElement, Context, Div, FontWeight, Stateful, Window, canvas, div, prelude::*, px};
+use gpui::{AnyElement, Context, Div, FontWeight, Stateful, Window, div, prelude::*, px};
 use taful_app::model::{Grade, Street, Trainers};
 use taful_app::preflop::{Action, Seat};
 use taful_app::story::StoryEvent;
@@ -14,11 +14,11 @@ use taful_app::template::street_id;
 
 use super::colors::colors;
 use super::felt;
-use super::frame::{SIDE_W, WIDE_PAD};
+use super::frame::{pad, side_w};
 use super::kit::{self, CardSize};
 use crate::felt::{SeatExtras, TABLE_H, bb, num};
 use crate::screen::Screen;
-use crate::screens::table::{Mode, StoryTag, TableScreen, places_like_default};
+use crate::screens::table::{Mode, StoryTag, TableScreen, measure_height, places_like_default};
 use crate::theme::alpha;
 use crate::tour;
 
@@ -36,7 +36,30 @@ const PANEL_BOTTOM: f32 = 28.;
 const PANEL_GAP: f32 = 8.;
 /// The smallest zone, against the mockup's, that still gets the mockup's
 /// arrangement.
-const MIN_K: f32 = 0.55;
+const MIN_K: f32 = 0.45;
+/// In a small window the side panel gives its room to the zone until the
+/// zone is this large, down to the narrowest panel that holds its rows.
+const EASY_K: f32 = 0.6;
+const PANEL_MIN: f32 = 280.;
+/// Controls narrower than this give the spots a row of their own instead
+/// of the mockup's place beside the modes.
+const SPOTS_BESIDE_W: f32 = 1000.;
+/// A window shorter than this gives the title's row to the table (the
+/// sidebar says which screen this is).
+const TITLE_VH: f32 = 700.;
+
+/// How the controls fit the window.
+#[derive(Clone, Copy)]
+struct ControlsFit {
+    /// The screen's side padding.
+    pad: f32,
+    /// The mockup's rows: the spots beside the modes, and the side panel
+    /// starting beside the last row, which keeps to `room_w`.
+    mocked: bool,
+    room_w: f32,
+    /// The title's row is shown.
+    title: bool,
+}
 /// The grade dots the session's strip shows.
 const DOTS: usize = 12;
 
@@ -100,25 +123,6 @@ fn record(screen: &mut TableScreen) {
     }
 }
 
-/// Writes its parent's height into `height` and asks for one more frame
-/// when it changed.
-fn measure(height: Rc<Cell<f32>>) -> impl IntoElement {
-    canvas(
-        move |bounds, window, _| {
-            let h = f32::from(bounds.size.height);
-            if (height.get() - h).abs() > 0.5 {
-                height.set(h);
-                window.request_animation_frame();
-            }
-        },
-        |_, _, _, _| {},
-    )
-    .absolute()
-    .top_0()
-    .left_0()
-    .size_full()
-}
-
 fn title(screen: &TableScreen) -> Div {
     div().relative().child(tour::anchor("screen_title")).child(
         kit::H1
@@ -128,12 +132,13 @@ fn title(screen: &TableScreen) -> Div {
 }
 
 /// The title with the edit button, then the mode, spot and opponent
-/// pickers as the mockup's two rows. The side panel starts beside the last
-/// row, which keeps to the `room_w` pixels left of it.
+/// pickers as the mockup's two rows. In a narrow window the spots get a
+/// row of their own, and in a short one the edit button moves to the
+/// modes' row and the title goes.
 fn controls(
     screen: &TableScreen,
     trainers: &Trainers,
-    room_w: f32,
+    fit: ControlsFit,
     cx: &mut Context<TableScreen>,
 ) -> Div {
     let (c, p) = (colors(), screen.palette);
@@ -172,18 +177,34 @@ fn controls(
             .collect(),
         Mode::Hand => Vec::new(),
     };
+    let mut edit = Some(
+        kit::btn("layout_edit", i18n.tr("layout-edit-start"), false, true, &p)
+            .on_click(cx.listener(|this, _, _, cx| this.start_edit(cx))),
+    );
+    let mut spots = Some(spots).filter(|s| !s.is_empty());
+    let beside = spots.take_if(|_| fit.mocked);
     let first = row()
         .child(label("table-row-mode", 84., 12.17))
         .child(kit::seg(&p).children(screen.mode_segments(cx)))
-        .when(!spots.is_empty(), |d| {
+        // Without the title's row the edit button ends this one.
+        .when(!fit.title && beside.is_none(), |d| d.child(div().flex_1()))
+        .when_some(beside, |d, spots| {
             d.child(div().w(px(22.)).flex_none())
                 .child(label("table-row-spot", 74., 12.17))
                 .child(pills(spots, 3.36))
-        });
+        })
+        .children(edit.take_if(|_| !fit.title).map(|b| b.mt(px(4.))));
+    // A narrow window: the spots under the modes, like the opponents.
+    let spots_row = spots.map(|spots| {
+        row()
+            .mt(px(10.))
+            .child(label("table-row-spot", 84., 8.81))
+            .child(pills(spots, 0.))
+    });
     let opponents = matches!(screen.mode, Mode::Spot | Mode::Postflop | Mode::Hand).then(|| {
         row()
             .mt(px(10.))
-            .max_w(px(room_w))
+            .when(fit.mocked, |d| d.max_w(px(fit.room_w)))
             .child(label("table-opponent", 84., 8.81))
             .child(pills(screen.opponent_chips(trainers, cx), 0.))
     });
@@ -192,27 +213,27 @@ fn controls(
         .flex()
         .flex_col()
         .pt(px(26.))
-        .px(px(WIDE_PAD))
-        .child(measure(screen.salao.controls_h.clone()))
-        .child(
-            div()
-                .flex()
-                .items_end()
-                .justify_between()
-                .child(title(screen))
-                .child(
-                    kit::btn("layout_edit", i18n.tr("layout-edit-start"), false, true, &p)
-                        .on_click(cx.listener(|this, _, _, cx| this.start_edit(cx))),
-                ),
-        )
+        .px(px(fit.pad))
+        .child(measure_height(screen.salao.controls_h.clone()))
+        .when(fit.title, |d| {
+            d.child(
+                div()
+                    .flex()
+                    .items_end()
+                    .justify_between()
+                    .child(title(screen))
+                    .children(edit),
+            )
+        })
         .child(
             div()
                 .relative()
-                .mt(px(14.))
+                .when(fit.title, |d| d.mt(px(14.)))
                 .flex()
                 .flex_col()
                 .child(tour::anchor("table_controls"))
                 .child(first)
+                .children(spots_row)
                 .children(opponents),
         )
 }
@@ -262,6 +283,9 @@ pub fn table(
     let (c, p) = (colors(), screen.palette);
     let ui = screen.ui.clone();
     let i18n = &ui.i18n;
+    let vp = window.viewport_size();
+    let (vw, vh) = (f32::from(vp.width), f32::from(vp.height));
+    let pad = pad(vw);
     let page = || {
         div()
             .size_full()
@@ -269,7 +293,7 @@ pub fn table(
             .flex_col()
             .gap(px(14.))
             .pt(px(26.))
-            .px(px(WIDE_PAD))
+            .px(px(pad))
             .pb(px(PANEL_BOTTOM))
     };
     let trainers = match &screen.trainers {
@@ -287,15 +311,30 @@ pub fn table(
     };
     // The zone takes what the window leaves beside the side panel and
     // under the controls, at the mockup's proportions.
-    let vp = window.viewport_size();
-    let (pane_w, pane_h) = ((f32::from(vp.width) - SIDE_W).max(0.), f32::from(vp.height));
-    let room_w = pane_w - 2. * WIDE_PAD - felt::PANEL_W - PANEL_GAP;
+    let (pane_w, pane_h) = ((vw - side_w(vw)).max(0.), vh);
+    // The zone and the panel share the pane: the mockup's panel wherever
+    // the zone stays large beside it, a narrower one in a small window.
+    let both = pane_w - 2. * pad - PANEL_GAP;
+    let panel_w = (both - ZONE_W * EASY_K).clamp(PANEL_MIN, felt::PANEL_W);
+    let room_w = both - panel_w;
     let fits = room_w >= ZONE_W * MIN_K
         && pane_h - (CONTROLS_H - ZONE_LAP) - ZONE_BOTTOM >= ZONE_H * MIN_K;
     // The mockup is the default layout; any other, the edit mode and a
     // window too small for the zone beside the panel get the grid with
     // this style's panels (it scrolls).
     if screen.is_editing() || !places_like_default(&screen.layout) || !fits {
+        // The grid's explanation panel, at the last frame's cell size.
+        felt::set_panel_width(
+            screen
+                .shown_layout()
+                .rect(taful_app::layout::PanelId::Explanation, screen.cell)
+                .map_or(felt::PANEL_W, |r| r.w),
+        );
+        // What the page leaves the grid: its padding and the title's row.
+        screen.grid_room = Some((
+            pane_w - 2. * pad,
+            pane_h - 26. - PANEL_BOTTOM - 14. - 34. * kit::LEADING,
+        ));
         return page()
             .id("salao_table_grid")
             .overflow_y_scroll()
@@ -304,14 +343,33 @@ pub fn table(
             .into_any_element();
     }
 
+    let controls_fit = ControlsFit {
+        pad,
+        mocked: pane_w - 2. * pad >= SPOTS_BESIDE_W,
+        room_w,
+        title: vh >= TITLE_VH,
+    };
     // Controls that wrap push the zone down: it may shrink a little more.
-    let top = screen.salao.controls_h.get().max(CONTROLS_H) - ZONE_LAP;
+    // With the mockup's rows the zone and the panel start beside the last
+    // one; otherwise under it.
+    let controls_h = screen.salao.controls_h.get();
+    let (top, panel_top) = if controls_fit.mocked {
+        let top = if controls_fit.title {
+            controls_h.max(CONTROLS_H)
+        } else {
+            controls_h
+        } - ZONE_LAP;
+        (top, top)
+    } else {
+        (controls_h, controls_h + PANEL_GAP)
+    };
     let room_h = pane_h - top - ZONE_BOTTOM;
     let k = (room_w / ZONE_W)
         .min(room_h / ZONE_H)
         .clamp(MIN_K * 0.7, 1.6);
-    let left = WIDE_PAD + ((room_w - ZONE_W * k) / 2.).max(0.);
+    let left = pad + ((room_w - ZONE_W * k) / 2.).max(0.);
 
+    felt::set_panel_width(panel_w);
     let parts = match screen.mode {
         Mode::Hand => screen.hand_parts(&trainers, k * felt::H / TABLE_H, cx),
         _ => screen.question_parts(&trainers, k * felt::H / TABLE_H, cx),
@@ -409,10 +467,10 @@ pub fn table(
 
     let side = kit::panel(&p)
         .absolute()
-        .right(px(WIDE_PAD))
-        .top(px(top))
+        .right(px(pad))
+        .top(px(panel_top))
         .bottom(px(PANEL_BOTTOM))
-        .w(px(felt::PANEL_W))
+        .w(px(panel_w))
         .child(tour::anchor("table_explanation"))
         .child(
             div()
@@ -432,7 +490,7 @@ pub fn table(
         .relative()
         .size_full()
         .overflow_hidden()
-        .child(controls(screen, &trainers, room_w, cx))
+        .child(controls(screen, &trainers, controls_fit, cx))
         .child(zone)
         .child(side)
         .into_any_element()
@@ -590,13 +648,16 @@ pub fn story(screen: &TableScreen, hero: Seat, cx: &mut Context<TableScreen>) ->
         kit::btn(id, label, false, true, &p).when(!enabled, |b| b.opacity(0.4))
     };
     // Pinned to the panel's bottom (out of the flow, so the lines above
-    // do not round it a pixel off).
+    // do not round it a pixel off). A narrow panel has the automatic
+    // replay's switch on a row of its own.
+    let narrow = felt::narrow_panel();
     let replay = div()
         .absolute()
         .left_0()
         .bottom_0()
         .w_full()
         .flex()
+        .when(narrow, |d| d.flex_wrap())
         .items_center()
         .gap(px(8.))
         .child(
@@ -619,7 +680,11 @@ pub fn story(screen: &TableScreen, hero: Seat, cx: &mut Context<TableScreen>) ->
                 .px(px(11.))
                 .on_click(cx.listener(move |this, _, _, cx| this.jump_to((at + 1).min(last), cx))),
         )
-        .child(div().flex_1())
+        .child(if narrow {
+            div().w_full().h(px(0.))
+        } else {
+            div().flex_1()
+        })
         .child(
             kit::btn("auto_replay", i18n.tr("table-replay-auto"), false, true, &p)
                 .when(screen.auto_replay, |b| {
@@ -634,7 +699,7 @@ pub fn story(screen: &TableScreen, hero: Seat, cx: &mut Context<TableScreen>) ->
             .flex_col()
             .flex_1()
             // Room for the replay's controls and the least space over them.
-            .pb(px(32. + 14.))
+            .pb(px(if narrow { 2. * 32. + 8. } else { 32. } + 14.))
             // The mockup's 22 pixels over the last option, less the gap
             // the panel already puts between its parts.
             .mt(px(22. - ui.theme.spacing.lg))

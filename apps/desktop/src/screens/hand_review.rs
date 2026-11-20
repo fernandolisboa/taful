@@ -90,7 +90,7 @@ impl Shell {
                 &p,
             )
             // Same width as the review screen's cards.
-            .w(px(crate::screens::review::REVIEW_CARD_WIDTH))
+            .w(px(self.card_width()))
             .child(
                 button("hr_play", ui.i18n.tr("hand-review-play"), true, &ui, &p).on_click(
                     cx.listener(|this, _, window, cx| {
@@ -112,6 +112,7 @@ impl Shell {
         };
         let controls = div()
             .flex()
+            .flex_wrap()
             .items_center()
             .gap(px(t.spacing.sm))
             .child(ctrl("hr_first", "hand-review-first", 0, step > 0))
@@ -207,8 +208,11 @@ impl Shell {
             panel = panel.child(muted(ui.i18n.tr("hand-review-no-decisions"), &ui, &p));
         }
 
+        // In a pane too narrow for both, the panel goes under the table.
+        let room_w = self.room_w;
         let replay = div()
             .flex()
+            .flex_wrap()
             .gap(px(t.spacing.xl))
             .child(
                 div()
@@ -221,7 +225,7 @@ impl Shell {
                         state,
                         h.hero,
                         step == last,
-                        felt::natural_scale(&ui),
+                        felt::room_scale(&ui, room_w),
                         felt::SeatExtras {
                             tags: &felt::seat_tags(&ui, &h.seat_profiles),
                             wins: &[],
@@ -273,7 +277,7 @@ impl Shell {
                     .flex()
                     .flex_col()
                     .gap(px(t.spacing.sm))
-                    .w(px(felt::FELT_W + felt::PANEL_W + t.spacing.xl))
+                    .w(px((felt::FELT_W + felt::PANEL_W + t.spacing.xl).min(room_w)))
                     .child(title(ui.i18n.tr("hand-review-recent"), &ui))
                     .children(list),
             )

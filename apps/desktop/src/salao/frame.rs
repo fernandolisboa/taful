@@ -10,19 +10,37 @@ use crate::screen::{NAV_BOTTOM, NAV_GROUPS, Screen};
 use crate::shell::Shell;
 use crate::theme::alpha;
 
-/// The sidebar's width.
-pub const SIDE_W: f32 = 224.;
+/// The sidebar's width, as mocked.
+const SIDE_W: f32 = 224.;
 /// The content column's width (home, lessons, reading screens).
-const COLUMN_W: f32 = 1080.;
-/// The wide screens' side padding (the table and the screens with one).
-pub const WIDE_PAD: f32 = 32.;
+pub const COLUMN_W: f32 = 1080.;
+/// The wide screens' side padding (the table and the screens with one),
+/// as mocked.
+const WIDE_PAD: f32 = 32.;
+/// A window narrower than this is a small one: the sidebar and the
+/// paddings give some of their room to the content.
+const SMALL_VW: f32 = 1200.;
+const SIDE_W_SMALL: f32 = 192.;
+const PAD_SMALL: f32 = 24.;
+/// A window shorter than this has no room for the sidebar's tagline.
+const SHORT_VH: f32 = 680.;
+
+/// The sidebar's width in a window `vw` pixels wide.
+pub fn side_w(vw: f32) -> f32 {
+    if vw < SMALL_VW { SIDE_W_SMALL } else { SIDE_W }
+}
+
+/// The content's side padding in a window `vw` pixels wide.
+pub fn pad(vw: f32) -> f32 {
+    if vw < SMALL_VW { PAD_SMALL } else { WIDE_PAD }
+}
 
 /// Chrome and content: everything under the tour and update overlays.
 pub fn frame(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>) -> AnyElement {
     let vp = window.viewport_size();
     let (vw, vh) = (f32::from(vp.width), f32::from(vp.height));
     let main = main(shell, vw, window, cx);
-    let side = sidebar(shell, cx);
+    let side = sidebar(shell, vw, vh, cx);
     div()
         .relative()
         .size_full()
@@ -80,7 +98,7 @@ fn brand(shell: &Shell) -> Div {
         )
 }
 
-fn sidebar(shell: &mut Shell, cx: &mut Context<Shell>) -> Div {
+fn sidebar(shell: &mut Shell, vw: f32, vh: f32, cx: &mut Context<Shell>) -> Div {
     let (c, p) = (colors(), shell.palette);
     let ui = shell.ui.clone();
     let i18n = &ui.i18n;
@@ -173,7 +191,7 @@ fn sidebar(shell: &mut Shell, cx: &mut Context<Shell>) -> Div {
     let version = crate::updater::current_version().to_string();
     div()
         .relative()
-        .w(px(SIDE_W))
+        .w(px(side_w(vw)))
         .h_full()
         .flex_none()
         .flex()
@@ -186,14 +204,17 @@ fn sidebar(shell: &mut Shell, cx: &mut Context<Shell>) -> Div {
         .border_color(alpha(p.accent, 0.16))
         .shadow(vec![kit::shadow(alpha(c.black, 0.35), 8., 0., 30., 0.)])
         .child(brand(shell))
-        .child(
-            div().pt(px(6.)).px(px(10.)).child(
-                kit::SANS_R02
-                    .lines(11.5, kit::LEADING)
-                    .text_color(c.dim)
-                    .child(i18n.tr("app-tagline")),
-            ),
-        )
+        // A short window keeps the navigation and drops the tagline.
+        .when(vh >= SHORT_VH, |d| {
+            d.child(
+                div().pt(px(6.)).px(px(10.)).child(
+                    kit::SANS_R02
+                        .lines(11.5, kit::LEADING)
+                        .text_color(c.dim)
+                        .child(i18n.tr("app-tagline")),
+                ),
+            )
+        })
         .child(
             div()
                 .relative()
@@ -243,7 +264,8 @@ pub fn page_title(shell: &Shell) -> Div {
             ),
             |d| {
                 d.child(
-                    kit::sans_text(14.5, FontWeight::NORMAL)
+                    // One line as mocked; a narrow column wraps it.
+                    kit::sans_wraps(14.5, FontWeight::NORMAL)
                         .text_color(p.text_muted)
                         .child(shell.ui.i18n.tr(shell.screen.body_key())),
                 )
@@ -252,8 +274,16 @@ pub fn page_title(shell: &Shell) -> Div {
 }
 
 fn main(shell: &mut Shell, vw: f32, window: &mut Window, cx: &mut Context<Shell>) -> AnyElement {
-    let main_w = (vw - SIDE_W).max(0.);
+    let main_w = (vw - side_w(vw)).max(0.);
+    let pad = pad(vw);
     let visit = shell.screen_visit;
+    let column = COLUMN_W.min(main_w - 2. * pad).max(0.);
+    shell.salao.column = column;
+    // A screen with a table gets the pane's width, the others the column.
+    shell.room_w = match shell.screen {
+        Screen::HandReview | Screen::Review => (main_w - 2. * pad).max(0.),
+        _ => column,
+    };
     match shell.screen {
         // The table lays itself out over the whole pane.
         Screen::Table => div()
@@ -282,8 +312,9 @@ fn main(shell: &mut Shell, vw: f32, window: &mut Window, cx: &mut Context<Shell>
                         .flex_col()
                         .flex_none()
                         .gap(px(14.))
+                        .w(px(main_w))
                         .pt(px(26.))
-                        .px(px(WIDE_PAD))
+                        .px(px(pad))
                         .pb(px(28.))
                         .child(
                             div()
@@ -297,7 +328,6 @@ fn main(shell: &mut Shell, vw: f32, window: &mut Window, cx: &mut Context<Shell>
                 .into_any_element()
         }
         screen => {
-            let column = COLUMN_W.min(main_w - 2. * WIDE_PAD).max(0.);
             // Home and the lessons open with their own header.
             let header =
                 (!matches!(screen, Screen::Home | Screen::SkillTree)).then(|| page_title(shell));
