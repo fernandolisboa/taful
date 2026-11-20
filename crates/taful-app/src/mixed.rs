@@ -131,6 +131,8 @@ pub struct GameSource {
 pub struct MixedTables {
     source: Option<GameSource>,
     game: Mutex<Option<Result<TableGame, String>>>,
+    /// The all-in equity table alone, for [`Self::class_tables`].
+    tables: std::sync::OnceLock<Option<Arc<ClassTables>>>,
     /// Most recently used last.
     cache: Mutex<Vec<(TableId, Arc<TableBestResponse>)>>,
 }
@@ -143,8 +145,22 @@ impl MixedTables {
         MixedTables {
             source,
             game: Mutex::new(None),
+            tables: std::sync::OnceLock::new(),
             cache: Mutex::new(Vec::new()),
         }
+    }
+
+    /// The preflop all-in equity table by hand class; `None` for a chart
+    /// that ships without one.
+    pub fn class_tables(&self) -> Option<Arc<ClassTables>> {
+        self.tables
+            .get_or_init(|| {
+                let src = self.source?;
+                let m = Manifest::from_toml(src.manifest).ok()?;
+                ClassTables::from_equity_bytes(src.equity, m.solve.equity_samples, m.solve.seed)
+                    .map(Arc::new)
+            })
+            .clone()
     }
 
     /// Hero's best response at `hero` against `seats` (one entry per seat,
