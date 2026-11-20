@@ -45,4 +45,4 @@ tour-review-body = Spots you missed, wrong quiz answers and slow calcs come back
 tour-hand-review-title = Your hands
 tour-hand-review-body = Every full hand you play lands here, with a grade for each decision and a step-by-step replay.
 tour-settings-title = Make it yours
-tour-settings-body = Language, theme, where the table panels go, backups and the strategy library live here.
+tour-settings-body = Settings are grouped in tabs: General, Appearance, Study, Data and Updates.

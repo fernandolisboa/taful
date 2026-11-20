@@ -1,7 +1,12 @@
-//! Settings (spec §15.1 item 8): language, theme (M6) and the theme editor
-//! (#23, in `theme_editor.rs`), table layout (M6), review retention and
-//! the FSRS optimizer, backups, the strategy library folder, and the grading
-//! thresholds (read-only).
+//! Settings (spec §15.1 item 8), in tabs of related settings (D18):
+//!
+//! - General: language, animations, guided tours.
+//! - Appearance: theme (M6) and the theme editor (#23, in
+//!   `theme_editor.rs`), table layout (M6).
+//! - Study: review retention, the FSRS optimizer, the grading thresholds
+//!   (read-only).
+//! - Data: backups, the strategy library folder.
+//! - Updates: version, channel, automatic steps (D18, `updater.rs`).
 
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -16,8 +21,57 @@ use crate::screens::theme_editor::{Leave, ThemeEditor};
 use crate::shell::Shell;
 use crate::widgets::{button, card, chip, muted, title};
 
+/// A tab of the settings screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Tab {
+    #[default]
+    General,
+    Appearance,
+    Study,
+    Data,
+    Updates,
+}
+
+impl Tab {
+    pub const ALL: [Tab; 5] = [
+        Tab::General,
+        Tab::Appearance,
+        Tab::Study,
+        Tab::Data,
+        Tab::Updates,
+    ];
+
+    /// The tab named by `TAFUL_SETTINGS_TAB` (screenshots).
+    pub fn from_id(id: &str) -> Option<Tab> {
+        Tab::ALL.into_iter().find(|t| t.id() == id)
+    }
+
+    /// Stable id: `general`, `appearance`, `study`, `data` or `updates`.
+    pub fn id(self) -> &'static str {
+        match self {
+            Tab::General => "general",
+            Tab::Appearance => "appearance",
+            Tab::Study => "study",
+            Tab::Data => "data",
+            Tab::Updates => "updates",
+        }
+    }
+
+    pub fn label_key(self) -> &'static str {
+        match self {
+            Tab::General => "settings-tab-general",
+            Tab::Appearance => "settings-tab-appearance",
+            Tab::Study => "settings-tab-study",
+            Tab::Data => "settings-tab-data",
+            Tab::Updates => "settings-tab-updates",
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct SettingsView {
+    /// The tab shown.
+    pub tab: Tab,
     /// Result of the last backup action.
     pub message: Option<String>,
     /// A file picked for import, waiting for confirmation.
@@ -741,69 +795,96 @@ impl Shell {
                 &[("values", list(&th.rel_pot_pct).into())],
             )));
 
-        let appearance = self.appearance_card(cx);
-        let theme_editor = self.theme_editor_card(cx);
-        let optimizer = self.optimizer_card(cx);
-        let library = self.library_card(cx);
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(t.spacing.lg))
-            .child(language)
-            .child(appearance)
-            .children(theme_editor)
-            .child(retention_card)
-            .child(optimizer)
-            .child(backups)
-            .child(library)
-            .child(grading)
-            .child({
-                let now = crate::motion::level();
-                card(&ui, &p)
-                    .child(title(ui.i18n.tr("settings-animations"), &ui))
-                    .child(muted(ui.i18n.tr("settings-animations-body"), &ui, &p))
-                    .child(
-                        div().flex().child(
-                            crate::widgets::segmented(&ui, &p).children(
-                                crate::motion::Motion::ALL
-                                    .into_iter()
-                                    .enumerate()
-                                    .map(|(k, m)| {
-                                        crate::widgets::segment(
-                                            ("motion", k),
-                                            ui.i18n.tr(m.label_key()),
-                                            m == now,
-                                            &ui,
-                                            &p,
-                                        )
-                                        .on_click(
-                                            cx.listener(move |this, _, _, cx| {
-                                                this.set_motion(m);
-                                                cx.notify();
-                                            }),
-                                        )
-                                    }),
-                            ),
+        let animations = {
+            let now = crate::motion::level();
+            card(&ui, &p)
+                .child(title(ui.i18n.tr("settings-animations"), &ui))
+                .child(muted(ui.i18n.tr("settings-animations-body"), &ui, &p))
+                .child(
+                    div().flex().child(
+                        crate::widgets::segmented(&ui, &p).children(
+                            crate::motion::Motion::ALL
+                                .into_iter()
+                                .enumerate()
+                                .map(|(k, m)| {
+                                    crate::widgets::segment(
+                                        ("motion", k),
+                                        ui.i18n.tr(m.label_key()),
+                                        m == now,
+                                        &ui,
+                                        &p,
+                                    )
+                                    .on_click(cx.listener(
+                                        move |this, _, _, cx| {
+                                            this.set_motion(m);
+                                            cx.notify();
+                                        },
+                                    ))
+                                }),
                         ),
-                    )
-            })
+                    ),
+                )
+        };
+        let tours = card(&ui, &p)
+            .child(title(ui.i18n.tr("tour-reset-title"), &ui))
             .child(
-                card(&ui, &p)
-                    .child(title(ui.i18n.tr("tour-reset-title"), &ui))
-                    .child(
-                        button("tour_reset", ui.i18n.tr("tour-reset"), false, &ui, &p).on_click(
-                            cx.listener(|this, _, _, cx| {
-                                this.tour_reset();
-                                cx.notify();
-                            }),
-                        ),
-                    )
-                    .when(self.tour_reset_done, |c| {
-                        c.child(muted(ui.i18n.tr("tour-reset-done"), &ui, &p))
+                button("tour_reset", ui.i18n.tr("tour-reset"), false, &ui, &p).on_click(
+                    cx.listener(|this, _, _, cx| {
+                        this.tour_reset();
+                        cx.notify();
                     }),
+                ),
             )
-            .child(muted(ui.i18n.tr("settings-later"), &ui, &p))
-            .into_any_element()
+            .when(self.tour_reset_done, |c| {
+                c.child(muted(ui.i18n.tr("tour-reset-done"), &ui, &p))
+            });
+
+        let tab = self.settings.tab;
+        let tabs = div()
+            .relative()
+            .flex()
+            .child(crate::tour::anchor("settings_tabs"))
+            .child(crate::widgets::segmented(&ui, &p).children(
+                Tab::ALL.into_iter().enumerate().map(|(k, x)| {
+                    crate::widgets::segment(
+                        ("settings_tab", k),
+                        ui.i18n.tr(x.label_key()),
+                        x == tab,
+                        &ui,
+                        &p,
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if this.settings.tab != x {
+                            this.settings.tab = x;
+                            this.scroll_to_top();
+                        }
+                        cx.notify();
+                    }))
+                }),
+            ));
+        let column = div().flex().flex_col().gap(px(t.spacing.lg)).child(tabs);
+        match tab {
+            Tab::General => column.child(language).child(animations).child(tours),
+            Tab::Appearance => {
+                let appearance = self.appearance_card(cx);
+                let theme_editor = self.theme_editor_card(cx);
+                column.child(appearance).children(theme_editor)
+            }
+            Tab::Study => {
+                let optimizer = self.optimizer_card(cx);
+                column.child(retention_card).child(optimizer).child(grading)
+            }
+            Tab::Data => {
+                let library = self.library_card(cx);
+                column.child(backups).child(library).child(muted(
+                    ui.i18n.tr("settings-later"),
+                    &ui,
+                    &p,
+                ))
+            }
+            Tab::Updates => column.children(self.updates_tab(cx)),
+        }
+        .into_any_element()
     }
 }
 

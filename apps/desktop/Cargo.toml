@@ -16,3 +16,9 @@ path = "src/main.rs"
 [dependencies]
 gpui.workspace = true
 taful-app.workspace = true
+semver.workspace = true
+ureq.workspace = true
+futures.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+tray-icon.workspace = true

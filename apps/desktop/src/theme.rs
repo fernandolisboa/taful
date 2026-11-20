@@ -112,3 +112,52 @@ impl Palette {
         }
     }
 }
+
+/// The notification-area icon (D18), drawn from the theme: a felt disc with
+/// an accent rim and a card-face pip. `size`×`size` RGBA pixels.
+pub fn tray_icon_pixels(p: &Palette, size: u32) -> Vec<u8> {
+    let s = size as f32;
+    let c = s / 2.;
+    let (outer, rim, pip) = (s / 2. - 0.5, s * 0.1, s * 0.16);
+    let mut out = Vec::with_capacity((size * size * 4) as usize);
+    for y in 0..size {
+        for x in 0..size {
+            let (dx, dy) = (x as f32 + 0.5 - c, y as f32 + 0.5 - c);
+            let d = (dx * dx + dy * dy).sqrt();
+            // Coverage at the disc's edge, for a smooth outline.
+            let alpha = (outer - d + 0.5).clamp(0., 1.);
+            let color = if d <= pip {
+                p.card_face
+            } else if d >= outer - rim {
+                p.accent
+            } else {
+                p.felt
+            };
+            let byte = |v: f32| (v.clamp(0., 1.) * 255.).round() as u8;
+            out.extend([
+                byte(color.r),
+                byte(color.g),
+                byte(color.b),
+                byte(alpha * color.a),
+            ]);
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tray_icon_is_a_disc() {
+        let theme = taful_app::theme::Theme::builtin_default();
+        let p = Palette::new(&theme.colors);
+        let px = tray_icon_pixels(&p, 32);
+        assert_eq!(px.len(), 32 * 32 * 4);
+        // Transparent corner, opaque centre.
+        assert_eq!(px[3], 0);
+        let centre = (16 * 32 + 16) * 4;
+        assert_eq!(px[centre + 3], 255);
+    }
+}

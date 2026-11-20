@@ -4,7 +4,7 @@ members = ["crates/*", "apps/desktop", "tools/*"]
 exclude = ["spikes/solver", "spikes/evaluator"]
 
 [workspace.package]
-version = "0.0.1"
+version = "0.1.0"
 edition = "2024"
 license = "UNLICENSED"
 publish = false
@@ -42,6 +42,14 @@ pulldown-cmark = { version = "0.13", default-features = false }
 ulid = "3"
 jiff = "0.2"
 tempfile = "3"
+# Auto-update (D18): release versions and installer checksums.
+semver = "1"
+sha2 = "0.10"
+# Desktop only (D18): HTTPS client for the update check and download, and
+# the notification-area icon (Windows).
+ureq = "3"
+futures = "0.3"
+tray-icon = { version = "0.26", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

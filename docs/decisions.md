@@ -384,9 +384,10 @@ Mapping a random flop to the "nearest" solved flop changes hero's real hand stre
 
 ### Decision
 - Once the first slice is minimally usable (first-slice library finished and installed), CI produces a **simple Windows installer** so the author can install Taful himself.
-- **Unsigned**, no auto-update. SmartScreen warns on first run ("More info → Run anyway"); that is accepted for personal use.
+- **Unsigned**. SmartScreen warns on first run ("More info → Run anyway"); that is accepted for personal use.
+- *Amended 2026-11-20 (D18):* auto-update is no longer part of the full release: the author wants it for his own use, so it ships now from GitHub Releases.
 - The postflop library is **not** bundled: it stays in a folder the user picks in settings (`LocalDir`, spec §7.6).
-- A **full release** (code signing, auto-update, library downloaded from a host (Q5), INPI filing (D10)) happens only if the author decides to sell the app. It is tracked as a placeholder, not planned work.
+- A **full release** (code signing, library downloaded from a host (Q5), INPI filing (D10)) happens only if the author decides to sell the app. It is tracked as a placeholder, not planned work.
 
 ### Why
 The only user today is the author, on his own PC. Signing certificates, hosting and trademark filing cost money that is only worth spending if the app is sold.
@@ -464,3 +465,28 @@ The only user today is the author, on his own PC. Signing certificates, hosting 
 - The 245 are re-solved with the new profiles into a fresh folder. Afterwards `profile-stats postflop --stored` measures the flop numbers exactly. A stat outside its band means one more tune and re-solve before the library grows.
 - The profiles are frozen once that check passes (#31 acceptance).
 - A profile can make lines its table never plays (the station never folds to a raise). Their best-response EVs are all zero, so spot drills and review items against that profile skip those nodes. A full hand only gets there if a bot samples a near-zero action; it is graded as before rather than ended.
+
+---
+
+## D18 — Auto-update from GitHub Releases
+
+**Date:** 2026-11-20 · **Ref:** #68 (split out of #34), D14
+
+### Decision
+- The desktop app updates itself from **GitHub Releases** of `fernandolisboa/taful` (public, so no token). The library host (Q5) stays deferred; it is not needed for the app.
+- **CI publishes the releases.** Every push to `main` that passes CI publishes a pre-release `v<version>-alpha.<run>`. A manual CI run on `main` with `release: beta` publishes `v<version>-beta.<run>`, and `release: stable` publishes `v<version>` (the workspace version, once; bump it afterwards). PR builds are `<version>-alpha.0.pr<n>.<run>`: they sort below every alpha of that version, so an installed PR build still updates. Only the 10 newest alphas are kept.
+- Each release carries `taful-setup-<version>.exe` and `taful-setup-<version>.exe.sha256`. The app checks the hash before it runs the installer. The installer stays unsigned (D14), so the hash guards against a broken download, and HTTPS to GitHub is the trust anchor.
+- **Channels:** Stable (final versions), Beta (beta and rc plus stable), Alpha (everything). Until the user picks one, the app follows the channel of the build it runs, so an installed alpha keeps getting alphas.
+- **Settings** (Settings › Updates): check automatically (on, at startup and every 6 hours), download automatically (on), install on close (off), notifications Notify (a card in the corner) or Silent (no card; manual checks still report in the tab). A version can be skipped. Never a downgrade, even when the channel narrows.
+- **Installing:** the app runs the downloaded setup with `/SILENT` (`/VERYSILENT` on close) `/SUPPRESSMSGBOXES /NORESTART /WAITPID=<app pid>` and quits. Setup waits up to 60 s for the app to exit, installs, and with `/RELAUNCH=1` (Restart and update) starts the new version. Installing on close does not reopen the app.
+- **Tray icon:** a notification-area icon with Open, Check for updates (it becomes "Restart and update to <version>" once one is ready) and Quit. Closing the window still quits the app; the icon lives as long as the app.
+- **Settings tabs:** settings are grouped in tabs (General, Appearance, Study, Data, Updates) instead of one long page.
+
+### Why
+The author installs every CI build by hand. GitHub Releases is free, already where the builds come from, and needs no new host. Releasing from CI keeps one source of truth for versions; alphas from every merge give the author each change without a manual step.
+
+### Implications
+- The workspace version became 0.1.0. A stable release needs a version bump after it, or later alphas sort below it (the release job warns).
+- The first auto-updating build has to be installed by hand once (from the newest alpha release).
+- Code signing is still out of scope (D14). An unsigned installer downloaded by the app carries no Mark of the Web, so SmartScreen does not prompt on updates.
+

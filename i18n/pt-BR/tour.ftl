@@ -45,4 +45,4 @@ tour-review-body = Spots que você errou, quizzes errados e cálculos lentos vol
 tour-hand-review-title = Suas mãos
 tour-hand-review-body = Cada mão completa que você joga aparece aqui, com a nota de cada decisão e um replay passo a passo.
 tour-settings-title = Do seu jeito
-tour-settings-body = Idioma, tema, onde ficam os painéis da mesa, backups e a biblioteca de estratégia ficam aqui.
+tour-settings-body = As configurações ficam agrupadas em abas: Geral, Aparência, Estudo, Dados e Atualizações.

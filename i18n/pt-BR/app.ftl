@@ -30,10 +30,16 @@ screen-table-body = Modo spot e mãos completas contra o bot de referência, com
 screen-hand-review-body = Cada decisão da mão com a nota, e um replay passo a passo.
 screen-calc-body = Exercícios cronometrados de pot odds, equity e combos, com a conta exata ao lado do atalho.
 screen-review-body = Sua fila de repetição espaçada: spots que você errou, perguntas de quiz erradas e cálculos lentos ou errados, numa sessão só.
-screen-settings-body = Idioma, layout, tema, backups e a biblioteca de estratégia.
+screen-settings-body = Idioma, aparência, estudo, seus dados e atualizações, cada um na sua aba.
 screen-coming-in = Chega no { $milestone }.
 
 ## Footer
 
 footer-version = Versão { $version }
 footer-offline = Local-first: seus dados ficam neste computador.
+
+# Ícone na bandeja do sistema (D18).
+tray-open = Abrir o { -product }
+tray-check-updates = Verificar atualizações
+tray-install-update = Reiniciar e atualizar para { $version }
+tray-quit = Sair

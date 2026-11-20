@@ -19,6 +19,8 @@ use crate::screens::{
     calc::CalcView, lesson::LessonView, review::ReviewView, settings::SettingsView,
 };
 use crate::theme::Palette;
+use crate::tray::{Tray, TrayCommand};
+use crate::updater::{Status as UpdateStatus, Updater};
 
 pub(crate) const NAV_WIDTH: f32 = 232.;
 pub const CONTENT_MAX_WIDTH: f32 = 960.;
@@ -27,6 +29,8 @@ const SELECTION_BAR: f32 = 3.;
 const TICK: Duration = Duration::from_millis(250);
 /// App use is added to the backup clock in steps of this size.
 const USE_STEP: Duration = Duration::from_secs(60);
+/// The tray icon's size in pixels (Windows scales it to the tray).
+const TRAY_ICON_SIZE: u32 = 32;
 
 /// What a key did to the answer box.
 pub enum KeyResult {
@@ -62,6 +66,11 @@ pub struct Shell {
     pub(crate) tour_reset_done: bool,
     /// Bumped on every screen change so the screen fades in again.
     screen_visit: usize,
+    /// Auto-update state (D18).
+    pub(crate) updater: Updater,
+    /// The notification-area icon (Windows).
+    tray: Option<Tray>,
+    _tray_task: Option<Task<()>>,
     _ticker: Task<()>,
     _subscriptions: Vec<Subscription>,
 }
@@ -100,6 +109,7 @@ impl Shell {
                     if shell.timer_running() {
                         cx.notify();
                     }
+                    shell.update_tick(cx);
                 });
                 if alive.is_err() {
                     break;
@@ -108,12 +118,36 @@ impl Shell {
         });
         let subscriptions = vec![
             cx.subscribe_in(&table, window, Self::on_table_event),
-            cx.on_release(|shell, _| shell.exit_backup()),
+            cx.on_release(|shell, _| {
+                shell.exit_backup();
+                shell.install_on_exit();
+            }),
             cx.on_app_quit(|shell, _| {
                 shell.exit_backup();
+                shell.install_on_exit();
                 async {}
             }),
         ];
+        let updater = Updater::new(app.update_prefs());
+        let (tray_tx, mut tray_rx) = futures::channel::mpsc::unbounded();
+        let tray = Tray::new(
+            &ui.i18n,
+            crate::theme::tray_icon_pixels(&palette, TRAY_ICON_SIZE),
+            TRAY_ICON_SIZE,
+            tray_tx,
+        );
+        let tray_task = tray.is_some().then(|| {
+            cx.spawn_in(window, async move |this, cx| {
+                use futures::StreamExt;
+                while let Some(cmd) = tray_rx.next().await {
+                    let alive =
+                        this.update_in(cx, |shell, window, cx| shell.on_tray(cmd, window, cx));
+                    if alive.is_err() {
+                        break;
+                    }
+                }
+            })
+        });
         let mut shell = Self {
             ui,
             palette,
@@ -136,10 +170,19 @@ impl Shell {
             tour_seen: String::new(),
             tour_reset_done: false,
             screen_visit: 0,
+            updater,
+            tray,
+            _tray_task: tray_task,
             table,
             _ticker: ticker,
             _subscriptions: subscriptions,
         };
+        if let Some(tab) = std::env::var("TAFUL_SETTINGS_TAB")
+            .ok()
+            .and_then(|id| crate::screens::settings::Tab::from_id(&id))
+        {
+            shell.settings.tab = tab;
+        }
         shell.tour_seen = shell
             .app
             .string_setting(taful_app::keys::TOUR_SEEN)
@@ -205,6 +248,35 @@ impl Shell {
             }
         }
         cx.notify();
+    }
+
+    /// A click on the tray icon or one of its menu items.
+    fn on_tray(&mut self, cmd: TrayCommand, window: &mut Window, cx: &mut Context<Self>) {
+        match cmd {
+            TrayCommand::Open => window.activate_window(),
+            TrayCommand::Update => {
+                if matches!(self.updater.status, UpdateStatus::Ready { .. }) {
+                    self.install_update(cx);
+                    return;
+                }
+                window.activate_window();
+                self.settings.tab = crate::screens::settings::Tab::Updates;
+                self.select(Screen::Settings, window, cx);
+                self.check_updates(true, cx);
+            }
+            TrayCommand::Quit => cx.quit(),
+        }
+    }
+
+    /// Relabels the tray menu (locale, an update became ready or went away).
+    pub(crate) fn sync_tray(&self) {
+        if let Some(tray) = &self.tray {
+            let ready = match &self.updater.status {
+                UpdateStatus::Ready { release, .. } => Some(release.version.to_string()),
+                _ => None,
+            };
+            tray.set_labels(&self.ui.i18n, ready.as_deref());
+        }
     }
 
     fn exit_backup(&mut self) {
@@ -330,6 +402,7 @@ impl Shell {
         self.review = ReviewView::default();
         // A status line from before the switch is in the old language.
         self.settings.message = None;
+        self.sync_tray();
     }
 
     fn nav(&mut self, cx: &mut Context<Self>) -> AnyElement {
@@ -449,7 +522,10 @@ impl Shell {
                     .child(i18n.tr("footer-offline"))
                     .child(i18n.tr_args(
                         "footer-version",
-                        &[("version", env!("CARGO_PKG_VERSION").into())],
+                        &[(
+                            "version",
+                            crate::updater::current_version().to_string().into(),
+                        )],
                     )),
             )
             .into_any_element()
@@ -820,6 +896,7 @@ impl Render for Shell {
         let content = self.content(window, cx);
         let nav = self.nav(cx);
         let tour = self.tour_overlay(window, cx);
+        let update_card = self.update_card(window, cx);
         div()
             .relative()
             .size_full()
@@ -830,6 +907,7 @@ impl Render for Shell {
             .on_key_down(cx.listener(Self::on_key))
             .child(nav)
             .child(content)
+            .children(update_card)
             .children(tour)
     }
 }
