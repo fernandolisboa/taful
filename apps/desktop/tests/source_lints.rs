@@ -102,7 +102,13 @@ fn hex_color(line: &str) -> Option<&str> {
 fn no_color_literals_outside_theme_module() {
     let mut hits = Vec::new();
     for path in sources() {
-        if path.file_name().is_some_and(|n| n == THEME_MODULE) {
+        // Only `src/theme.rs`: a `theme.rs` inside a style's directory is
+        // linted like any other file.
+        if path
+            == Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("src")
+                .join(THEME_MODULE)
+        {
             continue;
         }
         let text = fs::read_to_string(&path).unwrap();

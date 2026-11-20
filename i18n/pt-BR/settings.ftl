@@ -41,6 +41,13 @@ settings-later = Baixar a biblioteca vem logo depois do primeiro recorte.
 
 settings-appearance = Aparência
 settings-theme = Tema
+settings-style = Estilo visual
+settings-style-body = O visual inteiro do app: navegação, componentes, fontes e arte. Clássico é o visual original.
+settings-style-theme-note = O estilo { $style } tem as próprias cores. Os temas valem para o estilo Clássico; o tema que você escolheu fica guardado.
+style-classic = Clássico
+style-salao = Salão
+style-cockpit = Cockpit
+style-baralho = Baralho
 theme-default = Petróleo (padrão)
 theme-midnight = Meia-noite
 theme-daylight = Dia

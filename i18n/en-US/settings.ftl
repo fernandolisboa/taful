@@ -41,6 +41,13 @@ settings-later = Downloading the library comes right after the first slice.
 
 settings-appearance = Appearance
 settings-theme = Theme
+settings-style = Visual style
+settings-style-body = The whole look of the app: navigation, components, fonts and art. Classic is the original look.
+settings-style-theme-note = The { $style } style has its own colors. Themes apply to the Classic style; your theme choice is kept.
+style-classic = Classic
+style-salao = Salão
+style-cockpit = Cockpit
+style-baralho = Baralho
 theme-default = Petrol (default)
 theme-midnight = Midnight
 theme-daylight = Daylight

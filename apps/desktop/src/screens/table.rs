@@ -27,14 +27,14 @@ use taful_app::story::{Story, StoryEvent};
 use taful_app::template::{street_id, texture_label_keys};
 
 #[path = "table_edit.rs"]
-mod edit;
+pub(crate) mod edit;
 
 use crate::Ui;
 use crate::felt::{self, Explain};
 use crate::theme::Palette;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Mode {
+pub(crate) enum Mode {
     Spot,
     Postflop,
     Hand,
@@ -59,63 +59,71 @@ pub enum TableEvent {
 impl EventEmitter<TableEvent> for TableScreen {}
 
 pub struct TableScreen {
-    ui: Rc<Ui>,
-    palette: Palette,
-    trainers: Result<Arc<Trainers>, String>,
-    mode: Mode,
-    kind: SpotKind,
+    pub(crate) ui: Rc<Ui>,
+    pub(crate) palette: Palette,
+    pub(crate) trainers: Result<Arc<Trainers>, String>,
+    pub(crate) mode: Mode,
+    pub(crate) kind: SpotKind,
     /// Spot mode's opponent: `None` = the reference bot, else a profile id.
-    opponent: Option<String>,
+    pub(crate) opponent: Option<String>,
     /// Full-hand mode's table, one entry per bot seat clockwise from hero's
     /// left (#29); `None` = every bot plays [`Self::opponent`].
-    seats: Option<Vec<Option<String>>>,
+    pub(crate) seats: Option<Vec<Option<String>>>,
     /// Seeds for spots and hands; bumped for every new deal.
-    seed: u64,
+    pub(crate) seed: u64,
     /// Postflop configuration filter (`None` = all).
-    postflop_spot: Option<String>,
+    pub(crate) postflop_spot: Option<String>,
     /// The leak being drilled.
-    drill: Option<LeakBucket>,
-    question: Option<DrillSpot>,
-    answer: Option<GradedDecision>,
-    hand: Option<FullHand>,
+    pub(crate) drill: Option<LeakBucket>,
+    pub(crate) question: Option<DrillSpot>,
+    pub(crate) answer: Option<GradedDecision>,
+    pub(crate) hand: Option<FullHand>,
     /// The current hand was handed to the shell.
-    hand_sent: bool,
+    pub(crate) hand_sent: bool,
     /// Panel placement (settings).
-    layout: Layout,
+    pub(crate) layout: Layout,
     /// Layout edit mode, while on.
-    editing: Option<edit::Editing>,
+    pub(crate) editing: Option<edit::Editing>,
     /// Grid cell size of the last frame, in pixels (edit-mode drags).
-    cell: f32,
+    pub(crate) cell: f32,
     /// Background work in flight, if any.
-    busy: Option<Busy>,
+    pub(crate) busy: Option<Busy>,
     /// Bumped by every deal and action; a background result for an older
     /// generation is dropped.
-    generation: u64,
-    _job: Option<Task<()>>,
+    pub(crate) generation: u64,
+    pub(crate) _job: Option<Task<()>>,
     /// How the shown question or hand got here (#53): the action log and
     /// the replay. Rebuilt with every new question and every hand step.
-    playback: Option<Playback>,
+    pub(crate) playback: Option<Playback>,
     /// Play the story up to hero's decision on every deal (setting).
-    auto_replay: bool,
+    pub(crate) auto_replay: bool,
     /// The replay's timer; dropping it stops the replay.
-    _ticker: Option<Task<()>>,
+    pub(crate) _ticker: Option<Task<()>>,
+    /// Each visual style's own state (D19); a style that keeps none
+    /// leaves its slot unused.
+    #[allow(dead_code)]
+    pub(crate) salao: crate::salao::TableState,
+    #[allow(dead_code)]
+    pub(crate) cockpit: crate::cockpit::TableState,
+    #[allow(dead_code)]
+    pub(crate) baralho: crate::baralho::TableState,
 }
 
 /// The story of the shown question or hand and the state on the felt.
-struct Playback {
-    story: Story,
+pub(crate) struct Playback {
+    pub(crate) story: Story,
     /// Index into `story.states` shown now; the last one when not playing.
-    at: usize,
+    pub(crate) at: usize,
     /// The replay timer is advancing `at` (else the user picked a moment).
-    ticking: bool,
+    pub(crate) ticking: bool,
 }
 
 impl Playback {
-    fn last(&self) -> usize {
+    pub(crate) fn last(&self) -> usize {
         self.story.states.len() - 1
     }
 
-    fn playing(&self) -> bool {
+    pub(crate) fn playing(&self) -> bool {
         self.at < self.last()
     }
 }
@@ -129,22 +137,22 @@ const REPLAY_DEAL: std::time::Duration = std::time::Duration::from_millis(1000);
 
 /// What the background is doing (the busy line).
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Busy {
+pub(crate) enum Busy {
     Dealing,
     Acting,
 }
 
 /// A background result.
-enum Done {
+pub(crate) enum Done {
     Question(Option<DrillSpot>),
     Hand(Option<FullHand>),
     Acted(Result<FullHand, String>),
 }
 
 /// Smallest grid cell in pixels: below it the window scrolls instead.
-const MIN_CELL: f32 = 14.;
+pub(crate) const MIN_CELL: f32 = 14.;
 /// Room the shell takes above the screen (title and gap), in pixels.
-const TITLE_ROOM: f32 = 56.;
+pub(crate) const TITLE_ROOM: f32 = 56.;
 
 impl TableScreen {
     /// Switches the strings (locale change); the deal in progress is kept.
@@ -207,6 +215,9 @@ impl TableScreen {
             playback: None,
             auto_replay,
             _ticker: None,
+            salao: Default::default(),
+            cockpit: Default::default(),
+            baralho: Default::default(),
         };
         // Screenshots: TAFUL_TABLE_REPLAY=0 deals straight to the decision.
         if std::env::var("TAFUL_TABLE_REPLAY").as_deref() == Ok("0") {
@@ -256,14 +267,14 @@ impl TableScreen {
         s
     }
 
-    fn next_seed(&mut self) -> u64 {
+    pub(crate) fn next_seed(&mut self) -> u64 {
         self.seed = self.seed.wrapping_add(1);
         self.seed
     }
 
     /// New spot or hand for the current mode. Postflop deals, drills and
     /// hands run in the background (they can solve rivers).
-    fn deal(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn deal(&mut self, cx: &mut Context<Self>) {
         let Ok(t) = self.trainers.clone() else { return };
         let seed = self.next_seed();
         self.answer = None;
@@ -322,7 +333,7 @@ impl TableScreen {
 
     /// Runs `work` on the background executor; its result lands through
     /// [`Self::finish`] unless a newer deal or action came first.
-    fn run(
+    pub(crate) fn run(
         &mut self,
         busy: Busy,
         cx: &mut Context<Self>,
@@ -345,7 +356,7 @@ impl TableScreen {
         cx.notify();
     }
 
-    fn finish(&mut self, done: Done, cx: &mut Context<Self>) {
+    pub(crate) fn finish(&mut self, done: Done, cx: &mut Context<Self>) {
         match done {
             Done::Question(q) => {
                 self.question = q;
@@ -371,7 +382,7 @@ impl TableScreen {
     }
 
     /// A new question is on the table: its story plays from the deal.
-    fn question_landed(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn question_landed(&mut self, cx: &mut Context<Self>) {
         match self.question.as_ref().map(|q| q.state().clone()) {
             Some(state) => self.show_story(&state, Some(0), cx),
             None => {
@@ -383,7 +394,12 @@ impl TableScreen {
 
     /// Shows `state`'s story (#53), replaying it from state `from` when
     /// auto-replay is on (`None` or auto-replay off: straight to the end).
-    fn show_story(&mut self, state: &GameState, from: Option<usize>, cx: &mut Context<Self>) {
+    pub(crate) fn show_story(
+        &mut self,
+        state: &GameState,
+        from: Option<usize>,
+        cx: &mut Context<Self>,
+    ) {
         self._ticker = None;
         self.playback = match Story::of(state) {
             Ok(story) => {
@@ -406,7 +422,7 @@ impl TableScreen {
     }
 
     /// Plays the story from the shown state to the end, one event at a time.
-    fn start_ticker(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn start_ticker(&mut self, cx: &mut Context<Self>) {
         if !self.playback.as_ref().is_some_and(Playback::playing) {
             self._ticker = None;
             return;
@@ -438,12 +454,12 @@ impl TableScreen {
         }));
     }
 
-    fn playing(&self) -> bool {
+    pub(crate) fn playing(&self) -> bool {
         self.playback.as_ref().is_some_and(Playback::playing)
     }
 
     /// Jumps to the end of the replay.
-    fn skip_replay(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn skip_replay(&mut self, cx: &mut Context<Self>) {
         self._ticker = None;
         if let Some(p) = &mut self.playback {
             p.at = p.last();
@@ -453,7 +469,7 @@ impl TableScreen {
     }
 
     /// Plays the story again from the deal.
-    fn replay_again(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn replay_again(&mut self, cx: &mut Context<Self>) {
         if let Some(p) = &mut self.playback {
             p.at = 0;
         }
@@ -461,7 +477,7 @@ impl TableScreen {
         cx.notify();
     }
 
-    fn toggle_auto_replay(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn toggle_auto_replay(&mut self, cx: &mut Context<Self>) {
         self.auto_replay = !self.auto_replay;
         if !self.auto_replay {
             self.skip_replay(cx);
@@ -471,7 +487,7 @@ impl TableScreen {
     }
 
     /// The state on the felt: the replay's, else `live`.
-    fn shown<'a>(&'a self, live: &'a GameState) -> &'a GameState {
+    pub(crate) fn shown<'a>(&'a self, live: &'a GameState) -> &'a GameState {
         match &self.playback {
             Some(p) if p.playing() => &p.story.states[p.at],
             _ => live,
@@ -480,7 +496,7 @@ impl TableScreen {
 
     /// Shows the story at state `step` (a click on a story row); hero's buttons
     /// wait until the replay is back at the decision.
-    fn jump_to(&mut self, step: usize, cx: &mut Context<Self>) {
+    pub(crate) fn jump_to(&mut self, step: usize, cx: &mut Context<Self>) {
         self._ticker = None;
         if let Some(p) = &mut self.playback {
             p.at = step.min(p.last());
@@ -493,7 +509,11 @@ impl TableScreen {
     /// street (its board and the pot it started with) with a row per action,
     /// openers' folds in one row. A row shows the felt at that moment; the
     /// controls replay, step and toggle auto-replay.
-    fn story_panel(&self, hero: taful_app::preflop::Seat, cx: &mut Context<Self>) -> Option<Div> {
+    pub(crate) fn story_panel(
+        &self,
+        hero: taful_app::preflop::Seat,
+        cx: &mut Context<Self>,
+    ) -> Option<Div> {
         let pb = self.playback.as_ref()?;
         let (ui, p) = (self.ui.clone(), self.palette);
         let (th, i18n) = (&ui.theme, &ui.i18n);
@@ -753,7 +773,7 @@ impl TableScreen {
     }
 
     /// The skip button that stands in for hero's actions during a replay.
-    fn skip_bar(&self, cx: &mut Context<Self>) -> Div {
+    pub(crate) fn skip_bar(&self, cx: &mut Context<Self>) -> Div {
         let th = &self.ui.theme;
         let ticking = self.playback.as_ref().is_some_and(|p| p.ticking);
         div()
@@ -779,7 +799,7 @@ impl TableScreen {
     }
 
     /// Emits [`TableEvent::HandOver`] once per hand, when it has ended.
-    fn send_if_over(&mut self, h: &FullHand, cx: &mut Context<Self>) {
+    pub(crate) fn send_if_over(&mut self, h: &FullHand, cx: &mut Context<Self>) {
         if h.end.is_some() && !self.hand_sent {
             self.hand_sent = true;
             cx.emit(TableEvent::HandOver(Box::new(h.clone())));
@@ -794,14 +814,14 @@ impl TableScreen {
         cx.notify();
     }
 
-    fn set_postflop_spot(&mut self, id: Option<String>, cx: &mut Context<Self>) {
+    pub(crate) fn set_postflop_spot(&mut self, id: Option<String>, cx: &mut Context<Self>) {
         self.postflop_spot = id;
         self.mode = Mode::Postflop;
         self.deal(cx);
         cx.notify();
     }
 
-    fn set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
+    pub(crate) fn set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
         if self.mode != mode {
             self.mode = mode;
             self.deal(cx);
@@ -809,7 +829,7 @@ impl TableScreen {
         }
     }
 
-    fn set_opponent(&mut self, opponent: Option<String>, cx: &mut Context<Self>) {
+    pub(crate) fn set_opponent(&mut self, opponent: Option<String>, cx: &mut Context<Self>) {
         self.opponent = opponent;
         // Preflop and postflop spots and full hands all have an opponent
         // (#27, #28). A hand in progress plays on; the next one sits the
@@ -828,7 +848,7 @@ impl TableScreen {
     }
 
     /// The bots of the next hand, clockwise from hero's left.
-    fn table_bots(&self, t: &Trainers) -> Vec<Option<String>> {
+    pub(crate) fn table_bots(&self, t: &Trainers) -> Vec<Option<String>> {
         let n = usize::from(t.preflop.config().table_size) - 1;
         self.seats
             .clone()
@@ -837,7 +857,7 @@ impl TableScreen {
 
     /// Switches between one profile for the whole table and one per seat
     /// (#29). Per seat starts from the current table profile.
-    fn set_per_seat(&mut self, per_seat: bool, cx: &mut Context<Self>) {
+    pub(crate) fn set_per_seat(&mut self, per_seat: bool, cx: &mut Context<Self>) {
         let Ok(t) = self.trainers.clone() else { return };
         self.seats = per_seat.then(|| self.table_bots(&t));
         self.table_changed(cx);
@@ -845,7 +865,7 @@ impl TableScreen {
 
     /// Seat `i` (from hero's left) plays the next option: the reference,
     /// then each profile in order.
-    fn cycle_seat(&mut self, i: usize, cx: &mut Context<Self>) {
+    pub(crate) fn cycle_seat(&mut self, i: usize, cx: &mut Context<Self>) {
         let Ok(t) = self.trainers.clone() else { return };
         let Some(seats) = &mut self.seats else { return };
         let options: Vec<Option<String>> = std::iter::once(None)
@@ -862,21 +882,21 @@ impl TableScreen {
     }
 
     /// A hand in progress plays on; the next one sits the new table.
-    fn table_changed(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn table_changed(&mut self, cx: &mut Context<Self>) {
         if self.hand.as_ref().is_none_or(|h| h.end.is_some()) {
             self.deal(cx);
         }
         cx.notify();
     }
 
-    fn set_kind(&mut self, kind: SpotKind, cx: &mut Context<Self>) {
+    pub(crate) fn set_kind(&mut self, kind: SpotKind, cx: &mut Context<Self>) {
         self.kind = kind;
         self.mode = Mode::Spot;
         self.deal(cx);
         cx.notify();
     }
 
-    fn act(&mut self, action: Action, cx: &mut Context<Self>) {
+    pub(crate) fn act(&mut self, action: Action, cx: &mut Context<Self>) {
         if self.busy.is_some() || self.playing() {
             return;
         }
@@ -921,7 +941,7 @@ impl TableScreen {
 
     // ---- pieces ---------------------------------------------------------------
 
-    fn button(
+    pub(crate) fn button(
         &self,
         id: impl Into<gpui::ElementId>,
         label: String,
@@ -933,7 +953,7 @@ impl TableScreen {
             .on_click(cx.listener(move |this, _, _, cx| on(this, cx)))
     }
 
-    fn chip(
+    pub(crate) fn chip(
         &self,
         id: impl Into<gpui::ElementId>,
         label: String,
@@ -945,7 +965,7 @@ impl TableScreen {
             .on_click(cx.listener(move |this, _, _, cx| on(this, cx)))
     }
 
-    fn segment(
+    pub(crate) fn segment(
         &self,
         id: impl Into<gpui::ElementId>,
         label: String,
@@ -958,7 +978,7 @@ impl TableScreen {
     }
 
     /// One labeled row of the controls panel.
-    fn control_row(&self, label: String, body: impl IntoElement) -> Div {
+    pub(crate) fn control_row(&self, label: String, body: impl IntoElement) -> Div {
         let (p, th) = (self.palette, &self.ui.theme);
         div()
             .flex()
@@ -977,7 +997,12 @@ impl TableScreen {
     }
 
     /// Hero's action buttons (exactly the tree's sizes, D4).
-    fn actions_bar(&self, state: &GameState, actions: &[Action], cx: &mut Context<Self>) -> Div {
+    pub(crate) fn actions_bar(
+        &self,
+        state: &GameState,
+        actions: &[Action],
+        cx: &mut Context<Self>,
+    ) -> Div {
         let t = &self.ui.theme;
         let buttons: Vec<_> = actions
             .iter()
@@ -1000,7 +1025,7 @@ impl TableScreen {
             .children(buttons)
     }
 
-    fn message(&self, text: String) -> Div {
+    pub(crate) fn message(&self, text: String) -> Div {
         div()
             .text_size(px(self.ui.theme.text_size.md))
             .text_color(self.palette.text_muted)
@@ -1008,7 +1033,7 @@ impl TableScreen {
     }
 
     /// The prompt before hero answers; against a profile, who the bot is.
-    fn prompt(&self, q: &DrillSpot) -> Div {
+    pub(crate) fn prompt(&self, q: &DrillSpot) -> Div {
         let (th, i18n) = (&self.ui.theme, &self.ui.i18n);
         let (opponent, fallback) = match q {
             DrillSpot::Preflop(s) => (s.opponent.as_deref(), None),
@@ -1048,7 +1073,7 @@ impl TableScreen {
     }
 
     /// The busy line while background work runs.
-    fn busy_line(&self) -> Option<Div> {
+    pub(crate) fn busy_line(&self) -> Option<Div> {
         let key = match self.busy? {
             Busy::Dealing => "table-busy-dealing",
             Busy::Acting => "table-busy-acting",
@@ -1057,7 +1082,7 @@ impl TableScreen {
     }
 
     /// Why postflop spots cannot be dealt.
-    fn postflop_message(&self, t: &Trainers) -> Option<String> {
+    pub(crate) fn postflop_message(&self, t: &Trainers) -> Option<String> {
         let i18n = &self.ui.i18n;
         match &t.postflop {
             Ok(_) => None,
@@ -1076,7 +1101,7 @@ impl TableScreen {
     }
 
     /// A single-decision question (spot, postflop, drill).
-    fn question_parts(&self, t: &Trainers, scale: f32, cx: &mut Context<Self>) -> Parts {
+    pub(crate) fn question_parts(&self, t: &Trainers, scale: f32, cx: &mut Context<Self>) -> Parts {
         let (p, i18n) = (&self.palette, &self.ui.i18n);
         if self.mode == Mode::Postflop
             && let Some(msg) = self.postflop_message(t)
@@ -1125,7 +1150,7 @@ impl TableScreen {
         }
     }
 
-    fn end_text(&self, h: &FullHand) -> Option<String> {
+    pub(crate) fn end_text(&self, h: &FullHand) -> Option<String> {
         let i18n = &self.ui.i18n;
         h.end.as_ref().map(|e| match e {
             HandEnd::Settled(_) | HandEnd::HeroFolded => i18n.tr_args(
@@ -1159,7 +1184,7 @@ impl TableScreen {
         })
     }
 
-    fn hand_parts(&self, t: &Trainers, scale: f32, cx: &mut Context<Self>) -> Parts {
+    pub(crate) fn hand_parts(&self, t: &Trainers, scale: f32, cx: &mut Context<Self>) -> Parts {
         let (p, th, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
         let Some(h) = &self.hand else {
             return match self.busy_line() {
@@ -1322,7 +1347,7 @@ impl TableScreen {
     }
 
     /// Mode and spot pickers.
-    fn controls(&self, trainers: &Trainers, cx: &mut Context<Self>) -> Div {
+    pub(crate) fn controls(&self, trainers: &Trainers, cx: &mut Context<Self>) -> Div {
         let (p, th) = (self.palette, self.ui.theme.clone());
         let ui = self.ui.clone();
         let i18n = &ui.i18n;
@@ -1518,7 +1543,7 @@ impl TableScreen {
     }
 
     /// A panel's box on the grid.
-    fn place(r: Rect) -> Div {
+    pub(crate) fn place(r: Rect) -> Div {
         div()
             .absolute()
             .left(px(r.x))
@@ -1550,6 +1575,17 @@ impl TableScreen {
 
 impl Render for TableScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        crate::style::by_style!(self.ui.style, table(self, window, cx))
+    }
+}
+
+impl TableScreen {
+    /// Classic's table screen.
+    pub(crate) fn render_classic(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let (p, th) = (self.palette, self.ui.theme.clone());
         let ui = self.ui.clone();
         let trainers = match &self.trainers {
@@ -1668,15 +1704,15 @@ impl Render for TableScreen {
 }
 
 /// What the table, actions and explanation panels show.
-struct Parts {
-    table: Div,
-    actions: Div,
-    panel: Div,
+pub(crate) struct Parts {
+    pub(crate) table: Div,
+    pub(crate) actions: Div,
+    pub(crate) panel: Div,
 }
 
 impl Parts {
     /// Only a message (no spot): shown on the felt's panel.
-    fn message(text: Div) -> Parts {
+    pub(crate) fn message(text: Div) -> Parts {
         Parts {
             table: text,
             actions: div(),

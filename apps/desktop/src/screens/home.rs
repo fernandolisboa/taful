@@ -8,7 +8,8 @@ use crate::shell::Shell;
 use crate::widgets::{button, card, eyebrow, muted, progress};
 
 impl Shell {
-    pub(crate) fn home_view(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    /// Classic's home.
+    pub(crate) fn home_classic(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let (ui, p) = (self.ui.clone(), self.palette);
         let t = &ui.theme;
         let loc = ui.i18n.locale();

@@ -14,6 +14,7 @@
 //!   layouts and the theme choice (M6), and user themes from the theme
 //!   editor (#23); [`layout_edit`]: the layout edit mode (#22).
 //! - [`update`]: auto-update preferences and release selection (D18).
+//! - [`style`]: the visual styles and their fixed colors (D19).
 
 pub mod appearance;
 pub mod bots;
@@ -34,6 +35,7 @@ pub mod review;
 pub mod review_session;
 pub mod services;
 pub mod story;
+pub mod style;
 pub mod template;
 pub mod theme;
 pub mod training;

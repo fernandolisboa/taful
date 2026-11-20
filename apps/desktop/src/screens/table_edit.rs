@@ -19,7 +19,7 @@ use super::{TableEvent, TableScreen};
 use crate::Ui;
 
 /// Height of the edit bar above the grid, in pixels.
-pub(super) const EDIT_BAR: f32 = 64.;
+pub(crate) const EDIT_BAR: f32 = 64.;
 /// Height of a panel's drag header, in pixels.
 const HEADER: f32 = 26.;
 /// Side of the resize handle, in pixels.
@@ -28,7 +28,7 @@ const HANDLE: f32 = 14.;
 const MIN_CELLS: f32 = 2.;
 
 /// An edit session.
-pub(super) struct Editing {
+pub(crate) struct Editing {
     editor: LayoutEditor,
     drag: Option<Drag>,
     /// Why the last drop was refused.
@@ -39,7 +39,7 @@ pub(super) struct Editing {
 
 /// A panel being moved or resized.
 #[derive(Clone, Copy)]
-struct Drag {
+pub(crate) struct Drag {
     id: PanelId,
     resize: bool,
     /// Mouse position when the drag started, and now.
@@ -53,7 +53,7 @@ struct Drag {
 
 impl TableScreen {
     /// Enters edit mode on the layout on screen.
-    pub(super) fn start_edit(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn start_edit(&mut self, cx: &mut Context<Self>) {
         self.editing = Some(Editing {
             editor: LayoutEditor::new(self.layout.clone()),
             drag: None,
@@ -64,7 +64,7 @@ impl TableScreen {
     }
 
     /// Leaves edit mode and restores the layout from before editing.
-    pub(super) fn cancel_edit(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn cancel_edit(&mut self, cx: &mut Context<Self>) {
         if let Some(e) = self.editing.take() {
             self.layout = e.editor.cancel();
         }
@@ -73,7 +73,7 @@ impl TableScreen {
 
     /// Saves a copy; with nothing changed there is nothing to copy, so it
     /// just leaves edit mode.
-    fn save_edit(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn save_edit(&mut self, cx: &mut Context<Self>) {
         match &self.editing {
             Some(e) if e.editor.changed() => {
                 cx.emit(TableEvent::SaveLayout(Box::new(e.editor.draft().clone())));
@@ -100,12 +100,12 @@ impl TableScreen {
         cx.notify();
     }
 
-    pub(super) fn is_editing(&self) -> bool {
+    pub(crate) fn is_editing(&self) -> bool {
         self.editing.is_some()
     }
 
     /// The layout to draw: the draft while editing.
-    pub(super) fn shown_layout(&self) -> Layout {
+    pub(crate) fn shown_layout(&self) -> Layout {
         match &self.editing {
             Some(e) => e.editor.draft().clone(),
             None => self.layout.clone(),
@@ -113,7 +113,7 @@ impl TableScreen {
     }
 
     /// Where a panel is drawn: under the cursor while dragged.
-    pub(super) fn panel_rect(&self, layout: &Layout, id: PanelId, cell: f32) -> Option<Rect> {
+    pub(crate) fn panel_rect(&self, layout: &Layout, id: PanelId, cell: f32) -> Option<Rect> {
         let r = layout.rect(id, cell)?;
         match self.editing.as_ref().and_then(|e| e.drag) {
             Some(d) if d.id == id => {
@@ -130,7 +130,7 @@ impl TableScreen {
     }
 
     /// The dragged panel's rectangle in cells, kept inside the grid.
-    fn drag_cells(&self, d: &Drag, layout: &Layout) -> (f32, f32, f32, f32) {
+    pub(crate) fn drag_cells(&self, d: &Drag, layout: &Layout) -> (f32, f32, f32, f32) {
         let cell = self.cell.max(1.);
         let dx = f32::from(d.now.x - d.start.x) / cell;
         let dy = f32::from(d.now.y - d.start.y) / cell;
@@ -148,7 +148,7 @@ impl TableScreen {
     }
 
     /// Where the dragged panel would land if dropped now.
-    fn landing(&self, e: &Editing, d: &Drag) -> Landing {
+    pub(crate) fn landing(&self, e: &Editing, d: &Drag) -> Landing {
         let (x, y, w, h) = self.drag_cells(d, e.editor.draft());
         if d.resize {
             e.editor.landing_for_resize(d.id, w, h)
@@ -157,7 +157,7 @@ impl TableScreen {
         }
     }
 
-    fn begin_drag(
+    pub(crate) fn begin_drag(
         &mut self,
         id: PanelId,
         resize: bool,
@@ -182,7 +182,7 @@ impl TableScreen {
         cx.notify();
     }
 
-    fn on_drag_move(&mut self, ev: &MouseMoveEvent, cx: &mut Context<Self>) {
+    pub(crate) fn on_drag_move(&mut self, ev: &MouseMoveEvent, cx: &mut Context<Self>) {
         let Some(d) = self.editing.as_mut().and_then(|e| e.drag.as_mut()) else {
             return;
         };
@@ -196,12 +196,12 @@ impl TableScreen {
         cx.notify();
     }
 
-    fn on_drop(&mut self, ev: &MouseUpEvent, cx: &mut Context<Self>) {
+    pub(crate) fn on_drop(&mut self, ev: &MouseUpEvent, cx: &mut Context<Self>) {
         self.drop_dragged(ev.modifiers.alt);
         cx.notify();
     }
 
-    fn drop_dragged(&mut self, alt: bool) {
+    pub(crate) fn drop_dragged(&mut self, alt: bool) {
         let Some(mut d) = self.editing.as_mut().and_then(|e| e.drag.take()) else {
             return;
         };
@@ -216,7 +216,7 @@ impl TableScreen {
     }
 
     /// The bar above the grid: hint or refusal, save and cancel.
-    pub(super) fn edit_bar(&self, width: f32, cx: &mut Context<Self>) -> Div {
+    pub(crate) fn edit_bar(&self, width: f32, cx: &mut Context<Self>) -> Div {
         let (p, ui) = (self.palette, self.ui.clone());
         let th = &ui.theme;
         let Some(e) = &self.editing else {
@@ -280,7 +280,7 @@ impl TableScreen {
     /// While editing: the dot grid under the panels and, during a drag,
     /// window-wide mouse listeners that move the dragged panel (the panels'
     /// covers take the hover, and the cursor may leave the grid).
-    pub(super) fn edit_grid(
+    pub(crate) fn edit_grid(
         &self,
         grid: Div,
         layout: &Layout,
@@ -323,7 +323,7 @@ impl TableScreen {
 
     /// The dashed outline of where the dragged panel will land, drawn over
     /// the panels; the refusal color when it may not land there.
-    pub(super) fn landing_outline(&self, cell: f32) -> Option<Div> {
+    pub(crate) fn landing_outline(&self, cell: f32) -> Option<Div> {
         let e = self.editing.as_ref()?;
         let d = e.drag?;
         let (p, th) = (self.palette, &self.ui.theme);
@@ -348,13 +348,13 @@ impl TableScreen {
     }
 
     /// The panel being dragged, drawn above the others.
-    pub(super) fn dragged_panel(&self) -> Option<PanelId> {
+    pub(crate) fn dragged_panel(&self) -> Option<PanelId> {
         self.editing.as_ref()?.drag.map(|d| d.id)
     }
 
     /// While editing, a panel's content is covered (no clicks reach it) and
     /// gets a drag header and a resize handle.
-    pub(super) fn edit_chrome(
+    pub(crate) fn edit_chrome(
         &self,
         id: PanelId,
         panel: Div,

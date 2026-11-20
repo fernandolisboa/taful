@@ -30,6 +30,49 @@ pub fn hsl_of(c: Color) -> (f64, f64, f64) {
     c.hsl()
 }
 
+/// `c` with its alpha multiplied by `a` (0–1): translucent tints, glows and
+/// shadows of a token color.
+#[allow(dead_code)] // For the visual styles (D19); Classic has no tints.
+pub fn alpha(c: Rgba, a: f32) -> Rgba {
+    Rgba {
+        a: c.a * a.clamp(0., 1.),
+        ..c
+    }
+}
+
+/// A visual style's colors that have no theme token (D19), by name, from
+/// the `extra` map of `content/styles/<id>.json`.
+#[derive(Default)]
+pub struct Extra(std::collections::BTreeMap<String, Rgba>);
+
+impl Extra {
+    pub fn new(colors: &std::collections::BTreeMap<String, Color>) -> Self {
+        Self(colors.iter().map(|(k, c)| (k.clone(), rgba(*c))).collect())
+    }
+
+    /// Whether the style file has a color named `name`. A style's tests
+    /// check every name the style asks for (CI builds the desktop app in
+    /// release mode, where [`Extra::get`] does not panic).
+    #[allow(dead_code)] // For the visual styles (D19).
+    pub fn contains(&self, name: &str) -> bool {
+        self.0.contains_key(name)
+    }
+
+    /// The color named `name`. A name the style file lacks is a bug in the
+    /// style: debug builds panic, release builds draw nothing rather than
+    /// crash.
+    #[allow(dead_code)] // For the visual styles (D19).
+    pub fn get(&self, name: &str) -> Rgba {
+        match self.0.get(name) {
+            Some(c) => *c,
+            None => {
+                debug_assert!(false, "style color {name:?} is not in the style file");
+                Rgba::default()
+            }
+        }
+    }
+}
+
 /// Theme colors converted once, named like the tokens.
 #[derive(Clone, Copy)]
 pub struct Palette {

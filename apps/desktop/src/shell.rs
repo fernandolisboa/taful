@@ -18,6 +18,7 @@ use crate::screens::table::{TableEvent, TableScreen};
 use crate::screens::{
     calc::CalcView, lesson::LessonView, review::ReviewView, settings::SettingsView,
 };
+use crate::style::{Style, by_style};
 use crate::theme::Palette;
 use crate::tray::{Tray, TrayCommand};
 use crate::updater::{Status as UpdateStatus, Updater};
@@ -47,7 +48,7 @@ pub struct Shell {
     pub(crate) screen: Screen,
     pub(crate) focus: FocusHandle,
     /// The content pane's scroll position (reset on every screen change).
-    scroll: ScrollHandle,
+    pub(crate) scroll: ScrollHandle,
     /// The answer being typed (calc, numeric quiz questions, reviews).
     pub(crate) input: String,
     pub(crate) lesson: LessonView,
@@ -59,13 +60,21 @@ pub struct Shell {
     /// The home screen's leaks, read again each time home is opened.
     pub(crate) leaks: Option<Vec<taful_app::model::Leak>>,
     /// The guided tour on screen: which screen's, and the step shown.
-    tour: Option<(Screen, usize)>,
+    pub(crate) tour: Option<(Screen, usize)>,
     /// Screens whose tour was finished or skipped (`tour.seen`).
     pub(crate) tour_seen: String,
     /// Set by Settings' "show tours again" until the screen changes.
     pub(crate) tour_reset_done: bool,
     /// Bumped on every screen change so the screen fades in again.
-    screen_visit: usize,
+    pub(crate) screen_visit: usize,
+    /// Each visual style's own state (D19); a style that keeps none
+    /// leaves its slot unused.
+    #[allow(dead_code)]
+    pub(crate) salao: crate::salao::ShellState,
+    #[allow(dead_code)]
+    pub(crate) cockpit: crate::cockpit::ShellState,
+    #[allow(dead_code)]
+    pub(crate) baralho: crate::baralho::ShellState,
     /// Auto-update state (D18).
     pub(crate) updater: Updater,
     /// The notification-area icon (Windows).
@@ -170,6 +179,9 @@ impl Shell {
             tour_seen: String::new(),
             tour_reset_done: false,
             screen_visit: 0,
+            salao: Default::default(),
+            cockpit: Default::default(),
+            baralho: Default::default(),
             updater,
             tray,
             _tray_task: tray_task,
@@ -286,7 +298,7 @@ impl Shell {
     }
 
     /// Whether a timed exercise is on screen (the timer needs repaints).
-    fn timer_running(&self) -> bool {
+    pub(crate) fn timer_running(&self) -> bool {
         match self.screen {
             Screen::Calc => self.calc.running(),
             Screen::Review => self.review.calc_running(),
@@ -331,7 +343,7 @@ impl Shell {
     }
 
     /// Edits the shared answer box.
-    fn edit_input(&mut self, ev: &KeyDownEvent) -> KeyResult {
+    pub(crate) fn edit_input(&mut self, ev: &KeyDownEvent) -> KeyResult {
         let ks = &ev.keystroke;
         if ks.modifiers.control || ks.modifiers.alt || ks.modifiers.platform {
             return KeyResult::Ignored;
@@ -359,7 +371,12 @@ impl Shell {
         }
     }
 
-    fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn on_key(
+        &mut self,
+        ev: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.tour.is_some() {
             // The tour owns the keyboard: no answer is typed behind it.
             match ev.keystroke.key.as_str() {
@@ -367,6 +384,11 @@ impl Shell {
                 "enter" => self.tour_next(cx),
                 _ => {}
             }
+            cx.notify();
+            return;
+        }
+        // The visual style's own shortcuts come before the screens'.
+        if by_style!(self.ui.style, key(self, ev, window, cx)) {
             cx.notify();
             return;
         }
@@ -405,7 +427,21 @@ impl Shell {
         self.sync_tray();
     }
 
-    fn nav(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    /// Makes a visual style active (D19) and stores the choice. Each style
+    /// but Classic brings its own colors; the user's theme stays saved.
+    pub(crate) fn set_style(&mut self, style: Style, window: &mut Window, cx: &mut Context<Self>) {
+        if let Err(e) = self.app.set_style(style) {
+            eprintln!("taful: saving the visual style failed: {e}");
+        }
+        // The theme editor edits the Classic style's colors.
+        self.settings.theme_editor = None;
+        let locale = self.ui.i18n.locale();
+        let ui = Ui::new(locale, self.app.theme(), style);
+        self.set_ui(Rc::new(ui), window, cx);
+        self.scroll_to_top();
+    }
+
+    pub(crate) fn nav(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let (p, t, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
         let due = self.app.due_count().unwrap_or(0);
         // The lesson reader lives under the lessons item.
@@ -531,30 +567,9 @@ impl Shell {
             .into_any_element()
     }
 
-    /// The "coming in Mx" card for screens later milestones build.
-    pub(crate) fn placeholder(&self, screen: Screen) -> AnyElement {
-        let (p, t, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
-        crate::widgets::card(&self.ui, p)
-            .child(
-                div()
-                    .text_size(px(t.text_size.lg))
-                    .child(i18n.tr(screen.body_key())),
-            )
-            .child(
-                div()
-                    .text_size(px(t.text_size.md))
-                    .text_color(p.accent)
-                    .child(i18n.tr_args(
-                        "screen-coming-in",
-                        &[("milestone", screen.milestone().into())],
-                    )),
-            )
-            .into_any_element()
-    }
-
     /// Opens the current screen's tour on its first visit.
     /// `TAFUL_TOUR=0` (screenshots, CI) never opens one on its own.
-    fn maybe_start_tour(&mut self) {
+    pub(crate) fn maybe_start_tour(&mut self) {
         if std::env::var("TAFUL_TOUR").as_deref() == Ok("0") {
             return;
         }
@@ -565,14 +580,14 @@ impl Shell {
 
     /// Opens the current screen's tour at its first step. A timed
     /// question's clock is paused while the tour is open.
-    fn tour_start(&mut self) {
+    pub(crate) fn tour_start(&mut self) {
         self.tour = Some((self.screen, 0));
         if self.screen == Screen::Calc {
             self.calc_leave();
         }
     }
 
-    fn tour_next(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn tour_next(&mut self, cx: &mut Context<Self>) {
         if let Some((screen, i)) = self.tour {
             if i + 1 < crate::tour::steps(screen).len() {
                 self.tour = Some((screen, i + 1));
@@ -584,7 +599,7 @@ impl Shell {
     }
 
     /// Closes the tour and remembers the screen as seen.
-    fn tour_end(&mut self) {
+    pub(crate) fn tour_end(&mut self) {
         let Some((screen, _)) = self.tour.take() else {
             return;
         };
@@ -611,7 +626,11 @@ impl Shell {
 
     /// The coach mark over the anchored element (or centered when the
     /// anchor is not on screen, e.g. a quiz that is already open).
-    fn tour_overlay(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+    pub(crate) fn tour_overlay(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
         const CARD_W: f32 = 360.;
         const GAP: f32 = 12.;
         // Room kept for the card (its height is known only after layout).
@@ -749,7 +768,7 @@ impl Shell {
     }
 
     /// Screen title plus a one-line "what is this screen" subtitle.
-    fn header(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn header(&self, cx: &mut Context<Self>) -> AnyElement {
         let (p, t, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
         let subtitle = matches!(
             self.screen,
@@ -806,7 +825,42 @@ impl Shell {
             .into_any_element()
     }
 
-    fn content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    /// The current screen's body, without title or scrolling. Home, the
+    /// lessons tree and the table are drawn by the active visual style.
+    pub(crate) fn screen_body(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        match self.screen {
+            Screen::Home => by_style!(self.ui.style, home(self, cx)),
+            Screen::SkillTree => by_style!(self.ui.style, lessons(self, cx)),
+            Screen::Lesson => self.lesson_view(cx),
+            Screen::Calc => self.calc_view(cx),
+            Screen::Settings => self.settings_view(window, cx),
+            Screen::Table => self.table.clone().into_any_element(),
+            Screen::HandReview => self.hand_review_view(cx),
+            Screen::Review => self.review_view(cx),
+        }
+    }
+
+    /// Classic's frame: the navigation rail and the content pane.
+    pub(crate) fn frame_classic(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let content = self.content(window, cx);
+        let nav = self.nav(cx);
+        div()
+            .size_full()
+            .flex()
+            .child(nav)
+            .child(content)
+            .into_any_element()
+    }
+
+    pub(crate) fn content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let t = &self.ui.theme;
         let (xl, xxl) = (t.spacing.xl, t.spacing.xxl);
         if matches!(
@@ -815,11 +869,7 @@ impl Shell {
         ) {
             let gap = t.spacing.lg;
             // Screens with a table take the whole pane (no reading column).
-            let body = match self.screen {
-                Screen::Table => self.table.clone().into_any_element(),
-                Screen::HandReview => self.hand_review_view(cx),
-                _ => self.review_view(cx),
-            };
+            let body = self.screen_body(window, cx);
             return div()
                 .id("content_wide")
                 .flex_1()
@@ -843,14 +893,7 @@ impl Shell {
         }
         let viewport = f32::from(window.viewport_size().width);
         let column_width = (viewport - NAV_WIDTH).clamp(0., CONTENT_MAX_WIDTH + 2. * xxl);
-        let body = match self.screen {
-            Screen::Home => self.home_view(cx),
-            Screen::SkillTree => self.tree_view(cx),
-            Screen::Lesson => self.lesson_view(cx),
-            Screen::Calc => self.calc_view(cx),
-            Screen::Settings => self.settings_view(window, cx),
-            Screen::Table | Screen::HandReview | Screen::Review => self.placeholder(self.screen),
-        };
+        let body = self.screen_body(window, cx);
         div()
             .id("content")
             .flex_1()
@@ -893,8 +936,7 @@ impl Shell {
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         crate::tour::begin_frame();
-        let content = self.content(window, cx);
-        let nav = self.nav(cx);
+        let frame = by_style!(self.ui.style, frame(self, window, cx));
         let tour = self.tour_overlay(window, cx);
         let update_card = self.update_card(window, cx);
         div()
@@ -903,10 +945,12 @@ impl Render for Shell {
             .flex()
             .bg(self.palette.background)
             .text_color(self.palette.text)
+            .when_some(crate::style::font_family(self.ui.style), |d, family| {
+                d.font_family(family)
+            })
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::on_key))
-            .child(nav)
-            .child(content)
+            .child(frame)
             .children(update_card)
             .children(tour)
     }
