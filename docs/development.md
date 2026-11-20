@@ -172,10 +172,10 @@ gpui 0.2.2 fails on Linux because `xattr` 0.2.3 uses `ENOATTR`. A local copy of 
 
 ## Visual styles (D19)
 
-The desktop app draws itself through the active visual style (`ui.style`): Classic, Salão, Cockpit or Baralho.
+The desktop app draws itself through the active visual style (`ui.style`): Salão (the default, D21), Cockpit, Baralho or Classic.
 
 - One module per style: `apps/desktop/src/<id>/mod.rs`. `classic` is the reference set of hooks, listed at the top of `apps/desktop/src/style.rs`. Another style starts as `pub use crate::classic::*;` and replaces a hook by defining an item with the same name. Shared code calls `by_style!(ui.style, hook(args))` and never names a style.
-- Hooks: constants (`READY`, `ASSETS`, `FONTS`, `FONT_FAMILY`, `WINDOW`, `FELT_SCALE`), state (`ShellState`, `TableState`), views (`frame`, `key`, `home`, `lessons`, `table`, `story`), the felt (`felt_table`, `felt_card`, `explanation`, `felt_panel`) and the widgets the top of `widgets.rs` dispatches (`button`, `chip`, `card`, `title`, `muted`, `answer_box`, `progress`, `eyebrow`, `segmented`, `segment`, `empty_state`, `subhead`, `toggle`). The lesson text renderer (`document`) is shared by every style.
+- Hooks: constants (`READY`, `ASSETS`, `FONTS`, `FONT_FAMILY`, `WINDOW`, `FELT_SCALE`, `FELT_WIDTH`, `PANEL_WIDTH`), state (`ShellState`, `TableState`), views (`frame`, `key`, `home`, `lessons`, `table`, `story`), the felt (`felt_table`, `felt_card`, `explanation`, `felt_panel`) and the widgets the top of `widgets.rs` dispatches (`button`, `chip`, `card`, `title`, `muted`, `answer_box`, `progress`, `eyebrow`, `segmented`, `segment`, `empty_state`, `subhead`, `toggle`). The lesson text renderer (`document`) is shared by every style.
 - Colors: `content/styles/<id>.json` holds `{"theme": <theme tokens>, "extra": {"name": "#rrggbb[aa]"}}`. In that style `ui.theme` is the file's theme and `ui.extra.get("name")` gives an extra color. `theme::alpha(color, a)` makes a translucent variant. No color literal outside `src/theme.rs`, as before. CI builds the desktop app in release mode, where a misspelled extra name draws nothing instead of panicking: give the style a test that checks every name it uses with `ui.extra.contains(name)`.
 - Files: fonts and art live in `apps/desktop/assets/<id>/` and are listed in the style's `ASSETS` (served to `img()` and `svg()`, paths start with `<id>/`) and `FONTS` (added to the text system at startup).
 - Strings only one style shows go in `i18n/<locale>/<id>.ftl`.
@@ -193,6 +193,16 @@ Writing a style's module, mind how the hooks resolve:
 - A style's `table` arranges the screen itself and takes its pieces from `TableScreen`: `question_parts`/`hand_parts` (the felt, the action buttons and the side panel, drawn through the felt hooks), `mode_segments`, `kind_chips`, `postflop_chips` and `opponent_chips` (the controls, as widgets of the style), `story_columns` (the hand's story as data, for the `story` hook) and `repeat_spot` (the answered spot again; the second answer is graded and not stored). `render_classic` is the grid of panels: the layout edit mode and layouts other than the built-in default need it.
 - `FELT_SCALE` sizes a felt that is not in a layout cell (reviews, hand review): `felt::natural_scale(ui)`.
 
+### Small windows (D21)
+
+The window is at least `MIN_WINDOW` (940 × 600, `main.rs`), and every style has to hold every screen from there up. At the size a style was drawn for, nothing may move: compare screenshots with `main` before and after a change.
+
+- GPUI has no scale transform and wraps text only in a box with a definite width. A style adapts by computing sizes from the window (`window.viewport_size()`), not by letting flex shrink things: give wrapped text a width, give a row that may not fit `flex_wrap()` or a second arrangement, and `truncate()` what may be cut.
+- A style's frame sets `Shell::room_w` (the width the screen's body gets) before it asks for the body. Shared screens size their cards with it (`Shell::card_width()`), and a felt that stands alone is drawn with `felt::room_scale(ui, room_w, gap)`. It needs the style's `FELT_WIDTH` (the table's width at scale 1; zero for a style that fits its table to the window itself, like Baralho) and `PANEL_WIDTH` (the explanation's): the table shrinks to keep the explanation beside it down to 70% of its size, and below that takes the row alone while the explanation wraps under it.
+- A block whose height depends on wrapping (the table's controls) measures itself with `screens::table::measure_height` and is laid out from that on the next frame.
+- Breakpoints are constants next to the layout they switch, named for what changes. A screen's own (`STATS_STACK_W`, `TWO_COLUMNS_W`, Cockpit's `WIDE_ROOM`) compare against the room the screen has; a frame's (`SMALL_VW`, `SHORT_VH`, `NAV_SHORT`, Cockpit's `WIDE_PANE`) and the Salão table's `TITLE_VH` compare against the window or the pane.
+- Check a change at 940 × 600, 1100 × 700, 1280 × 720 and 1600 × 900 (`TAFUL_WINDOW` and `TAFUL_SCREEN`, above).
+
 ### Cockpit
 
 - `apps/desktop/src/cockpit/`: `frame.rs` (icon rail, status bar), `home.rs` (dashboard), `lessons.rs`, and the table in four files: `table.rs` (pickers, action bar, keys, the scene the panels draw from), `felt.rs` (the stage, at the design's coordinates and scaled as a whole), `line.rs` (hand line) and `eval.rs` (evaluation and range). `kit.rs` holds the shared pieces and `pal.rs` every color.
@@ -202,6 +212,7 @@ Writing a style's module, mind how the hooks resolve:
 - Keys on the table: `F` fold, `C` check or call, `R` the bet or raise (`1`, `2`, `3`… when there are several sizes), `A` all-in, `Space` next deal or skip the replay, `Backspace` replay again.
 - The bundled fonts have no suit symbols: draw a suit with `kit::suit_icon`.
 - The panels are fixed. "Editar layout" is shown as designed and does nothing in Cockpit yet (the layout editor arranges Classic's panels).
+- Under a 1280 px window (`frame::WIDE_PANE`) the screens restack: the home goes to two numbers a row and full-width panels, the lessons wrap their columns, and the table stacks the table, the hand line and the evaluation and scrolls down. The pickers above the table wrap at any width (a table with a picker per seat needs two rows even at 1600 px), and the panels start under whatever height they take. From 1280 px up a short window shrinks the table panel (down to `TABLE_MIN_H`) before the screen scrolls.
 - The status bar has no button to replay a screen's tour (the mockup has none): tours are reset in Settings.
 - The color lint matches substrings: `anchored()` reads as `red()`, so `table.rs` imports it under another name.
 

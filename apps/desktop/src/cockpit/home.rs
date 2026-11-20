@@ -42,42 +42,76 @@ pub fn home(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             .child(ui.i18n.tr("cockpit-kpi-empty"))
             .into_any_element();
     };
+    let row = || div().flex().flex_none().gap(px(GAP));
+    let page = div().flex().flex_col().gap(px(GAP)).w(px(w));
+    if w < super::frame::WIDE_ROOM {
+        // A window narrower than designed: the same panels, restacked. Two
+        // numbers a row, the chart and the leaks each on the whole width,
+        // and the deviation map under the tracks and the shortcuts.
+        let half = ((w - GAP) / 2.).floor();
+        return page
+            .child(
+                div()
+                    .relative()
+                    .flex()
+                    .flex_col()
+                    .flex_none()
+                    .gap(px(GAP))
+                    .child(crate::tour::anchor("home_stats"))
+                    .child(
+                        row()
+                            .h(px(KPI_H))
+                            .child(reviews(&ui, &pal, &d, half, cx))
+                            .child(accuracy(&ui, &pal, &d.accuracy, w - GAP - half)),
+                    )
+                    .child(
+                        row()
+                            .h(px(KPI_H))
+                            .child(ev_loss(&ui, &pal, &d.ev_loss, half))
+                            .child(calc(&ui, &pal, &d, w - GAP - half)),
+                    ),
+            )
+            .child(row().h(px(MID_H)).child(chart(&ui, &pal, &d, w)))
+            .child(row().h(px(MID_H)).child(leaks(&ui, &pal, &d.leaks, w, cx)))
+            .child(
+                row()
+                    .h(px(LOW_H))
+                    .child(tracks(&ui, &pal, &lessons, half, cx))
+                    .child(shortcuts(&ui, &pal, &d, w - GAP - half, cx)),
+            )
+            .child(row().child(deviation(&ui, &pal, &d, w)))
+            .into_any_element();
+    }
     let kpi_w = (w - 3. * GAP) / 4.;
     let chart_w = ((w - GAP) * CHART_SHARE).round();
     let leaks_w = w - GAP - chart_w;
     let low_h = LOW_H.max(h - KPI_H - MID_H - 2. * GAP);
     let tracks_w = ((w - 2. * GAP - DEVIATION_W) * TRACKS_SHARE).round();
     let shortcuts_w = w - 2. * GAP - DEVIATION_W - tracks_w;
-    let row = || div().flex().flex_none().gap(px(GAP));
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(GAP))
-        .w(px(w))
-        .child(
-            row()
-                .relative()
-                .h(px(KPI_H))
-                .child(crate::tour::anchor("home_stats"))
-                .child(reviews(&ui, &pal, &d, kpi_w, cx))
-                .child(accuracy(&ui, &pal, &d.accuracy, kpi_w))
-                .child(ev_loss(&ui, &pal, &d.ev_loss, kpi_w))
-                .child(calc(&ui, &pal, &d, kpi_w)),
-        )
-        .child(
-            row()
-                .h(px(MID_H))
-                .child(chart(&ui, &pal, &d, chart_w))
-                .child(leaks(&ui, &pal, &d.leaks, leaks_w, cx)),
-        )
-        .child(
-            row()
-                .h(px(low_h))
-                .child(tracks(&ui, &pal, &lessons, tracks_w, cx))
-                .child(deviation(&ui, &pal, &d))
-                .child(shortcuts(&ui, &pal, &d, shortcuts_w, cx)),
-        )
-        .into_any_element()
+    page.child(
+        row()
+            .relative()
+            .h(px(KPI_H))
+            .child(crate::tour::anchor("home_stats"))
+            .child(reviews(&ui, &pal, &d, kpi_w, cx))
+            .child(accuracy(&ui, &pal, &d.accuracy, kpi_w))
+            .child(ev_loss(&ui, &pal, &d.ev_loss, kpi_w))
+            .child(calc(&ui, &pal, &d, kpi_w)),
+    )
+    .child(
+        row()
+            .h(px(MID_H))
+            .child(chart(&ui, &pal, &d, chart_w))
+            .child(leaks(&ui, &pal, &d.leaks, leaks_w, cx)),
+    )
+    .child(
+        row()
+            .h(px(low_h))
+            .child(tracks(&ui, &pal, &lessons, tracks_w, cx))
+            .child(deviation(&ui, &pal, &d, DEVIATION_W))
+            .child(shortcuts(&ui, &pal, &d, shortcuts_w, cx)),
+    )
+    .into_any_element()
 }
 
 /// One of the four panels at the top: caption, big number, detail line.
@@ -740,7 +774,7 @@ pub(super) fn next_meta(ui: &Ui, n: &taful_app::dashboard::NextLesson) -> String
 }
 
 /// The 13 × 13 map of where preflop play leaves the reference.
-fn deviation(ui: &Ui, pal: &Pal, d: &Dashboard) -> Div {
+fn deviation(ui: &Ui, pal: &Pal, d: &Dashboard, w: f32) -> Div {
     let (i18n, dev) = (&ui.i18n, &d.deviation);
     let mut grid = div()
         .flex()
@@ -821,7 +855,7 @@ fn deviation(ui: &Ui, pal: &Pal, d: &Dashboard) -> Div {
         .children(pal.heat.map(|c| div().w(px(18.)).h(px(8.)).bg(c)))
         .child(i18n.tr("cockpit-dev-far"));
     kit::panel(pal)
-        .w(px(DEVIATION_W))
+        .w(px(w))
         .h_full()
         .child(head(
             &i18n.tr("cockpit-dev-title"),

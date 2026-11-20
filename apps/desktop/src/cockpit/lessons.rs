@@ -19,7 +19,15 @@ use crate::shell::Shell;
 /// The least the next lesson and the progress cells get in a narrow window.
 const NEXT_MIN: f32 = 380.;
 const PROGRESS_MIN: f32 = 240.;
+/// The three cells of fixed width: done, time left and the quiz average.
+const FIXED_CELLS: f32 = 150. + 170. + 150.;
+/// Below this the summary cannot hold the next lesson, which gets a strip
+/// of its own.
+const SUMMARY_MIN: f32 = 2. + PROGRESS_MIN + FIXED_CELLS + NEXT_MIN;
 const SUMMARY_H: f32 = 88.;
+const NEXT_H: f32 = 72.;
+/// The narrowest a track's column gets: what the design gives it at 1280.
+const COLUMN_MIN: f32 = 224.;
 const ROW_H: f32 = 54.;
 
 /// The lessons tree's body.
@@ -38,24 +46,129 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
         .iter()
         .filter(|t| !t.lessons.is_empty())
         .collect();
-    let n = tracks.len().max(1) as f32;
-    let column_w = (w - (n - 1.) * GAP) / n;
+    let n = tracks.len().max(1);
+    let per_row = per_row(w, n);
+    let wraps = per_row < n;
+    let column_w = (w - (per_row - 1) as f32 * GAP) / per_row as f32;
+    let column_w = if wraps { column_w.floor() } else { column_w };
     let next = data.summary.next.as_ref().map(|n| n.id.as_str());
-    let mut columns = div().flex().flex_none().items_start().gap(px(GAP));
+    let mut columns = div()
+        .flex()
+        .flex_none()
+        .items_start()
+        .gap(px(GAP))
+        .when(wraps, |d| d.flex_wrap().w(px(w)));
     for (k, track) in tracks.into_iter().enumerate() {
         columns = columns.child(column(&ui, &pal, track, k, next, column_w, cx));
     }
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(GAP))
-        .w(px(w))
-        .child(summary(&ui, &pal, &data, w, cx))
+    let page = div().flex().flex_col().gap(px(GAP)).w(px(w));
+    if w < SUMMARY_MIN {
+        return page
+            .child(summary(&ui, &pal, &data, w, false, cx))
+            .child(next_strip(&ui, &pal, &data, w, cx))
+            .child(columns)
+            .into_any_element();
+    }
+    page.child(summary(&ui, &pal, &data, w, true, cx))
         .child(columns)
         .into_any_element()
 }
 
-fn summary(ui: &Ui, pal: &Pal, data: &Lessons, w: f32, cx: &mut Context<Shell>) -> Div {
+/// How many of `n` tracks' columns go on a row `w` pixels wide: all of
+/// them as designed; a narrower window wraps them into even rows, so a
+/// column keeps at least the width the design gives it at 1280.
+fn per_row(w: f32, n: usize) -> usize {
+    let fit = (((w + GAP) / (COLUMN_MIN + GAP)).floor() as usize).clamp(1, n);
+    n.div_ceil(n.div_ceil(fit))
+}
+
+/// The next lesson with its button, or that none is left.
+fn next_lesson(ui: &Ui, pal: &Pal, data: &Lessons, meta: bool, cx: &mut Context<Shell>) -> Div {
+    let i18n = &ui.i18n;
+    let next = match &data.summary.next {
+        Some(n) => div()
+            .child(
+                div()
+                    .flex_shrink()
+                    .min_w(px(0.))
+                    .child(
+                        label(&i18n.tr("cockpit-next-lesson"), pal)
+                            .text_color(pal.amber)
+                            .whitespace_nowrap(),
+                    )
+                    .child(
+                        div()
+                            .mt(px(3.))
+                            .text_size(px(19.))
+                            .font_weight(STRONG)
+                            .truncate()
+                            .child(n.title.clone()),
+                    ),
+            )
+            .when(meta, |d| {
+                d.child(
+                    div()
+                        .flex_shrink()
+                        .min_w(px(0.))
+                        .mt(px(16.))
+                        .text_size(px(12.))
+                        .text_color(pal.muted)
+                        .truncate()
+                        .child(super::home::next_meta(ui, n)),
+                )
+            })
+            .child(div().flex_1())
+            .child(
+                btn(
+                    "cockpit_continue",
+                    i18n.tr("cockpit-continue"),
+                    Some("↵"),
+                    Btn::Amber,
+                    pal,
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    go(this, Go::NextLesson, window, cx);
+                })),
+            ),
+        None => div()
+            .text_color(pal.muted)
+            .child(i18n.tr("home-lesson-none")),
+    };
+    next.flex()
+        .flex_1()
+        .min_w(px(0.))
+        .items_center()
+        .gap(px(16.))
+        .h_full()
+        .px(px(16.))
+        .overflow_hidden()
+        .bg(linear_gradient(
+            90.,
+            linear_color_stop(pal.amber_at(0.09), 0.),
+            linear_color_stop(pal.amber_at(0.), 0.8),
+        ))
+}
+
+/// The next lesson as a strip of its own, where the summary has no room
+/// for it.
+fn next_strip(ui: &Ui, pal: &Pal, data: &Lessons, w: f32, cx: &mut Context<Shell>) -> Div {
+    kit::panel(pal)
+        .flex_row()
+        .w(px(w))
+        .h(px(NEXT_H))
+        .child(next_lesson(ui, pal, data, true, cx))
+}
+
+/// The summary strip. `with_next` off leaves the next lesson out, and the
+/// progress cell takes its room.
+fn summary(
+    ui: &Ui,
+    pal: &Pal,
+    data: &Lessons,
+    w: f32,
+    with_next: bool,
+    cx: &mut Context<Shell>,
+) -> Div {
     let (i18n, s) = (&ui.i18n, &data.summary);
     let cell = |width: f32| {
         div()
@@ -73,8 +186,12 @@ fn summary(ui: &Ui, pal: &Pal, data: &Lessons, w: f32, cx: &mut Context<Shell>) 
     let value = |v: Div| v.mt(px(8.));
     // The fixed cells leave the next lesson what is left of the strip. Below
     // the designed width the progress cell gives up room first.
-    let progress_w = (w - 2. - 150. - 170. - 150. - NEXT_MIN).clamp(PROGRESS_MIN, 520.);
-    let next_w = w - 2. - progress_w - 150. - 170. - 150.;
+    let progress_w = if with_next {
+        (w - 2. - FIXED_CELLS - NEXT_MIN).clamp(PROGRESS_MIN, 520.)
+    } else {
+        w - 2. - FIXED_CELLS
+    };
+    let next_w = w - 2. - progress_w - FIXED_CELLS;
     let narrow = progress_w < 520.;
     // Every lesson as a block, one group per track.
     let all = div().flex().gap(px(8.)).mt(px(10.)).children(
@@ -124,56 +241,6 @@ fn summary(ui: &Ui, pal: &Pal, data: &Lessons, w: f32, cx: &mut Context<Shell>) 
         ),
         None => figure(&i18n.tr("cockpit-none"), None, 24., pal).text_color(pal.muted),
     };
-    let next = match &s.next {
-        Some(n) => div()
-            .child(
-                div()
-                    .flex_shrink()
-                    .min_w(px(0.))
-                    .child(
-                        label(&i18n.tr("cockpit-next-lesson"), pal)
-                            .text_color(pal.amber)
-                            .whitespace_nowrap(),
-                    )
-                    .child(
-                        div()
-                            .mt(px(3.))
-                            .text_size(px(19.))
-                            .font_weight(STRONG)
-                            .truncate()
-                            .child(n.title.clone()),
-                    ),
-            )
-            // The detail line goes first when the strip is narrow.
-            .when(next_w > 440., |d| {
-                d.child(
-                    div()
-                        .flex_shrink()
-                        .min_w(px(0.))
-                        .mt(px(16.))
-                        .text_size(px(12.))
-                        .text_color(pal.muted)
-                        .truncate()
-                        .child(super::home::next_meta(ui, n)),
-                )
-            })
-            .child(div().flex_1())
-            .child(
-                btn(
-                    "cockpit_continue",
-                    i18n.tr("cockpit-continue"),
-                    Some("↵"),
-                    Btn::Amber,
-                    pal,
-                )
-                .on_click(cx.listener(|this, _, window, cx| {
-                    go(this, Go::NextLesson, window, cx);
-                })),
-            ),
-        None => div()
-            .text_color(pal.muted)
-            .child(i18n.tr("home-lesson-none")),
-    };
     kit::panel(pal)
         .flex_row()
         .w(px(w))
@@ -205,24 +272,14 @@ fn summary(ui: &Ui, pal: &Pal, data: &Lessons, w: f32, cx: &mut Context<Shell>) 
         )
         .child(
             cell(150.)
+                .when(!with_next, |d| d.border_r_0())
                 .child(label(&i18n.tr("cockpit-lessons-quiz"), pal))
                 .child(value(quiz)),
         )
-        .child(
-            next.flex()
-                .flex_1()
-                .min_w(px(0.))
-                .items_center()
-                .gap(px(16.))
-                .h_full()
-                .px(px(16.))
-                .overflow_hidden()
-                .bg(linear_gradient(
-                    90.,
-                    linear_color_stop(pal.amber_at(0.09), 0.),
-                    linear_color_stop(pal.amber_at(0.), 0.8),
-                )),
-        )
+        .when(with_next, |d| {
+            // The detail line goes first when the strip is narrow.
+            d.child(next_lesson(ui, pal, data, next_w > 440., cx))
+        })
 }
 
 /// One track: its lessons in order, each with its state.
@@ -383,4 +440,28 @@ fn row(
                 })),
         )
         .child(state)
+}
+
+// The summary's one-row arrangement fits the width it was designed for.
+const _: () = assert!(SUMMARY_MIN <= super::frame::WIDE_ROOM);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn columns_wrap_into_even_rows() {
+        // Five tracks, as shipped: one row from the 1280 px design up.
+        assert_eq!(per_row(super::super::frame::WIDE_ROOM, 5), 5);
+        assert_eq!(per_row(1484., 5), 5);
+        // The smallest window: three and two, not four and one.
+        let least = crate::MIN_WINDOW.0 - super::super::frame::RAIL - 2. * kit::EDGE;
+        assert_eq!(per_row(least, 5), 3);
+        assert_eq!(per_row(100., 5), 1);
+        // The columns of a row never ask for more than the row.
+        for w in [least, 900., 1000., 1100., 1175.] {
+            let k = per_row(w, 5) as f32;
+            assert!(k * COLUMN_MIN + (k - 1.) * GAP <= w, "{w}");
+        }
+    }
 }

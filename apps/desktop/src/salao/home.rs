@@ -19,12 +19,77 @@ use crate::theme::alpha;
 /// Minutes one review takes, for the "about N min" estimate.
 const MINUTES_PER_REVIEW: f64 = 0.5;
 
+/// The hero's art, as mocked.
+const ART_W: f32 = 441.;
+const ART_H: f32 = 236.;
+/// The smallest the art gets in a narrow column, against the mockup's.
+const ART_MIN: f32 = 0.72;
+/// What the hero's text side takes with the mockup's padding: the button
+/// and the track's ticks, and with the lessons' count after them.
+const HERO_TICKS_W: f32 = 496.;
+const HERO_COUNT_W: f32 = 599.;
+/// A column narrower than this has no room in a number's panel for the
+/// mockup's corners (the button, and the grade bar beside the caption):
+/// they go under the number.
+const STATS_STACK_W: f32 = 1000.;
+/// A column narrower than this drops the leaks' bars (the amounts stay).
+const LEAK_BAR_W: f32 = 900.;
+
+/// How the hero fits a column `column` pixels wide: the mockup's from
+/// 1042 up, then without the lessons' count, then with smaller art, then
+/// without the ticks.
+struct HeroFit {
+    /// The art's scale against the mockup's.
+    art: f32,
+    /// The text side's padding.
+    px: f32,
+    py: f32,
+    /// The text side's width inside its padding.
+    inner: f32,
+    ticks: bool,
+    count: bool,
+}
+
+impl HeroFit {
+    fn new(column: f32) -> Self {
+        // The art gives its room to the text side until it is at its
+        // smallest. The panel's border takes a pixel on each side.
+        let art_w = (column - 2. - HERO_TICKS_W)
+            .clamp(ART_W * ART_MIN, ART_W)
+            .floor();
+        let art = art_w / ART_W;
+        let small = art < 0.85;
+        let (px, py) = if small {
+            (24., (30. * art).round())
+        } else {
+            (34., 30.)
+        };
+        let left = column - 2. - art_w;
+        Self {
+            art,
+            px,
+            py,
+            inner: (left - 2. * px).max(0.),
+            ticks: left >= HERO_TICKS_W,
+            count: left >= HERO_COUNT_W,
+        }
+    }
+
+    /// Whether this is the mockup's hero, untouched.
+    fn full(&self) -> bool {
+        self.art >= 1. && self.count
+    }
+}
+
 /// What Salão keeps on the shell.
 #[derive(Default)]
 pub struct ShellState {
     /// The home's numbers, read once per visit and locale (a frame is
     /// drawn on every hover).
     overview: Option<((usize, Locale), Rc<Overview>)>,
+    /// The content column's width on this frame, set by the frame before
+    /// it asks for a screen (a small window leaves less than the mockup's).
+    pub(super) column: f32,
 }
 
 /// The home screen's body, with its header.
@@ -84,6 +149,8 @@ pub fn home(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             .whitespace_nowrap()
             .child(text)
     };
+    let column = shell.salao.column;
+    let fit = HeroFit::new(column);
     let hero_left = match &o.next {
         Some(next) => {
             let id = next.id.clone();
@@ -104,30 +171,50 @@ pub fn home(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             };
             // The mockup's size for a short title; long ones step down to
             // stay on one line.
-            let size = match next.title.chars().count() {
+            let letters = next.title.chars().count();
+            let size: f32 = match letters {
                 0..=20 => 50.,
                 21..=27 => 40.,
                 _ => 32.,
             };
+            // A smaller hero has a shorter title line, and a narrow one a
+            // smaller title still (about half its size per letter).
+            let title_h = (51. * fit.art).round();
+            let size = if fit.full() {
+                size
+            } else {
+                size.min(title_h - 2.)
+                    .min(fit.inner / (letters.max(1) as f32 * 0.5))
+                    .max(20.)
+                    .floor()
+            };
+            // The track's name goes when the label would not fit one line
+            // (about 8.6 pixels per letter, tracked).
+            let label = i18n.tr("home-continue-title");
+            let with_track = format!("{label} · {track}");
+            let label = if with_track.chars().count() as f32 * 8.6 <= fit.inner {
+                with_track
+            } else {
+                label
+            };
             div()
-                .child(kit::eyebrow(
-                    format!("{} · {track}", i18n.tr("home-continue-title")),
-                    p.accent,
-                ))
+                .child(kit::eyebrow(label, p.accent).when(!fit.full(), |d| d.truncate()))
                 .child(
                     kit::HERO
                         .text(size, 1.02)
-                        .h(px(51.))
+                        .h(px(title_h))
                         .flex()
                         .items_center()
                         .mt(px(10.))
                         .mb(px(6.))
                         .whitespace_nowrap()
+                        .when(!fit.full(), |d| d.overflow_hidden())
                         .child(next.title.clone()),
                 )
                 .child(
                     kit::sans_text(14., FontWeight::NORMAL)
                         .text_color(p.text_muted)
+                        .when(!fit.full(), |d| d.truncate())
                         .child(meta),
                 )
                 .child(div().flex_1())
@@ -141,7 +228,7 @@ pub fn home(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                                 "salao_home_lesson",
                                 i18n.tr("salao-home-continue-lesson"),
                                 true,
-                                false,
+                                fit.art < 0.85,
                                 &p,
                             )
                             .on_click(cx.listener(
@@ -151,20 +238,25 @@ pub fn home(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                                 },
                             )),
                         )
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap(px(5.))
-                                .children(ticks(next, &p))
-                                .child(small_note(total_line).ml(px(8.))),
-                        ),
+                        .when(fit.ticks, |d| {
+                            d.child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(5.))
+                                    .children(ticks(next, &p))
+                                    .when(fit.count, |d| {
+                                        d.child(small_note(total_line).ml(px(8.)))
+                                    }),
+                            )
+                        }),
                 )
         }
         None => div()
             .child(kit::eyebrow(i18n.tr("home-continue-title"), p.accent))
             .child(
-                kit::sans_text(14., FontWeight::NORMAL)
+                // The only text here that may take several lines.
+                kit::sans_wraps(14., FontWeight::NORMAL)
                     .mt(px(10.))
                     .text_color(p.text_muted)
                     .child(i18n.tr("home-lesson-none")),
@@ -174,7 +266,7 @@ pub fn home(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     };
     let hero = kit::panel(&p)
         .mt(px(22.))
-        .h(px(238.))
+        .h(px((ART_H * fit.art).round() + 2.))
         .flex()
         .border_color(alpha(p.accent, 0.28))
         .child(crate::tour::anchor("home_continue"))
@@ -185,50 +277,78 @@ pub fn home(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                 .min_w_0()
                 .flex()
                 .flex_col()
-                .px(px(34.))
-                .py(px(30.)),
+                .px(px(fit.px))
+                .py(px(fit.py)),
         )
         // The part of the art the mockup's panel shows (see the sprite).
-        .child(kit::image(kit::IMG_HERO, 441., 236.));
+        .child(kit::image(
+            kit::IMG_HERO,
+            (ART_W * fit.art).round(),
+            (ART_H * fit.art).round(),
+        ));
 
     // ---- three numbers ---------------------------------------------------------
+    // In a narrow column the three panels stack their parts: the label,
+    // a smaller number, its caption and the button under them.
+    let stacked = column < STATS_STACK_W;
+    let (number_size, unit_size) = if stacked { (44., 19.) } else { (56., 24.) };
     let big = |number: String, unit: Option<String>| {
         div()
             .mt(px(14.))
             .flex()
             .items_end()
-            .child(kit::STAT.text(56., 1.).child(number))
+            .child(kit::STAT.text(number_size, 1.).child(number))
             .children(unit.map(|u| {
                 kit::STAT_UNIT
-                    .text(24., 1.)
+                    .text(unit_size, 1.)
                     .ml(px(4.))
                     .mb(px(Face::lift(
-                        (kit::STAT, 56., 1.),
-                        (kit::STAT_UNIT, 24., 1.),
+                        (kit::STAT, number_size, 1.),
+                        (kit::STAT_UNIT, unit_size, 1.),
                     )))
                     .text_color(p.text_muted)
                     .child(u)
             }))
     };
     let caption = |text: String| {
-        kit::sans_text(13.5, FontWeight::NORMAL)
-            .mt(px(6.))
-            .text_color(p.text_muted)
-            .child(text)
+        if stacked {
+            // May take two lines.
+            kit::sans_lines(13., FontWeight::NORMAL)
+        } else {
+            kit::sans_text(13.5, FontWeight::NORMAL)
+        }
+        .mt(px(6.))
+        .text_color(p.text_muted)
+        .child(text)
     };
     let stat = |label: String| {
         kit::panel(&p)
             .flex_1()
             .min_w_0()
-            .h(px(162.))
             .flex()
             .flex_col()
-            .px(px(24.))
-            .py(px(20.))
-            .child(kit::eyebrow(label, p.accent))
+            .map(|d| {
+                if stacked {
+                    d.px(px(18.)).py(px(16.))
+                } else {
+                    d.h(px(162.)).px(px(24.)).py(px(20.))
+                }
+            })
+            .child(kit::eyebrow(label, p.accent).when(stacked, |d| d.truncate()))
     };
-    let corner =
-        |button: gpui::Stateful<Div>| div().absolute().right(px(20.)).top(px(16.)).child(button);
+    let corner = |button: gpui::Stateful<Div>| {
+        if stacked {
+            div()
+                .flex_1()
+                .flex()
+                .flex_col()
+                .justify_end()
+                .pt(px(12.))
+                .child(button)
+        } else {
+            div().absolute().right(px(20.)).top(px(16.)).child(button)
+        }
+    };
 
     let due = o.home.due_now;
     let reviews = stat(i18n.tr("home-due-title"))
@@ -294,7 +414,7 @@ pub fn home(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
         } else {
             i18n.tr("salao-home-table-none")
         }))
-        .children(grade_bar(&o, &p))
+        .children(grade_bar(&o, &p, stacked))
         .child(corner(
             kit::btn(
                 "salao_home_table",
@@ -351,17 +471,19 @@ pub fn home(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                             .child(stats),
                     ),
             )
-            .child(
-                kit::bar(
-                    frac,
-                    6.,
-                    alpha(p.text, 0.08),
-                    p.grade_mistake,
-                    p.grade_inaccuracy,
+            .when(column >= LEAK_BAR_W, |d| {
+                d.child(
+                    kit::bar(
+                        frac,
+                        6.,
+                        alpha(p.text, 0.08),
+                        p.grade_mistake,
+                        p.grade_inaccuracy,
+                    )
+                    .w(px(150.))
+                    .flex_none(),
                 )
-                .w(px(150.))
-                .flex_none(),
-            )
+            })
             .child(
                 div()
                     .w(px(110.))
@@ -512,8 +634,9 @@ fn ticks(next: &NextLesson, p: &crate::theme::Palette) -> Vec<Div> {
         .collect()
 }
 
-/// The week's decisions by grade, as one segmented bar.
-fn grade_bar(o: &Overview, p: &crate::theme::Palette) -> Option<Div> {
+/// The week's decisions by grade, as one segmented bar: in the panel's
+/// corner as mocked, or (`stacked`) on a row of its own under the caption.
+fn grade_bar(o: &Overview, p: &crate::theme::Palette, stacked: bool) -> Option<Div> {
     const W: f32 = 118.;
     const GAP: f32 = 2.;
     let total = o.week_total();
@@ -529,9 +652,13 @@ fn grade_bar(o: &Overview, p: &crate::theme::Palette) -> Option<Div> {
     let last = parts.len() - 1;
     Some(
         div()
-            .absolute()
-            .right(px(24.))
-            .bottom(px(28.))
+            .map(|d| {
+                if stacked {
+                    d.flex_none().mt(px(10.))
+                } else {
+                    d.absolute().right(px(24.)).bottom(px(28.))
+                }
+            })
             .w(px(W))
             .h(px(8.))
             .flex()
@@ -545,4 +672,31 @@ fn grade_bar(o: &Overview, p: &crate::theme::Palette) -> Option<Div> {
                     .bg(p.grade(g))
             })),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_hero_steps_down_with_the_column() {
+        // The mockup's column, and the narrowest that still is the mockup.
+        assert!(HeroFit::new(1080.).full());
+        assert!(HeroFit::new(1042.).full());
+        // Then the lessons' count goes.
+        let f = HeroFit::new(1000.);
+        assert!(f.art >= 1. && f.ticks && !f.count);
+        // Then the art shrinks, and the ticks stay while it does.
+        let f = HeroFit::new(900.);
+        assert!(f.art < 1. && f.art > ART_MIN && f.ticks);
+        // Then the ticks go, with the art at its smallest.
+        let f = HeroFit::new(700.);
+        assert!(!f.ticks && !f.count);
+        assert_eq!(f.art, (ART_W * ART_MIN).floor() / ART_W);
+        // The text side always has its padding's worth of room.
+        for column in [700., 760., 814., 873., 938., 939., 1041.] {
+            let f = HeroFit::new(column);
+            assert!(f.inner > 300., "{column}");
+        }
+    }
 }

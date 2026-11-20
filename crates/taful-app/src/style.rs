@@ -1,9 +1,10 @@
 //! Visual styles (D19).
 //!
 //! A style is a whole look of the desktop app: its chrome (navigation),
-//! components, fonts and art. `Classic` is the look the app shipped with,
-//! and the only one that follows the user's theme (D7). Every other style
-//! has fixed colors, read from `content/styles/<id>.json`:
+//! components, fonts and art. `Salao` is the one a new install opens in
+//! (D21). `Classic` is the look the app first shipped with, and the only
+//! one that follows the user's theme (D7). Every other style has fixed
+//! colors, read from `content/styles/<id>.json`:
 //!
 //! ```json
 //! { "theme": { ...a theme token file... }, "extra": { "gold_hi": "#f2c869" } }
@@ -26,10 +27,11 @@ use crate::{App, Result, keys};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Style {
     /// The original look; colors come from the user's theme.
-    #[default]
     Classic,
     /// Same structure as Classic, with light and material: serif display
-    /// type, gold with volume, a lamp-lit felt with a wooden rail.
+    /// type, gold with volume, a lamp-lit felt with a wooden rail. The
+    /// style of a new install (D21).
+    #[default]
     Salao,
     /// Dense and data-first: icon rail, dashboard home, range matrix.
     Cockpit,
@@ -38,8 +40,9 @@ pub enum Style {
 }
 
 impl Style {
-    /// Every style, in the order settings lists them.
-    pub const ALL: [Style; 4] = [Style::Classic, Style::Salao, Style::Cockpit, Style::Baralho];
+    /// Every style, in the order settings lists them: the default first,
+    /// Classic last.
+    pub const ALL: [Style; 4] = [Style::Salao, Style::Cockpit, Style::Baralho, Style::Classic];
 
     /// Stable id: the `ui.style` setting, `TAFUL_STYLE`, the file stem
     /// under `content/styles/`.
@@ -128,11 +131,20 @@ impl StyleTokens {
 }
 
 impl App {
-    /// The visual style (Classic unless the user picked another).
+    /// The visual style: the one the user picked, the default otherwise.
+    ///
+    /// A user who never picked a style but did pick a theme stays on
+    /// Classic, the one style that shows it (themes can only be picked
+    /// there, so this is someone from before the default changed, D21).
     pub fn style(&self) -> Style {
-        self.string_setting(keys::UI_STYLE)
+        match self
+            .string_setting(keys::UI_STYLE)
             .and_then(|id| Style::from_id(&id))
-            .unwrap_or_default()
+        {
+            Some(style) => style,
+            None if self.string_setting(keys::THEME).is_some() => Style::Classic,
+            None => Style::default(),
+        }
     }
 
     /// Stores the visual style.
@@ -154,7 +166,9 @@ mod tests {
             assert_eq!(s.label_key(), format!("style-{}", s.id()));
         }
         assert_eq!(Style::from_id("nope"), None);
-        assert_eq!(Style::default(), Style::Classic);
+        assert_eq!(Style::default(), Style::Salao);
+        assert_eq!(Style::ALL.first(), Some(&Style::default()));
+        assert_eq!(Style::ALL.last(), Some(&Style::Classic));
     }
 
     /// Every file under `content/styles/` belongs to a style, parses, has
@@ -216,10 +230,24 @@ mod tests {
     fn style_setting_round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let app = App::open(dir.path()).unwrap();
-        assert_eq!(app.style(), Style::Classic);
-        app.set_style(Style::Salao).unwrap();
         assert_eq!(app.style(), Style::Salao);
-        app.set_string_setting(keys::UI_STYLE, "gone").unwrap();
+        app.set_style(Style::Cockpit).unwrap();
+        assert_eq!(app.style(), Style::Cockpit);
+        app.set_style(Style::Classic).unwrap();
         assert_eq!(app.style(), Style::Classic);
+        app.set_string_setting(keys::UI_STYLE, "gone").unwrap();
+        assert_eq!(app.style(), Style::Salao);
+    }
+
+    /// The default changed from Classic to Salão (D21): someone who picked
+    /// a theme and never a style keeps the style that shows the theme.
+    #[test]
+    fn a_picked_theme_keeps_classic() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = App::open(dir.path()).unwrap();
+        app.set_theme("midnight").unwrap();
+        assert_eq!(app.style(), Style::Classic);
+        app.set_style(Style::Baralho).unwrap();
+        assert_eq!(app.style(), Style::Baralho);
     }
 }

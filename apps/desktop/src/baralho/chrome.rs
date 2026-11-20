@@ -18,8 +18,9 @@ use crate::theme::alpha;
 pub const NAV_H: f32 = 70.;
 /// The canvas' side margin (headings and panels start here).
 pub const MARGIN: f32 = 64.;
-/// Width of a sheet that holds a reading column.
+/// Width of a sheet that holds a reading column, and a sheet's padding.
 const SHEET_W: f32 = 1040.;
+const SHEET_PAD: f32 = 30.;
 
 /// The navigation's screens, left to right; settings sits at the right.
 const NAV: [Screen; 6] = [
@@ -288,6 +289,8 @@ fn sheet_page(
         .when(shell.screen == Screen::Lesson, |d| d.child(div().flex_1()))
         .child(replay);
 
+    // What the sheet's padding leaves the screen, in window pixels.
+    shell.room_w = (width - 2. * SHEET_PAD) * super::scale();
     // The screens read their sizes from the theme: hand them a scaled one.
     let plain = shell.ui.clone();
     shell.ui = scaled(&mut shell.baralho.scaled, &plain, super::scale());
@@ -300,7 +303,7 @@ fn sheet_page(
             .on(div())
             .flex()
             .flex_col()
-            .p(u(30.))
+            .p(u(SHEET_PAD))
             .text_color(bx.ink)
             .child(body),
     )

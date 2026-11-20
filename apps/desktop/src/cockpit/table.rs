@@ -39,8 +39,17 @@ const PANELS_TOP: f32 = 54.;
 const PANEL_GAP: f32 = 10.;
 /// The strip under the felt.
 pub(super) const ACTBAR_H: f32 = 62.;
-/// The smallest pane the screen lays out in; a smaller window scrolls.
-const MIN_PANE: (f32, f32) = (1204., 852.);
+/// From this pane width (a 1280 px window) up the evaluation sits beside
+/// the table, as designed. Below it the panels stack on the whole width and
+/// the page scrolls down to the evaluation.
+const WIDE_PANE: f32 = super::frame::WIDE_PANE;
+/// The narrowest pane the stacked panels are laid out in: what the smallest
+/// window leaves.
+const MIN_PANE_W: f32 = crate::MIN_WINDOW.0 - RAIL;
+/// The table panel around the stage at its smallest and at its natural
+/// size: the stage, the header, the action bar and the border.
+const TABLE_MIN_H: f32 = felt::STAGE_MIN_H + HEAD + ACTBAR_H + 2.;
+const TABLE_NATURAL_H: f32 = felt::STAGE_H + HEAD + ACTBAR_H + 2.;
 
 /// An open picker.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -72,6 +81,8 @@ pub struct TableState {
     pub(super) back: bool,
     /// The seed of the first deal seen, to number the deals.
     first_seed: Option<u64>,
+    /// The strip's height on the last frame (its pickers wrap).
+    strip_h: Rc<std::cell::Cell<f32>>,
 }
 
 /// One action of the story, worded.
@@ -466,9 +477,14 @@ fn menu(
 }
 
 /// The strip above the panels: the mode, the pickers and the layout button.
+///
+/// The pickers wrap onto more rows when they do not fit; the strip's height
+/// is measured, and the panels start under it. `wide` off leaves the layout
+/// button out.
 fn strip(
     screen: &TableScreen,
     t: &Trainers,
+    wide: bool,
     pal: &Pal,
     tp: &TablePal,
     cx: &mut Context<TableScreen>,
@@ -537,10 +553,14 @@ fn strip(
         .top(px(STRIP_TOP))
         .left(px(EDGE))
         .right(px(EDGE))
-        .h(px(STRIP_H))
+        .min_h(px(STRIP_H))
         .flex()
+        .flex_wrap()
         .items_center()
         .gap(px(8.))
+        .child(crate::screens::table::measure_height(
+            screen.cockpit.strip_h.clone(),
+        ))
         .child(segments);
 
     // The situation: a kind of preflop spot, a postflop configuration, or
@@ -700,18 +720,20 @@ fn strip(
                 d.child(menu(stack_rows, pal, tp, cx))
             }),
     );
-    strip.child(div().flex_1()).child(
-        // Shown as designed; arranging Cockpit's panels is not built yet.
-        btn(
-            "layout_edit",
-            i18n.tr("layout-edit-start"),
-            None,
-            Btn::Plain,
-            pal,
+    strip.when(wide, |d| {
+        d.child(div().flex_1()).child(
+            // Shown as designed; arranging Cockpit's panels is not built yet.
+            btn(
+                "layout_edit",
+                i18n.tr("layout-edit-start"),
+                None,
+                Btn::Plain,
+                pal,
+            )
+            .h(px(32.))
+            .cursor_default(),
         )
-        .h(px(32.))
-        .cursor_default(),
-    )
+    })
 }
 
 /// A message in place of the felt (nothing dealt, or no library).
@@ -1050,15 +1072,25 @@ pub fn table(
     let (pal, tp) = (Pal::new(&ui), TablePal::new(&ui));
     let i18n = &ui.i18n;
     let vp = window.viewport_size();
-    let (w, h) = (
-        (f32::from(vp.width) - RAIL).max(MIN_PANE.0),
-        (f32::from(vp.height) - BAR).max(MIN_PANE.1),
-    );
-    let pane = div().relative().flex_none().w(px(w)).h(px(h));
+    let (pane_w, pane_h) = (f32::from(vp.width) - RAIL, f32::from(vp.height) - BAR);
+    let wide = pane_w >= WIDE_PANE;
+    // The panels start under the strip, which may have wrapped.
+    let panels_top = PANELS_TOP + (screen.cockpit.strip_h.get() - STRIP_H).max(0.);
+    let around = panels_top + EDGE;
+    let (w, h) = if wide {
+        // The table and the hand line share the pane's height; a window too
+        // short for the table at its smallest scrolls.
+        let least = around + TABLE_MIN_H + PANEL_GAP + LINE_H;
+        (pane_w, pane_h.max(least))
+    } else {
+        (pane_w.max(MIN_PANE_W), pane_h)
+    };
+    let pane = div().relative().flex_none().w(px(w));
     let trainers = match &screen.trainers {
         Ok(t) => t.clone(),
         Err(e) => {
             return pane
+                .h(px(h))
                 .child(notice(
                     i18n.tr_args("table-chart-error", &[("error", e.clone().into())]),
                     &pal,
@@ -1167,8 +1199,19 @@ pub fn table(
         None => screen.question.as_ref().map(DrillSpot::state),
     };
 
-    let left_w = w - 2. * EDGE - kit::GAP - EVAL_W;
-    let table_h = h - PANELS_TOP - EDGE - LINE_H - PANEL_GAP;
+    let (left_w, table_h) = if wide {
+        (
+            w - 2. * EDGE - kit::GAP - EVAL_W,
+            h - around - LINE_H - PANEL_GAP,
+        )
+    } else {
+        // Stacked: the table takes the window's height but for the hand
+        // line's header, which shows that the page goes on.
+        (
+            w - 2. * EDGE,
+            (h - panels_top - PANEL_GAP - HEAD - 2.).clamp(TABLE_MIN_H, TABLE_NATURAL_H),
+        )
+    };
     let body = match &scene {
         Some(sc) => felt::stage(sc, left_w - 2., table_h - 2. - HEAD - ACTBAR_H).into_any_element(),
         None => {
@@ -1187,9 +1230,6 @@ pub fn table(
         }
     };
     let table_panel = kit::panel(&pal)
-        .absolute()
-        .left(px(EDGE))
-        .top(px(PANELS_TOP))
         .w(px(left_w))
         .h(px(table_h))
         .child(table_head(screen, scene.as_ref(), &pal))
@@ -1204,22 +1244,14 @@ pub fn table(
         )
         .child(actbar(screen, &trainers, scene.as_ref(), &pal, &tp, cx));
     let line_panel = kit::panel(&pal)
-        .absolute()
-        .left(px(EDGE))
-        .top(px(PANELS_TOP + table_h + PANEL_GAP))
         .w(px(left_w))
         .h(px(LINE_H))
         .child(line::head(screen, &pal, cx))
         .child(line::body(screen, scene.as_ref(), left_w - 2., &pal, cx));
     let eval_panel = kit::panel(&pal)
-        .absolute()
-        .left(px(EDGE + left_w + kit::GAP))
-        .top(px(PANELS_TOP))
-        .w(px(EVAL_W))
-        .h(px(h - PANELS_TOP - EDGE))
         .child(crate::tour::anchor("table_explanation"))
         .child(eval::panel(
-            screen, &trainers, decided_on, graded, insight, &pal, &tp,
+            screen, &trainers, decided_on, graded, insight, wide, &pal, &tp,
         ));
 
     // A click anywhere else closes an open picker.
@@ -1239,13 +1271,42 @@ pub fn table(
         )
         .with_priority(1)
     });
-    pane.child(table_panel)
-        .child(line_panel)
-        .child(eval_panel)
-        .child(strip(screen, &trainers, &pal, &tp, cx))
+    let pane = if wide {
+        pane.h(px(h))
+            .child(table_panel.absolute().left(px(EDGE)).top(px(panels_top)))
+            .child(
+                line_panel
+                    .absolute()
+                    .left(px(EDGE))
+                    .top(px(panels_top + table_h + PANEL_GAP)),
+            )
+            .child(
+                eval_panel
+                    .absolute()
+                    .left(px(EDGE + left_w + kit::GAP))
+                    .top(px(panels_top))
+                    .w(px(EVAL_W))
+                    .h(px(h - around)),
+            )
+    } else {
+        pane.flex()
+            .flex_col()
+            .gap(px(PANEL_GAP))
+            .pt(px(panels_top))
+            .pb(px(EDGE))
+            .px(px(EDGE))
+            .child(table_panel)
+            .child(line_panel)
+            .child(eval_panel.w(px(left_w)))
+    };
+    pane.child(strip(screen, &trainers, wide, &pal, &tp, cx))
         .children(scrim)
         .into_any_element()
 }
+
+// The stacked table panel has a range of heights to move in, and the
+// smallest window is on the stacked side of the breakpoint.
+const _: () = assert!(TABLE_MIN_H < TABLE_NATURAL_H && MIN_PANE_W < WIDE_PANE);
 
 #[cfg(test)]
 mod tests {

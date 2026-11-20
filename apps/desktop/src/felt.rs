@@ -100,12 +100,13 @@ pub fn card_classic(ui: &Ui, p: &Palette, c: Option<Card>, s: f32) -> Div {
     }
 }
 
-/// Width of [`table`] at scale 1.
+/// Width of [`table_scaled`] at scale 1.
 pub const TABLE_W: f32 = FELT_W;
-/// Height of [`table`] at scale 1 (felt plus room for the top and bottom seats).
+/// Height of [`table_scaled`] at scale 1 (felt plus room for the top and
+/// bottom seats).
 pub const TABLE_H: f32 = FELT_H + 2. * PAD;
 
-/// The scale at which [`table`] fits a `w` × `h` box, within the range
+/// The scale at which [`table_scaled`] fits a `w` × `h` box, within the range
 /// that stays readable.
 pub fn fit_scale(w: f32, h: f32) -> f32 {
     (w / TABLE_W).min(h / TABLE_H).clamp(0.7, 1.8)
@@ -117,13 +118,46 @@ pub fn natural_scale(ui: &Ui) -> f32 {
     by_style!(ui.style, FELT_SCALE)
 }
 
-/// Felt, seats, pot and board, at the style's natural scale. `reveal`
-/// shows every live hand (end of hand).
-pub fn table(ui: &Ui, p: &Palette, state: &GameState, hero: Seat, reveal: bool) -> Div {
-    table_scaled(ui, p, state, hero, reveal, natural_scale(ui))
+/// The smallest a table gets, against the style's natural scale, to keep
+/// the side panel beside it. A pane narrower than that puts the panel
+/// under the table.
+const BESIDE_MIN: f32 = 0.7;
+
+/// The scale of a table that stands alone with the style's side panel
+/// ([`panel`]) after it, in a pane `room` pixels wide where `gap` pixels
+/// separate the two (the row wraps):
+///
+/// - the style's natural scale where both fit side by side;
+/// - a smaller one that keeps the panel beside the table, down to
+///   [`BESIDE_MIN`] of the natural scale;
+/// - in a narrower pane the panel wraps under the table, which is drawn at
+///   its natural scale or the one that fits the pane (down to half, where
+///   the pane scrolls instead).
+pub fn room_scale(ui: &Ui, room: f32, gap: f32) -> f32 {
+    let natural = natural_scale(ui);
+    let (width, panel): (f32, f32) = (
+        by_style!(ui.style, FELT_WIDTH),
+        by_style!(ui.style, PANEL_WIDTH),
+    );
+    fit_room(natural, width, panel, room, gap)
 }
 
-/// [`table`] drawn `s` times its normal size (layout panels, spec §15.3).
+/// [`room_scale`] for a table `width` wide at scale 1 (zero: the style fits
+/// its table itself) and a panel `panel` wide.
+fn fit_room(natural: f32, width: f32, panel: f32, room: f32, gap: f32) -> f32 {
+    if width <= 0. {
+        return natural;
+    }
+    // A pixel to spare, so rounding never wraps the row.
+    let beside = (room - gap - panel - 1.) / width;
+    if beside >= natural * BESIDE_MIN {
+        natural.min(beside)
+    } else {
+        natural.min(room / width).max(natural * 0.5)
+    }
+}
+
+/// The table drawn `s` times its normal size (layout panels, spec §15.3).
 pub fn table_scaled(
     ui: &Ui,
     p: &Palette,
@@ -650,5 +684,31 @@ pub fn spot_label(ui: &Ui, id: &str) -> String {
         ui.i18n.tr(&key)
     } else {
         id.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_table_fits_its_room() {
+        // Classic's table (640 at scale 1) and panel (340), 24 px apart.
+        let fit = |room| fit_room(1., TABLE_W, PANEL_W, room, 24.);
+        // Both fit: the natural scale.
+        assert_eq!(fit(1400.), 1.);
+        assert_eq!(fit(1005.), 1.);
+        // A little short (Classic's default 1280 px window leaves 984):
+        // the table shrinks and the panel stays beside it.
+        let s = fit(984.);
+        assert!(s < 1. && s > 0.95, "{s}");
+        assert!(TABLE_W * s + 24. + PANEL_W <= 984.);
+        // Too short to stay beside: the panel wraps, the table takes the
+        // pane, and never less than half its natural size.
+        assert_eq!(fit(700.), 1.);
+        assert_eq!(fit(480.), 0.75);
+        assert_eq!(fit(100.), 0.5);
+        // A style that fits its table itself keeps its scale.
+        assert_eq!(fit_room(1.4, 0., PANEL_W, 300., 24.), 1.4);
     }
 }

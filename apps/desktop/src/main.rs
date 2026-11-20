@@ -80,6 +80,11 @@ impl Ui {
     }
 }
 
+/// The smallest the window gets (D21). Every style lays every screen out
+/// from this size up; 940 is what half of a Full HD screen leaves a snapped
+/// window.
+pub const MIN_WINDOW: (f32, f32) = (940., 600.);
+
 /// `TAFUL_WINDOW=<width>x<height>` (screenshots at a mockup's size).
 fn window_override() -> Option<(f32, f32)> {
     let v = std::env::var("TAFUL_WINDOW").ok()?;
@@ -142,7 +147,7 @@ fn main() {
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
-                window_min_size: Some(size(px(800.), px(520.))),
+                window_min_size: Some(size(px(MIN_WINDOW.0), px(MIN_WINDOW.1))),
                 titlebar: Some(TitlebarOptions {
                     title: Some(title.into()),
                     ..Default::default()

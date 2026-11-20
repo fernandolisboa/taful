@@ -14,8 +14,17 @@ use crate::shell::{KeyResult, Shell};
 use crate::widgets::{button, card, muted};
 
 /// Calc and quiz review cards keep a definite width (wrapped text measures
-/// at it) that still fits the default window.
+/// at it) that still fits the default window; a narrower pane gives them
+/// its own (see [`Shell::card_width`]).
 pub(crate) const REVIEW_CARD_WIDTH: f32 = 760.;
+
+impl Shell {
+    /// The width of a reading card on the wide screens: the design's, or
+    /// the pane's when that is narrower.
+    pub(crate) fn card_width(&self) -> f32 {
+        REVIEW_CARD_WIDTH.min(self.room_w)
+    }
+}
 
 #[derive(Default)]
 pub struct ReviewView {
@@ -217,16 +226,32 @@ impl Shell {
                 .child(self.review_next_button("review-continue", cx)),
             None => panel.child(muted(ui.i18n.tr("table-spot-prompt"), &ui, &p)),
         };
+        // A narrow pane draws the table smaller to keep the panel beside it;
+        // in one too narrow for that, the panel goes under the table.
         div()
             .flex()
+            .flex_wrap()
             .gap(px(t.spacing.xl))
             .child(
                 div()
                     .flex()
                     .flex_col()
                     .gap(px(t.spacing.lg))
-                    .child(felt::table(&ui, &p, &state, spot.hero(), false))
-                    .child(div().flex().gap(px(t.spacing.sm)).children(buttons)),
+                    .child(felt::table_scaled(
+                        &ui,
+                        &p,
+                        &state,
+                        spot.hero(),
+                        false,
+                        felt::room_scale(&ui, self.room_w, t.spacing.xl),
+                    ))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .gap(px(t.spacing.sm))
+                            .children(buttons),
+                    ),
             )
             .child(panel)
             .into_any_element()
@@ -441,7 +466,8 @@ impl Shell {
             _ => card(&ui, &p).into_any_element(),
         };
         // Calc and quiz cards keep the reading width; a spot needs the table's.
-        col.when(!spot, |c| c.w(px(REVIEW_CARD_WIDTH)))
+        let card_w = self.card_width();
+        col.when(!spot, |c| c.w(px(card_w)))
             .child(body)
             .into_any_element()
     }

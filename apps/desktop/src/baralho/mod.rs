@@ -95,6 +95,10 @@ pub(crate) const CANVAS_H: f32 = 900.;
 const MIN_SCALE: f32 = 0.5;
 const MAX_SCALE: f32 = 3.;
 
+/// The canvas is fitted to the window, and the review screens' table with
+/// it: no pane is too narrow for it.
+pub const FELT_WIDTH: f32 = 0.;
+
 /// The table and the panel beside it in the review screens (a wide sheet
 /// holds both).
 const HOOK_TABLE_W: f32 = 870.;

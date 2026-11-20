@@ -25,6 +25,9 @@ use crate::updater::{Status as UpdateStatus, Updater};
 
 pub(crate) const NAV_WIDTH: f32 = 232.;
 pub const CONTENT_MAX_WIDTH: f32 = 960.;
+/// A window shorter than this has no room for all of Classic's navigation
+/// rail: the tagline and the footer's first line go, and the gaps tighten.
+const NAV_SHORT: f32 = 700.;
 const SELECTION_BAR: f32 = 3.;
 /// How often the live timer repaints while an exercise is running.
 const TICK: Duration = Duration::from_millis(250);
@@ -65,6 +68,10 @@ pub struct Shell {
     pub(crate) tour_reset_done: bool,
     /// Bumped on every screen change so the screen fades in again.
     pub(crate) screen_visit: usize,
+    /// The width the frame leaves the screen's body, set by the style's
+    /// frame before it asks for the body: what a fixed-width card may
+    /// take at most (a small window leaves less than its design width).
+    pub(crate) room_w: f32,
     /// Each visual style's own state (D19); a style that keeps none
     /// leaves its slot unused.
     #[allow(dead_code)]
@@ -172,6 +179,7 @@ impl Shell {
             tour_seen: String::new(),
             tour_reset_done: false,
             screen_visit: 0,
+            room_w: f32::MAX,
             salao: Default::default(),
             cockpit: Default::default(),
             baralho: Default::default(),
@@ -434,8 +442,9 @@ impl Shell {
         self.scroll_to_top();
     }
 
-    pub(crate) fn nav(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn nav(&mut self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let (p, t, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
+        let short = f32::from(window.viewport_size().height) < NAV_SHORT;
         let due = self.app.due_count().unwrap_or(0);
         // The lesson reader lives under the lessons item.
         let current = if self.screen == Screen::Lesson {
@@ -482,7 +491,11 @@ impl Shell {
                 })
         };
         let mut n = 0;
-        let mut items = div().flex().flex_col().gap(px(t.spacing.lg));
+        let mut items =
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(if short { t.spacing.sm } else { t.spacing.lg }));
         for (heading, screens) in crate::screen::NAV_GROUPS {
             let mut g = div().flex().flex_col().gap(px(t.spacing.xs));
             if let Some(h) = heading {
@@ -511,7 +524,7 @@ impl Shell {
             .flex()
             .flex_col()
             .flex_none()
-            .gap(px(t.spacing.xl))
+            .gap(px(if short { t.spacing.md } else { t.spacing.xl }))
             .p(px(t.spacing.lg))
             .bg(p.surface)
             .border_r_1()
@@ -529,12 +542,14 @@ impl Shell {
                             .text_color(p.accent)
                             .child(i18n.tr("app-name")),
                     )
-                    .child(
-                        div()
-                            .text_size(px(t.text_size.sm))
-                            .text_color(p.text_muted)
-                            .child(i18n.tr("app-tagline")),
-                    ),
+                    .when(!short, |d| {
+                        d.child(
+                            div()
+                                .text_size(px(t.text_size.sm))
+                                .text_color(p.text_muted)
+                                .child(i18n.tr("app-tagline")),
+                        )
+                    }),
             )
             .child(crate::tour::anchor("nav"))
             .child(items)
@@ -548,7 +563,7 @@ impl Shell {
                     .px(px(t.spacing.md))
                     .text_size(px(t.text_size.sm))
                     .text_color(p.text_muted)
-                    .child(i18n.tr("footer-offline"))
+                    .when(!short, |d| d.child(i18n.tr("footer-offline")))
                     .child(i18n.tr_args(
                         "footer-version",
                         &[(
@@ -844,7 +859,7 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let content = self.content(window, cx);
-        let nav = self.nav(cx);
+        let nav = self.nav(window, cx);
         div()
             .size_full()
             .flex()
@@ -854,14 +869,18 @@ impl Shell {
     }
 
     pub(crate) fn content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let t = &self.ui.theme;
-        let (xl, xxl) = (t.spacing.xl, t.spacing.xxl);
+        let (xl, xxl, gap) = {
+            let t = &self.ui.theme;
+            (t.spacing.xl, t.spacing.xxl, t.spacing.lg)
+        };
+        let viewport = f32::from(window.viewport_size().width);
+        let pane = (viewport - NAV_WIDTH).max(0.);
         if matches!(
             self.screen,
             Screen::Table | Screen::HandReview | Screen::Review
         ) {
-            let gap = t.spacing.lg;
             // Screens with a table take the whole pane (no reading column).
+            self.room_w = (pane - 2. * xxl).max(0.);
             let body = self.screen_body(window, cx);
             return div()
                 .id("content_wide")
@@ -876,6 +895,9 @@ impl Shell {
                         .flex()
                         .flex_col()
                         .flex_none()
+                        // A definite width: a card or a row that wraps
+                        // needs one to wrap at.
+                        .w(px(pane))
                         .gap(px(gap))
                         .p(px(xxl))
                         .child(self.header(cx))
@@ -884,8 +906,8 @@ impl Shell {
                 ))
                 .into_any_element();
         }
-        let viewport = f32::from(window.viewport_size().width);
-        let column_width = (viewport - NAV_WIDTH).clamp(0., CONTENT_MAX_WIDTH + 2. * xxl);
+        let column_width = pane.min(CONTENT_MAX_WIDTH + 2. * xxl);
+        self.room_w = (column_width - 2. * xxl).max(0.);
         let body = self.screen_body(window, cx);
         div()
             .id("content")

@@ -781,13 +781,16 @@ fn remarks(screen: &TableScreen, t: &Trainers, graded: Option<&GradedDecision>) 
     lines
 }
 
-/// The whole panel.
+/// The whole panel. `scrolls` fills the parent and scrolls inside it; off,
+/// the panel is as tall as what it shows.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn panel(
     screen: &TableScreen,
     t: &Trainers,
     state: Option<&GameState>,
     graded: Option<&GradedDecision>,
     insight: Option<&Insight>,
+    scrolls: bool,
     pal: &Pal,
     tp: &TablePal,
 ) -> Stateful<Div> {
@@ -812,8 +815,13 @@ pub(super) fn panel(
         .id("cockpit_eval")
         .flex()
         .flex_col()
-        .size_full()
-        .overflow_y_scroll()
+        .map(|d| {
+            if scrolls {
+                d.size_full().overflow_y_scroll()
+            } else {
+                d.w_full().flex_none()
+            }
+        })
         .child(kit::head(
             &i18n.tr("cockpit-eval-title"),
             Some(div().child(against).into_any_element()),
