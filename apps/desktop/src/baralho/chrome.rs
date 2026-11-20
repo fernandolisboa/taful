@@ -36,7 +36,7 @@ pub fn frame(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>) ->
     let s = fit(window);
     paint::begin_frame(window, cx);
     let bx = bx(&shell.ui);
-    let vp = window.viewport_size();
+    let vp = crate::caption::viewport(window);
     let left = ((f32::from(vp.width) - CANVAS_W * s) / 2.).max(0.);
 
     let page = match shell.screen {

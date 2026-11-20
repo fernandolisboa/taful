@@ -1071,7 +1071,7 @@ pub fn table(
     let ui = screen.ui.clone();
     let (pal, tp) = (Pal::new(&ui), TablePal::new(&ui));
     let i18n = &ui.i18n;
-    let vp = window.viewport_size();
+    let vp = crate::caption::viewport(window);
     let (pane_w, pane_h) = (f32::from(vp.width) - RAIL, f32::from(vp.height) - BAR);
     let wide = pane_w >= WIDE_PANE;
     // The panels start under the strip, which may have wrapped.

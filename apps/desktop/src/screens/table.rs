@@ -1722,7 +1722,7 @@ impl TableScreen {
         };
         // Cells from the space the shell leaves us (spec §15.3); the edit
         // bar takes a strip above the grid while editing.
-        let vp = window.viewport_size();
+        let vp = crate::caption::viewport(window);
         let editing = self.is_editing();
         let bar = if editing { edit::EDIT_BAR } else { 0. };
         let (w, h) = self.grid_room.take().unwrap_or((

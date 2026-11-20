@@ -8,6 +8,7 @@
 
 mod assets;
 mod baralho;
+mod caption;
 mod classic;
 mod cockpit;
 mod felt;
@@ -141,15 +142,20 @@ fn main() {
                 .map(|s| (f32::from(s.width) * 0.95, f32::from(s.height) * 0.9))
                 .map_or((want_w, want_h), |(w, h)| (w.min(want_w), h.min(want_h)))
         });
-        let bounds = Bounds::centered(None, size(px(w), px(h)), cx);
+        // The sizes above are the room the styles draw in; the app's own
+        // title bar comes on top (D22).
+        let bounds = Bounds::centered(None, size(px(w), px(h + caption::HEIGHT)), cx);
         let title = ui.i18n.tr("window-title");
         let app = app.take().expect("run callback runs once");
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
-                window_min_size: Some(size(px(MIN_WINDOW.0), px(MIN_WINDOW.1))),
+                window_min_size: Some(size(px(MIN_WINDOW.0), px(MIN_WINDOW.1 + caption::HEIGHT))),
+                // No system title bar: the app draws its own (D22). The
+                // title still names the window in the taskbar and Alt+Tab.
                 titlebar: Some(TitlebarOptions {
                     title: Some(title.into()),
+                    appears_transparent: true,
                     ..Default::default()
                 }),
                 ..Default::default()

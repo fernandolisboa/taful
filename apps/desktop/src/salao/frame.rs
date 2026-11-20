@@ -37,7 +37,7 @@ pub fn pad(vw: f32) -> f32 {
 
 /// Chrome and content: everything under the tour and update overlays.
 pub fn frame(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>) -> AnyElement {
-    let vp = window.viewport_size();
+    let vp = crate::caption::viewport(window);
     let (vw, vh) = (f32::from(vp.width), f32::from(vp.height));
     let main = main(shell, vw, window, cx);
     let side = sidebar(shell, vw, vh, cx);

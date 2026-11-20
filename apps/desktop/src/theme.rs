@@ -32,11 +32,71 @@ pub fn hsl_of(c: Color) -> (f64, f64, f64) {
 
 /// `c` with its alpha multiplied by `a` (0–1): translucent tints, glows and
 /// shadows of a token color.
-#[allow(dead_code)] // For the visual styles (D19); Classic has no tints.
 pub fn alpha(c: Rgba, a: f32) -> Rgba {
     Rgba {
         a: c.a * a.clamp(0., 1.),
         ..c
+    }
+}
+
+/// The close button's background under the pointer in the app's title bar
+/// (D22): the system's own, the same in every style and theme.
+pub fn caption_close_hover() -> Rgba {
+    rgba(Color {
+        r: 0xc4,
+        g: 0x2b,
+        b: 0x1c,
+        a: 0xff,
+    })
+}
+
+/// The close button's glyph on that background.
+pub fn caption_close_glyph() -> Rgba {
+    rgba(Color {
+        r: 0xff,
+        g: 0xff,
+        b: 0xff,
+        a: 0xff,
+    })
+}
+
+/// The glyphs of the title bar's buttons over `bg` (D22): the theme's text
+/// color when it reads on `bg` (WCAG 4.5:1), else white or black, whichever
+/// reads (Baralho's text is drawn for its paper cards, not its felt).
+pub fn caption_glyph(text: Rgba, bg: Rgba) -> Rgba {
+    fn lum(c: Rgba) -> f32 {
+        let ch = |v: f32| {
+            if v <= 0.04045 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * ch(c.r) + 0.7152 * ch(c.g) + 0.0722 * ch(c.b)
+    }
+    let contrast = |a: Rgba, b: Rgba| {
+        let (x, y) = (lum(a), lum(b));
+        (x.max(y) + 0.05) / (x.min(y) + 0.05)
+    };
+    if contrast(text, bg) >= 4.5 {
+        return text;
+    }
+    let white = rgba(Color {
+        r: 0xff,
+        g: 0xff,
+        b: 0xff,
+        a: 0xff,
+    });
+    let black = rgba(Color {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 0xff,
+    });
+    if contrast(white, bg) >= contrast(black, bg) {
+        white
+    } else {
+        black
     }
 }
 
@@ -153,5 +213,30 @@ impl Palette {
             Suit::HEARTS => self.suit_hearts,
             _ => self.suit_spades,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn c(r: u8, g: u8, b: u8) -> Rgba {
+        rgba(Color { r, g, b, a: 0xff })
+    }
+
+    #[test]
+    fn caption_glyph_keeps_readable_text_and_replaces_the_rest() {
+        let (dark, light, teal) = (
+            c(0x11, 0x18, 0x1c),
+            c(0xf0, 0xf0, 0xf0),
+            c(0x0e, 0x4a, 0x52),
+        );
+        assert_eq!(caption_glyph(light, dark), light);
+        assert_eq!(caption_glyph(dark, light), dark);
+        // Dark text on a dark felt: white.
+        assert_eq!(
+            caption_glyph(c(0x20, 0x20, 0x20), teal),
+            c(0xff, 0xff, 0xff)
+        );
     }
 }

@@ -197,6 +197,7 @@ Writing a style's module, mind how the hooks resolve:
 
 The window is at least `MIN_WINDOW` (940 × 600, `main.rs`), and every style has to hold every screen from there up. At the size a style was drawn for, nothing may move: compare screenshots with `main` before and after a change.
 
+- The window has no system title bar (D22): `caption.rs` draws the app's own strip on top. Read the room a style has from `caption::viewport(window)`, never `window.viewport_size()`.
 - GPUI has no scale transform and wraps text only in a box with a definite width. A style adapts by computing sizes from the window (`window.viewport_size()`), not by letting flex shrink things: give wrapped text a width, give a row that may not fit `flex_wrap()` or a second arrangement, and `truncate()` what may be cut.
 - A style's frame sets `Shell::room_w` (the width the screen's body gets) before it asks for the body. Shared screens size their cards with it (`Shell::card_width()`), and a felt that stands alone is drawn with `felt::room_scale(ui, room_w, gap)`. It needs the style's `FELT_WIDTH` (the table's width at scale 1; zero for a style that fits its table to the window itself, like Baralho) and `PANEL_WIDTH` (the explanation's): the table shrinks to keep the explanation beside it down to 70% of its size, and below that takes the row alone while the explanation wraps under it.
 - A block whose height depends on wrapping (the table's controls) measures itself with `screens::table::measure_height` and is laid out from that on the next frame.

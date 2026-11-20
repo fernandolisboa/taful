@@ -136,7 +136,7 @@ pub(crate) fn zoomed<R>(k: f32, draw: impl FnOnce() -> R) -> R {
 
 /// Fits the canvas to the window: the largest scale that shows all of it.
 pub(crate) fn fit(window: &Window) -> f32 {
-    let vp = window.viewport_size();
+    let vp = crate::caption::viewport(window);
     let s = (f32::from(vp.width) / CANVAS_W)
         .min(f32::from(vp.height) / CANVAS_H)
         .clamp(MIN_SCALE, MAX_SCALE);

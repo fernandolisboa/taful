@@ -283,7 +283,7 @@ pub fn table(
     let (c, p) = (colors(), screen.palette);
     let ui = screen.ui.clone();
     let i18n = &ui.i18n;
-    let vp = window.viewport_size();
+    let vp = crate::caption::viewport(window);
     let (vw, vh) = (f32::from(vp.width), f32::from(vp.height));
     let pad = pad(vw);
     let page = || {
