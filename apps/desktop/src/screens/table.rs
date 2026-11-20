@@ -1889,3 +1889,18 @@ impl Parts {
         }
     }
 }
+
+#[cfg(test)]
+mod the_grid_fits_the_smallest_window {
+    use super::*;
+
+    /// The built-in layouts' columns at the smallest cell fit the pane the
+    /// smallest window leaves beside Classic's navigation: no sideways
+    /// scroll at `MIN_WINDOW`.
+    #[test]
+    fn at_the_smallest_cell() {
+        let spacing = taful_app::theme::Theme::builtin_default().spacing;
+        let room = crate::MIN_WINDOW.0 - crate::shell::NAV_WIDTH - 2. * spacing.xxl;
+        assert!(MIN_CELL * f32::from(taful_app::layout::GRID_COLS) <= room);
+    }
+}

@@ -20,7 +20,9 @@ mod widgets;
 
 pub use crate::classic::*;
 
-pub use self::felt::{FELT_SCALE, FELT_WIDTH, explanation, felt_card, felt_panel, felt_table};
+pub use self::felt::{
+    FELT_SCALE, FELT_WIDTH, PANEL_WIDTH, explanation, felt_card, felt_panel, felt_table,
+};
 pub use self::frame::frame;
 pub use self::home::{ShellState, home};
 pub use self::lessons::lessons;

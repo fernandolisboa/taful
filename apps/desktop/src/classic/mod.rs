@@ -27,6 +27,8 @@ pub const FELT_SCALE: f32 = 1.;
 /// than the table at its natural scale gets a smaller one. Zero for a
 /// style that fits its table to the window itself.
 pub const FELT_WIDTH: f32 = crate::felt::TABLE_W;
+/// Width of the side panel that goes with that table (`felt_panel`).
+pub const PANEL_WIDTH: f32 = crate::felt::PANEL_W;
 
 /// What the style keeps on the shell. (Classic keeps nothing and has no
 /// slot: this is the hook a new style starts with.)

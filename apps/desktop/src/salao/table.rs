@@ -314,16 +314,13 @@ pub fn table(
     let (pane_w, pane_h) = ((vw - side_w(vw)).max(0.), vh);
     // The zone and the panel share the pane: the mockup's panel wherever
     // the zone stays large beside it, a narrower one in a small window.
-    let both = pane_w - 2. * pad - PANEL_GAP;
-    let panel_w = (both - ZONE_W * EASY_K).clamp(PANEL_MIN, felt::PANEL_W);
-    let room_w = both - panel_w;
-    let fits = room_w >= ZONE_W * MIN_K
-        && pane_h - (CONTROLS_H - ZONE_LAP) - ZONE_BOTTOM >= ZONE_H * MIN_K;
+    let (panel_w, room_w, fits) = split(pane_w - 2. * pad, pane_h);
     // The mockup is the default layout; any other, the edit mode and a
     // window too small for the zone beside the panel get the grid with
     // this style's panels (it scrolls).
     if screen.is_editing() || !places_like_default(&screen.layout) || !fits {
         // The grid's explanation panel, at the last frame's cell size.
+        let cell = screen.cell;
         felt::set_panel_width(
             screen
                 .shown_layout()
@@ -335,11 +332,17 @@ pub fn table(
             pane_w - 2. * pad,
             pane_h - 26. - PANEL_BOTTOM - 14. - 34. * kit::LEADING,
         ));
+        let grid = screen.render_classic(window, cx);
+        // The panel was drawn for another cell size (the first frame, or a
+        // window being resized): draw again for this one.
+        if (screen.cell - cell).abs() > 0.01 {
+            window.request_animation_frame();
+        }
         return page()
             .id("salao_table_grid")
             .overflow_y_scroll()
             .child(title(screen))
-            .child(screen.render_classic(window, cx))
+            .child(grid)
             .into_any_element();
     }
 
@@ -350,10 +353,15 @@ pub fn table(
         title: vh >= TITLE_VH,
     };
     // Controls that wrap push the zone down: it may shrink a little more.
+    // Not measured yet (the first frame), they count as the mockup's.
+    let measured = screen.salao.controls_h.get();
+    let controls_h = if measured > 0. { measured } else { CONTROLS_H };
     // With the mockup's rows the zone and the panel start beside the last
-    // one; otherwise under it.
-    let controls_h = screen.salao.controls_h.get();
-    let (top, panel_top) = if controls_fit.mocked {
+    // one, the opponents', which keeps to the zone's width; otherwise
+    // under the controls. A drill has no opponents' row: without the
+    // title's row its last row ends with the edit button, over the panel.
+    let beside_last = controls_fit.mocked && (controls_fit.title || screen.mode != Mode::Drill);
+    let (top, panel_top) = if beside_last {
         let top = if controls_fit.title {
             controls_h.max(CONTROLS_H)
         } else {
@@ -486,14 +494,38 @@ pub fn table(
                 .child(parts.panel.flex_1()),
         );
 
-    div()
+    let stage = div()
         .relative()
-        .size_full()
         .overflow_hidden()
         .child(controls(screen, &trainers, controls_fit, cx))
         .child(zone)
-        .child(side)
-        .into_any_element()
+        .child(side);
+    // Controls tall enough to leave the zone less than its smallest: the
+    // screen scrolls instead of cutting the actions off.
+    let need_h = top + ZONE_H * k + ZONE_BOTTOM;
+    if need_h > pane_h + 0.5 {
+        return div()
+            .id("salao_table")
+            .size_full()
+            .overflow_y_scroll()
+            .child(stage.flex_none().w_full().h(px(need_h)))
+            .into_any_element();
+    }
+    stage.size_full().into_any_element()
+}
+
+/// How the zone and the side panel share a pane `w` × `h` pixels inside
+/// the screen's padding: the panel's width, the zone's room, and whether
+/// the zone is large enough there for the mockup's arrangement.
+fn split(w: f32, h: f32) -> (f32, f32, bool) {
+    // The mockup's panel wherever the zone stays large beside it, a
+    // narrower one in a small window.
+    let both = w - PANEL_GAP;
+    let panel_w = (both - ZONE_W * EASY_K).clamp(PANEL_MIN, felt::PANEL_W);
+    let room_w = both - panel_w;
+    let fits =
+        room_w >= ZONE_W * MIN_K && h - (CONTROLS_H - ZONE_LAP) - ZONE_BOTTOM >= ZONE_H * MIN_K;
+    (panel_w, room_w, fits)
 }
 
 /// Hero's answer as the story's last line (the spot modes grade one
@@ -699,7 +731,9 @@ pub fn story(screen: &TableScreen, hero: Seat, cx: &mut Context<TableScreen>) ->
             .flex_col()
             .flex_1()
             // Room for the replay's controls and the least space over them.
-            .pb(px(if narrow { 2. * 32. + 8. } else { 32. } + 14.))
+            // Narrow, they are two rows; the break between them is a line
+            // of its own, with a gap on each side.
+            .pb(px(if narrow { 2. * 32. + 2. * 8. } else { 32. } + 14.))
             // The mockup's 22 pixels over the last option, less the gap
             // the panel already puts between its parts.
             .mt(px(22. - ui.theme.spacing.lg))
@@ -707,4 +741,25 @@ pub fn story(screen: &TableScreen, hero: Seat, cx: &mut Context<TableScreen>) ->
             .children(blocks)
             .child(replay),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_zone_and_the_panel_share_the_pane() {
+        // The mockup's window: 1600 x 900 less the sidebar and the padding.
+        let (panel, room, fits) = split(1600. - 224. - 64., 900.);
+        assert_eq!((panel, room, fits), (felt::PANEL_W, ZONE_W, true));
+        // The smallest window keeps the mockup's arrangement, with the
+        // narrowest panel.
+        let (w, h) = crate::MIN_WINDOW;
+        let (panel, room, fits) = split(w - side_w(w) - 2. * pad(w), h);
+        assert_eq!(panel, PANEL_MIN);
+        assert!(fits && room >= ZONE_W * MIN_K, "{room}");
+        // A pane with no room for the zone gets the grid.
+        assert!(!split(600., 600.).2);
+        assert!(!split(1312., 300.).2);
+    }
 }

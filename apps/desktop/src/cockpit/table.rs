@@ -81,6 +81,8 @@ pub struct TableState {
     pub(super) back: bool,
     /// The seed of the first deal seen, to number the deals.
     first_seed: Option<u64>,
+    /// The strip's height on the last frame (its pickers wrap).
+    strip_h: Rc<std::cell::Cell<f32>>,
 }
 
 /// One action of the story, worded.
@@ -557,7 +559,7 @@ fn strip(
         .items_center()
         .gap(px(8.))
         .child(crate::screens::table::measure_height(
-            screen.controls_h.clone(),
+            screen.cockpit.strip_h.clone(),
         ))
         .child(segments);
 
@@ -1073,7 +1075,7 @@ pub fn table(
     let (pane_w, pane_h) = (f32::from(vp.width) - RAIL, f32::from(vp.height) - BAR);
     let wide = pane_w >= WIDE_PANE;
     // The panels start under the strip, which may have wrapped.
-    let panels_top = PANELS_TOP + (screen.controls_h.get() - STRIP_H).max(0.);
+    let panels_top = PANELS_TOP + (screen.cockpit.strip_h.get() - STRIP_H).max(0.);
     let around = panels_top + EDGE;
     let (w, h) = if wide {
         // The table and the hand line share the pane's height; a window too
@@ -1301,6 +1303,10 @@ pub fn table(
         .children(scrim)
         .into_any_element()
 }
+
+// The stacked table panel has a range of heights to move in, and the
+// smallest window is on the stacked side of the breakpoint.
+const _: () = assert!(TABLE_MIN_H < TABLE_NATURAL_H && MIN_PANE_W < WIDE_PANE);
 
 #[cfg(test)]
 mod tests {

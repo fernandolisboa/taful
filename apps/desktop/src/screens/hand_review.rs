@@ -208,7 +208,8 @@ impl Shell {
             panel = panel.child(muted(ui.i18n.tr("hand-review-no-decisions"), &ui, &p));
         }
 
-        // In a pane too narrow for both, the panel goes under the table.
+        // A narrow pane draws the table smaller to keep the panel beside it;
+        // in one too narrow for that, the panel goes under the table.
         let room_w = self.room_w;
         let replay = div()
             .flex()
@@ -225,7 +226,7 @@ impl Shell {
                         state,
                         h.hero,
                         step == last,
-                        felt::room_scale(&ui, room_w),
+                        felt::room_scale(&ui, room_w, t.spacing.xl),
                         felt::SeatExtras {
                             tags: &felt::seat_tags(&ui, &h.seat_profiles),
                             wins: &[],

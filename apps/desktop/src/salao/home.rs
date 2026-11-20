@@ -28,14 +28,15 @@ const ART_MIN: f32 = 0.72;
 /// and the track's ticks, and with the lessons' count after them.
 const HERO_TICKS_W: f32 = 496.;
 const HERO_COUNT_W: f32 = 599.;
-/// A column narrower than this has no room for a number's button in its
-/// panel's corner: the button goes under the number.
-const STATS_STACK_W: f32 = 880.;
+/// A column narrower than this has no room in a number's panel for the
+/// mockup's corners (the button, and the grade bar beside the caption):
+/// they go under the number.
+const STATS_STACK_W: f32 = 1000.;
 /// A column narrower than this drops the leaks' bars (the amounts stay).
 const LEAK_BAR_W: f32 = 900.;
 
-/// How the hero fits a column `column` pixels wide: the mockup's above
-/// 1040, then without the lessons' count, then with smaller art, then
+/// How the hero fits a column `column` pixels wide: the mockup's from
+/// 1042 up, then without the lessons' count, then with smaller art, then
 /// without the ticks.
 struct HeroFit {
     /// The art's scale against the mockup's.
@@ -51,15 +52,19 @@ struct HeroFit {
 
 impl HeroFit {
     fn new(column: f32) -> Self {
-        let art = ((column - HERO_TICKS_W) / ART_W).clamp(ART_MIN, 1.);
+        // The art gives its room to the text side until it is at its
+        // smallest. The panel's border takes a pixel on each side.
+        let art_w = (column - 2. - HERO_TICKS_W)
+            .clamp(ART_W * ART_MIN, ART_W)
+            .floor();
+        let art = art_w / ART_W;
         let small = art < 0.85;
         let (px, py) = if small {
             (24., (30. * art).round())
         } else {
             (34., 30.)
         };
-        // The panel's border takes a pixel on each side.
-        let left = column - 2. - (ART_W * art).round();
+        let left = column - 2. - art_w;
         Self {
             art,
             px,
@@ -667,4 +672,31 @@ fn grade_bar(o: &Overview, p: &crate::theme::Palette, stacked: bool) -> Option<D
                     .bg(p.grade(g))
             })),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_hero_steps_down_with_the_column() {
+        // The mockup's column, and the narrowest that still is the mockup.
+        assert!(HeroFit::new(1080.).full());
+        assert!(HeroFit::new(1042.).full());
+        // Then the lessons' count goes.
+        let f = HeroFit::new(1000.);
+        assert!(f.art >= 1. && f.ticks && !f.count);
+        // Then the art shrinks, and the ticks stay while it does.
+        let f = HeroFit::new(900.);
+        assert!(f.art < 1. && f.art > ART_MIN && f.ticks);
+        // Then the ticks go, with the art at its smallest.
+        let f = HeroFit::new(700.);
+        assert!(!f.ticks && !f.count);
+        assert_eq!(f.art, (ART_W * ART_MIN).floor() / ART_W);
+        // The text side always has its padding's worth of room.
+        for column in [700., 760., 814., 873., 938., 939., 1041.] {
+            let f = HeroFit::new(column);
+            assert!(f.inner > 300., "{column}");
+        }
+    }
 }

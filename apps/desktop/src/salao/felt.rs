@@ -22,8 +22,6 @@ pub const H: f32 = 538.;
 pub const TOP: f32 = 28.;
 /// The side panel's width.
 pub const PANEL_W: f32 = 404.;
-/// A table that stands alone (the review screens) is drawn this many
-/// times the size Classic gives it: the pills and their type need it.
 /// A side panel narrower than this has no room for the mockup's rows:
 /// the verdict, the options and the replay's controls take their small
 /// form.
@@ -45,9 +43,13 @@ pub fn narrow_panel() -> bool {
     PANEL.with(std::cell::Cell::get) < NARROW_PANEL_W
 }
 
+/// A table that stands alone (the review screens) is drawn this many
+/// times the size Classic gives it: the pills and their type need it.
 pub const FELT_SCALE: f32 = 1.4;
-/// The width of that table at scale 1 (see [`felt_table`]).
+/// The width of that table at scale 1 (see [`felt_table`]), and of the
+/// side panel that goes with it.
 pub const FELT_WIDTH: f32 = W * TABLE_H / H;
+pub const PANEL_WIDTH: f32 = PANEL_W;
 
 /// Where a seat and its things sit: centers, in zone coordinates.
 #[derive(Clone, Copy)]

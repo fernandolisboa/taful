@@ -15,8 +15,9 @@
 //! - Constants: `READY` (offered in settings), `ASSETS` and `FONTS`
 //!   (embedded files), `FONT_FAMILY` (the window's base font), `WINDOW`
 //!   (preferred size of a new window), `FELT_SCALE` (the size of a table
-//!   that stands alone, against Classic's) and `FELT_WIDTH` (that table's
-//!   width, so a narrow window can draw it smaller).
+//!   that stands alone, against Classic's), `FELT_WIDTH` and `PANEL_WIDTH`
+//!   (the widths of that table and of the side panel beside it, so a narrow
+//!   window can draw the table smaller).
 //! - State: `ShellState` and `TableState`, one slot each on the shell and
 //!   on the table screen, owned by the style.
 //! - Views: `frame` (chrome and content, under the tour and update

@@ -46,11 +46,8 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
         .iter()
         .filter(|t| !t.lessons.is_empty())
         .collect();
-    // One column per track as designed; a narrower window wraps them into
-    // even rows, so a column keeps the width the design gives it at 1280.
     let n = tracks.len().max(1);
-    let fit = (((w + GAP) / (COLUMN_MIN + GAP)).floor() as usize).clamp(1, n);
-    let per_row = n.div_ceil(n.div_ceil(fit));
+    let per_row = per_row(w, n);
     let wraps = per_row < n;
     let column_w = (w - (per_row - 1) as f32 * GAP) / per_row as f32;
     let column_w = if wraps { column_w.floor() } else { column_w };
@@ -75,6 +72,14 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     page.child(summary(&ui, &pal, &data, w, true, cx))
         .child(columns)
         .into_any_element()
+}
+
+/// How many of `n` tracks' columns go on a row `w` pixels wide: all of
+/// them as designed; a narrower window wraps them into even rows, so a
+/// column keeps at least the width the design gives it at 1280.
+fn per_row(w: f32, n: usize) -> usize {
+    let fit = (((w + GAP) / (COLUMN_MIN + GAP)).floor() as usize).clamp(1, n);
+    n.div_ceil(n.div_ceil(fit))
 }
 
 /// The next lesson with its button, or that none is left.
@@ -435,4 +440,28 @@ fn row(
                 })),
         )
         .child(state)
+}
+
+// The summary's one-row arrangement fits the width it was designed for.
+const _: () = assert!(SUMMARY_MIN <= super::frame::WIDE_ROOM);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn columns_wrap_into_even_rows() {
+        // Five tracks, as shipped: one row from the 1280 px design up.
+        assert_eq!(per_row(super::super::frame::WIDE_ROOM, 5), 5);
+        assert_eq!(per_row(1484., 5), 5);
+        // The smallest window: three and two, not four and one.
+        let least = crate::MIN_WINDOW.0 - super::super::frame::RAIL - 2. * kit::EDGE;
+        assert_eq!(per_row(least, 5), 3);
+        assert_eq!(per_row(100., 5), 1);
+        // The columns of a row never ask for more than the row.
+        for w in [least, 900., 1000., 1100., 1175.] {
+            let k = per_row(w, 5) as f32;
+            assert!(k * COLUMN_MIN + (k - 1.) * GAP <= w, "{w}");
+        }
+    }
 }

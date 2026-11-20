@@ -226,7 +226,8 @@ impl Shell {
                 .child(self.review_next_button("review-continue", cx)),
             None => panel.child(muted(ui.i18n.tr("table-spot-prompt"), &ui, &p)),
         };
-        // In a pane too narrow for both, the panel goes under the table.
+        // A narrow pane draws the table smaller to keep the panel beside it;
+        // in one too narrow for that, the panel goes under the table.
         div()
             .flex()
             .flex_wrap()
@@ -242,7 +243,7 @@ impl Shell {
                         &state,
                         spot.hero(),
                         false,
-                        felt::room_scale(&ui, self.room_w),
+                        felt::room_scale(&ui, self.room_w, t.spacing.xl),
                     ))
                     .child(
                         div()
