@@ -6,7 +6,7 @@
 use std::rc::Rc;
 
 use gpui::{AnyElement, Context, Div, ElementId, Stateful, Window, div, prelude::*, px};
-use taful_app::layout::{Layout, PanelId, Rect};
+use taful_app::layout::{PanelId, Rect};
 use taful_app::model::{DrillSpot, FullHand, Grade, HandEnd, LeftReason, Trainers};
 use taful_app::preflop::{Action, Chips, Seat};
 use taful_app::story::Story;
@@ -50,9 +50,6 @@ pub struct TableState {
     /// The deal the session last counted (its seed), and how many of its
     /// decisions.
     counted: (u64, usize),
-    /// The spot on the table is being answered again: the new answer is
-    /// graded but not stored, and the session counts the first one only.
-    repeat: bool,
     /// The screen's `ui` with the theme's sizes scaled to the window (the
     /// shared edit bar reads them).
     scaled: Option<(f32, Rc<Ui>, Rc<Ui>)>,
@@ -62,7 +59,6 @@ pub struct TableState {
 fn count_session(s: &mut TableScreen) {
     if s.baralho.counted.0 != s.seed {
         s.baralho.counted = (s.seed, 0);
-        s.baralho.repeat = false;
     }
     let graded: Vec<(Grade, f64)> = match s.mode {
         Mode::Hand => s
@@ -76,45 +72,6 @@ fn count_session(s: &mut TableScreen) {
     let done = s.baralho.counted.1;
     s.baralho.session.extend(graded.iter().skip(done));
     s.baralho.counted.1 = done.max(graded.len());
-}
-
-/// Hero's answer. A repeated spot is graded here, so nothing is stored.
-fn act(s: &mut TableScreen, action: Action, cx: &mut Context<TableScreen>) {
-    if !s.baralho.repeat || s.mode == Mode::Hand {
-        s.act(action, cx);
-        return;
-    }
-    if s.busy.is_some() || s.playing() || s.answer.is_some() {
-        return;
-    }
-    if let (Ok(t), Some(q)) = (&s.trainers, &s.question) {
-        match t.answer(q, action) {
-            Ok(d) => s.answer = Some(d),
-            Err(e) => eprintln!("taful: answer: {e}"),
-        }
-    }
-    cx.notify();
-}
-
-/// Puts the answered spot back on the table to be answered again.
-fn repeat_spot(s: &mut TableScreen, cx: &mut Context<TableScreen>) {
-    let Some(state) = s.question.as_ref().map(|q| q.state().clone()) else {
-        return;
-    };
-    s.answer = None;
-    s.baralho.repeat = true;
-    s.show_story(&state, Some(0), cx);
-    cx.notify();
-}
-
-/// Whether `layout` places its panels like the built-in default.
-fn is_default(layout: &Layout) -> bool {
-    let default = Layout::builtin_default();
-    layout.grid.cols == default.grid.cols
-        && layout.grid.rows == default.grid.rows
-        && PanelId::ALL
-            .iter()
-            .all(|&id| layout.rect(id, 1.) == default.rect(id, 1.))
 }
 
 /// A mockup rectangle in window pixels.
@@ -209,7 +166,7 @@ fn action_buttons(
                 fill,
                 bx,
                 cx,
-                move |this, cx| act(this, a, cx),
+                move |this, cx| this.act(a, cx),
             )
         })
         .collect();
@@ -322,7 +279,7 @@ fn question_scene(
                         Fill::Cream,
                         &bx,
                         cx,
-                        repeat_spot,
+                        TableScreen::repeat_spot,
                     )),
             )
         }
@@ -347,7 +304,7 @@ fn question_scene(
             action_buttons(s, &bx, q.state(), &q.actions(t), cx),
         ),
     };
-    if s.baralho.repeat {
+    if s.repeating {
         body.insert(
             0,
             result::note(&bx, i18n.tr("baralho-repeat-note")).into_any_element(),
@@ -1279,7 +1236,7 @@ pub fn view(
     // Where the panels go: the mockup's places, or the layout's grid.
     let editing = s.is_editing();
     let layout = s.shown_layout();
-    let mock = !editing && is_default(&layout);
+    let mock = !editing && crate::screens::table::places_like_default(&layout);
     let bar = if editing {
         let plain = s.ui.clone();
         s.ui = scaled_ui(s);

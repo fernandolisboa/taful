@@ -111,10 +111,16 @@ pub fn fit_scale(w: f32, h: f32) -> f32 {
     (w / TABLE_W).min(h / TABLE_H).clamp(0.7, 1.8)
 }
 
-/// Felt, seats, pot and board, at scale 1. `reveal` shows every live hand
-/// (end of hand).
+/// The scale a table that stands alone (the review screens) is drawn at
+/// in the active visual style.
+pub fn natural_scale(ui: &Ui) -> f32 {
+    by_style!(ui.style, FELT_SCALE)
+}
+
+/// Felt, seats, pot and board, at the style's natural scale. `reveal`
+/// shows every live hand (end of hand).
 pub fn table(ui: &Ui, p: &Palette, state: &GameState, hero: Seat, reveal: bool) -> Div {
-    table_scaled(ui, p, state, hero, reveal, 1.)
+    table_scaled(ui, p, state, hero, reveal, natural_scale(ui))
 }
 
 /// [`table`] drawn `s` times its normal size (layout panels, spec §15.3).
@@ -430,6 +436,9 @@ pub struct Explain<'a> {
     pub range_freqs: &'a [f32],
     /// Graded against a bot profile: `hand_evs` are against the profile.
     pub vs_profile: Option<&'a taful_app::preflop::VsProfile>,
+    /// What a call costs at the decision, when the table is at hand (a
+    /// style may name the call's amount).
+    pub to_call: Option<Chips>,
 }
 
 impl<'a> Explain<'a> {
@@ -444,6 +453,7 @@ impl<'a> Explain<'a> {
             hand_evs: &d.hand_evs,
             range_freqs: &d.range_freqs,
             vs_profile: d.vs_profile.as_ref(),
+            to_call: None,
         }
     }
 

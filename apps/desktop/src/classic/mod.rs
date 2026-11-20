@@ -20,12 +20,19 @@ pub const FONT_FAMILY: Option<&str> = None;
 /// Preferred size of a new window (`None`: the app's default).
 pub const WINDOW: Option<(f32, f32)> = None;
 
-/// What the style keeps on the shell.
+/// The scale of a table that stands alone (the review screens), for a
+/// style whose felt needs more room than Classic's.
+pub const FELT_SCALE: f32 = 1.;
+
+/// What the style keeps on the shell. (Classic keeps nothing and has no
+/// slot: this is the hook a new style starts with.)
 #[derive(Default)]
+#[allow(dead_code)]
 pub struct ShellState;
 
-/// What the style keeps on the table screen.
+/// What the style keeps on the table screen (as [`ShellState`]).
 #[derive(Default)]
+#[allow(dead_code)]
 pub struct TableState;
 
 /// Chrome and content: everything under the tour and update overlays.
@@ -55,6 +62,15 @@ pub fn table(
     cx: &mut Context<TableScreen>,
 ) -> AnyElement {
     screen.render_classic(window, cx)
+}
+
+/// How the hand got here, for the table screen's side panel.
+pub fn story(
+    screen: &TableScreen,
+    hero: taful_app::preflop::Seat,
+    cx: &mut Context<TableScreen>,
+) -> Option<gpui::Div> {
+    screen.story_panel_classic(hero, cx)
 }
 
 pub use crate::felt::{

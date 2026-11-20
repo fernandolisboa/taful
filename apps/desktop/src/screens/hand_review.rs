@@ -199,6 +199,7 @@ impl Shell {
                     hand_evs: &d.hand_evs,
                     range_freqs: &d.range_freqs,
                     vs_profile: d.vs_profile.as_ref(),
+                    to_call: None,
                 },
             ));
         }
@@ -220,7 +221,7 @@ impl Shell {
                         state,
                         h.hero,
                         step == last,
-                        1.,
+                        felt::natural_scale(&ui),
                         felt::SeatExtras {
                             tags: &felt::seat_tags(&ui, &h.seat_profiles),
                             wins: &[],

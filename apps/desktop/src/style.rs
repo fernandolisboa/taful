@@ -14,11 +14,13 @@
 //!
 //! - Constants: `READY` (offered in settings), `ASSETS` and `FONTS`
 //!   (embedded files), `FONT_FAMILY` (the window's base font), `WINDOW`
-//!   (preferred size of a new window).
+//!   (preferred size of a new window), `FELT_SCALE` (the size of a table
+//!   that stands alone, against Classic's).
 //! - State: `ShellState` and `TableState`, one slot each on the shell and
 //!   on the table screen, owned by the style.
 //! - Views: `frame` (chrome and content, under the tour and update
-//!   overlays), `key` (shortcuts), `home`, `lessons`, `table`.
+//!   overlays), `key` (shortcuts), `home`, `lessons`, `table`, `story` (the
+//!   table's "how the hand got here").
 //! - Felt: `felt_table`, `felt_card`, `explanation`, `felt_panel`.
 //! - Widgets: the ones the top of `widgets.rs` dispatches (the lesson text
 //!   renderer is shared).
