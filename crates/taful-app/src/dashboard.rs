@@ -12,7 +12,7 @@ use jiff::{Timestamp, ToSpan};
 use taful_core::calc::ExerciseKind;
 use taful_core::cards::Hand;
 use taful_core::grading::Grade;
-use taful_core::range::HandClass;
+pub use taful_core::range::HandClass;
 use taful_store::{LessonState, Millis};
 
 use crate::i18n::Locale;
@@ -354,6 +354,12 @@ fn trend(days: &[Tally], value: impl Fn(&Tally) -> Option<f64>) -> Trend {
 }
 
 impl App {
+    /// A stamp that moves whenever the app writes to its database: a view
+    /// that caches the numbers below reads them again when it changes.
+    pub fn data_stamp(&self) -> u64 {
+        self.store.change_count()
+    }
+
     /// The dashboard's numbers as of now, in the system time zone.
     pub fn dashboard(&mut self) -> Result<Dashboard> {
         self.dashboard_in(&TimeZone::system())
@@ -743,6 +749,8 @@ mod tests {
                 ..D::default()
             },
         );
+        // A moment later, so it is the newest whatever the row ids are.
+        clock.store(NOON + 1, Ordering::SeqCst);
         decide(
             &app,
             D {

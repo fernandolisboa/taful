@@ -34,6 +34,12 @@ pub struct PreflopDecisionStat {
 }
 
 impl Store {
+    /// Rows changed through this store since it was opened: a cheap "did
+    /// anything change" stamp for whoever caches the aggregates below.
+    pub fn change_count(&self) -> u64 {
+        self.conn().total_changes()
+    }
+
     /// Every decision created at or after `since`, oldest first.
     pub fn decision_stats_since(&self, since: Millis) -> Result<Vec<DecisionStat>> {
         let mut stmt = self.conn().prepare(
@@ -178,6 +184,17 @@ mod tests {
         assert_eq!(pre[0].hero_combo, "AsKs");
         assert_eq!(pre[0].node_type, "rfi");
         assert_eq!(pre[0].frequencies["hand"][1], 1.0);
+    }
+
+    #[test]
+    fn change_count_moves_on_writes_only() {
+        let (s, _) = store();
+        decision(&s, "best", 0.0, "preflop");
+        let stamp = s.change_count();
+        s.recent_grades(5).unwrap();
+        assert_eq!(s.change_count(), stamp);
+        decision(&s, "best", 0.0, "preflop");
+        assert!(s.change_count() > stamp);
     }
 
     #[test]
