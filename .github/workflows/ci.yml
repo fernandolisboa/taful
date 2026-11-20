@@ -119,6 +119,11 @@ jobs:
       - name: Tests (color-literal lint, Fluent ids)
         run: cargo test --locked --release -p taful-desktop
 
+      - name: Tests (embedded content loads on a Windows checkout)
+        run: |
+          cargo test --locked --release -p taful-content
+          cargo test --locked --release -p taful-app content::
+
       - name: Build
         run: cargo build --locked --release -p taful-desktop
 

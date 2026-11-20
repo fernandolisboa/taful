@@ -1,0 +1,4 @@
+# Content is parsed at build time and embedded in the app; keep LF on every
+# checkout (a CRLF checkout on Windows once dropped every lesson).
+content/** text eol=lf
+i18n/** text eol=lf

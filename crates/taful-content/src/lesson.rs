@@ -58,9 +58,11 @@ impl Lesson {
     /// Splits and parses a lesson file.
     pub fn parse(locale: &str, text: &str) -> Result<Lesson, String> {
         let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+        // A Windows checkout can turn every line ending into CRLF; the TOML
+        // parser rejects the lone `\r` the closing `+++` search leaves behind.
+        let text = text.replace("\r\n", "\n");
         let rest = text
             .strip_prefix("+++\n")
-            .or_else(|| text.strip_prefix("+++\r\n"))
             .ok_or("missing `+++` front matter at the top")?;
         let end = rest
             .find("\n+++")
@@ -374,6 +376,15 @@ Facing a half-pot bet you need {{ calc: pot_odds(pot=100, bet=50) | pct(1) }} [e
 
         let pt = Lesson::parse("pt-BR", SAMPLE).unwrap();
         assert!(pt.render(None).unwrap().plain_text().contains("25,0%"));
+    }
+
+    #[test]
+    fn crlf_line_endings_parse() {
+        let crlf = SAMPLE.replace('\n', "\r\n");
+        let l = Lesson::parse("en-US", &crlf).unwrap();
+        assert_eq!(l.meta.id, "pot-odds-101");
+        assert!(!l.body.contains('\r'));
+        assert_eq!(l.body, Lesson::parse("en-US", SAMPLE).unwrap().body);
     }
 
     #[test]
