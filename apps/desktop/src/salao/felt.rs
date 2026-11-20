@@ -445,7 +445,45 @@ pub fn draw(
     k: f32,
     extra: SeatExtras<'_>,
 ) -> Div {
+    let show = Show {
+        reveal,
+        hero_folded: false,
+    };
+    draw_with(ui, p, state, hero, show, k, extra)
+}
+
+/// [`draw`] with hero shown as having folded at `state`. (The state after
+/// a fold that ends the hand has the pot already paid and the uncalled
+/// bet returned: not what the table looked like when hero gave up.)
+pub fn draw_folded(ui: &Ui, p: &Palette, state: &GameState, hero: Seat, k: f32) -> Div {
+    let show = Show {
+        reveal: false,
+        hero_folded: true,
+    };
+    draw_with(ui, p, state, hero, show, k, SeatExtras::default())
+}
+
+#[derive(Clone, Copy)]
+struct Show {
+    reveal: bool,
+    hero_folded: bool,
+}
+
+fn draw_with(
+    ui: &Ui,
+    p: &Palette,
+    state: &GameState,
+    hero: Seat,
+    show: Show,
+    k: f32,
+    extra: SeatExtras<'_>,
+) -> Div {
     let SeatExtras { tags, wins } = extra;
+    let Show {
+        reveal,
+        hero_folded,
+    } = show;
+    let folded = |seat: Seat| state.players()[seat].folded || (hero_folded && seat == hero);
     let c = colors();
     let i18n = &ui.i18n;
     let n = state.players().len();
@@ -545,7 +583,7 @@ pub fn draw(
     let hole = |seat: Seat| -> Option<Div> {
         let pl = &state.players()[seat];
         let is_hero = seat == hero;
-        if pl.folded && !is_hero {
+        if folded(seat) && !is_hero {
             return None;
         }
         let dealt = |i: usize, el: Div| {
@@ -561,7 +599,7 @@ pub fn draw(
         let row =
             if is_hero {
                 row.gap(px(6. * k))
-                    .when(pl.folded, |d| d.opacity(0.45))
+                    .when(folded(seat), |d| d.opacity(0.45))
                     .children(cards.iter().enumerate().map(|(i, &card)| {
                         dealt(i, kit::playing_card(p, Some(card), CardSize::Lg, k))
                     }))
@@ -588,12 +626,12 @@ pub fn draw(
     let seat_el = |seat: Seat| -> Div {
         let pl = &state.players()[seat];
         let is_hero = seat == hero;
-        let action = if pl.folded {
+        let action = if folded(seat) {
             Some(i18n.tr("table-action-fold"))
         } else {
             last[seat].clone()
         };
-        let acted = action.is_some() && !pl.folded;
+        let acted = action.is_some() && !folded(seat);
         let line = match (action, is_hero) {
             (Some(a), true) => i18n.tr_args("salao-seat-you", &[("action", a.into())]),
             (None, true) => i18n.tr("salao-you"),
@@ -602,7 +640,7 @@ pub fn draw(
         };
         let kind = if is_hero {
             SeatKind::Hero
-        } else if pl.folded {
+        } else if folded(seat) {
             SeatKind::Folded
         } else {
             SeatKind::Live
@@ -782,9 +820,10 @@ pub fn explanation(ui: &Ui, p: &Palette, d: &Explain<'_>) -> Div {
     // "Call 10 with Q♠ J♠": the suits as marks in their own colors.
     let played = i18n.tr_args("salao-verdict-with", &[("action", name(d.chosen).into())]);
     let cards: Option<Vec<Card>> = d.context.as_ref().and_then(|(_, hand)| {
+        // Two cards of two ASCII characters each.
         (hand.len() == 4)
-            .then(|| vec![hand[..2].parse().ok(), hand[2..].parse().ok()])
-            .and_then(|v| v.into_iter().collect())
+            .then(|| [hand.get(..2), hand.get(2..)])
+            .and_then(|v| v.into_iter().map(|c| c?.parse().ok()).collect())
     });
     let what = div()
         .mt(px(5.))

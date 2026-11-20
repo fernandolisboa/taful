@@ -6,7 +6,7 @@
 use std::rc::Rc;
 
 use gpui::{AnyElement, Context, Div, ElementId, Stateful, Window, div, prelude::*, px};
-use taful_app::layout::{Layout, PanelId, Rect};
+use taful_app::layout::{PanelId, Rect};
 use taful_app::model::{DrillSpot, FullHand, Grade, HandEnd, LeftReason, Trainers};
 use taful_app::preflop::{Action, Chips, Seat};
 use taful_app::story::Story;
@@ -72,16 +72,6 @@ fn count_session(s: &mut TableScreen) {
     let done = s.baralho.counted.1;
     s.baralho.session.extend(graded.iter().skip(done));
     s.baralho.counted.1 = done.max(graded.len());
-}
-
-/// Whether `layout` places its panels like the built-in default.
-fn is_default(layout: &Layout) -> bool {
-    let default = Layout::builtin_default();
-    layout.grid.cols == default.grid.cols
-        && layout.grid.rows == default.grid.rows
-        && PanelId::ALL
-            .iter()
-            .all(|&id| layout.rect(id, 1.) == default.rect(id, 1.))
 }
 
 /// A mockup rectangle in window pixels.
@@ -1243,7 +1233,7 @@ pub fn view(
     // Where the panels go: the mockup's places, or the layout's grid.
     let editing = s.is_editing();
     let layout = s.shown_layout();
-    let mock = !editing && is_default(&layout);
+    let mock = !editing && crate::screens::table::places_like_default(&layout);
     let bar = if editing {
         let plain = s.ui.clone();
         s.ui = scaled_ui(s);

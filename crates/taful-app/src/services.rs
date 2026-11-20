@@ -51,6 +51,9 @@ pub mod keys {
 
 /// The database file name inside the data folder.
 pub const DB_FILE: &str = "taful.sqlite";
+/// How many of the latest calc answers the home screen's accuracy (and
+/// pace, where shown) covers.
+pub(crate) const HOME_CALC_WINDOW: u32 = 50;
 
 /// Where Taful keeps its database when nothing else is configured:
 /// `TAFUL_DATA_DIR` if set, else `%APPDATA%\Taful` on Windows, else
@@ -335,14 +338,24 @@ impl App {
     // ---- home ---------------------------------------------------------------------------------
 
     pub fn home(&self, locale: Locale) -> Result<Home> {
-        let now = self.store.now();
         let tree = self.skill_tree(locale)?;
+        let recent = self.store.recent_calc_attempts(HOME_CALC_WINDOW)?;
+        self.home_from(&tree, &recent)
+    }
+
+    /// [`App::home`] from a skill tree and the latest
+    /// [`HOME_CALC_WINDOW`] calc answers already read.
+    pub(crate) fn home_from(
+        &self,
+        tree: &[crate::lessons::TrackView],
+        recent: &[taful_store::CalcAttempt],
+    ) -> Result<Home> {
+        let now = self.store.now();
         let cards: Vec<_> = tree.iter().flat_map(|t| &t.lessons).collect();
         let next_lesson = cards
             .iter()
             .find(|c| c.state == taful_store::LessonState::Available)
             .map(|c| (c.id.clone(), c.title.clone()));
-        let recent = self.store.recent_calc_attempts(50)?;
         let (items, reviews) = self.store.review_totals()?;
         Ok(Home {
             due_now: self

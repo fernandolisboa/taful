@@ -1,7 +1,10 @@
 //! Salão's home: the next lesson as a hero, three numbers, the leaks.
 
+use std::rc::Rc;
+
 use gpui::{AnyElement, Context, Div, FontWeight, div, prelude::*, px};
 use taful_app::fmt;
+use taful_app::i18n::Locale;
 use taful_app::model::{Grade, LessonState};
 use taful_app::overview::{NextLesson, Overview, date_parts};
 
@@ -16,14 +19,32 @@ use crate::theme::alpha;
 /// Minutes one review takes, for the "about N min" estimate.
 const MINUTES_PER_REVIEW: f64 = 0.5;
 
+/// What Salão keeps on the shell.
+#[derive(Default)]
+pub struct ShellState {
+    /// The home's numbers, read once per visit and locale (a frame is
+    /// drawn on every hover).
+    overview: Option<((usize, Locale), Rc<Overview>)>,
+}
+
 /// The home screen's body, with its header.
 pub fn home(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     let (c, p) = (colors(), shell.palette);
     let ui = shell.ui.clone();
     let i18n = &ui.i18n;
     let loc = i18n.locale();
-    let o = match shell.app.overview(loc) {
-        Ok(o) => o,
+    let visit = (shell.screen_visit, loc);
+    let cached = shell
+        .salao
+        .overview
+        .as_ref()
+        .filter(|(at, _)| *at == visit)
+        .map(|(_, o)| o.clone());
+    let o = match cached.map_or_else(|| shell.app.overview(loc).map(Rc::new), Ok) {
+        Ok(o) => {
+            shell.salao.overview = Some((visit, o.clone()));
+            o
+        }
         Err(e) => return crate::widgets::muted(e.to_string(), &ui, &p).into_any_element(),
     };
     if shell.leaks.is_none() {

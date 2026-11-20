@@ -112,6 +112,18 @@ pub struct TableScreen {
     pub(crate) baralho: crate::baralho::TableState,
 }
 
+/// Whether `layout` places its panels like the built-in default, whatever
+/// its name (a style with its own arrangement of the default asks).
+pub(crate) fn places_like_default(layout: &Layout) -> bool {
+    static DEFAULT: std::sync::OnceLock<Layout> = std::sync::OnceLock::new();
+    let default = DEFAULT.get_or_init(Layout::builtin_default);
+    layout.grid.cols == default.grid.cols
+        && layout.grid.rows == default.grid.rows
+        && PanelId::ALL
+            .iter()
+            .all(|&id| layout.rect(id, 1.) == default.rect(id, 1.))
+}
+
 /// The story of the shown question or hand and the state on the felt.
 pub(crate) struct Playback {
     pub(crate) story: Story,
@@ -410,7 +422,7 @@ impl TableScreen {
     /// Puts the answered spot back on the table, unanswered, with its
     /// story from the deal (the spot modes).
     pub(crate) fn repeat_spot(&mut self, cx: &mut Context<Self>) {
-        if self.mode == Mode::Hand || self.question.is_none() {
+        if self.mode == Mode::Hand || self.question.is_none() || self.answer.is_none() {
             return;
         }
         self.answer = None;

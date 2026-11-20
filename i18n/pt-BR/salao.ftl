@@ -37,7 +37,7 @@ salao-home-calc-pace = tempo médio · { $percent }% de acerto
 salao-home-calc-none = nenhuma resposta ainda
 salao-home-table-week = Mesa · esta semana
 salao-home-decisions = { $count ->
-    [one] decisão
+    [1] decisão
    *[other] decisões
 }
 salao-home-table-good = { $percent }% melhor ou correta
@@ -45,10 +45,10 @@ salao-home-table-none = nenhuma decisão esta semana
 salao-home-play = Jogar
 salao-home-leaks-sub = onde suas decisões avaliadas mais perdem EV
 salao-leak-stats = { $mistakes ->
-    [one] { $mistakes } erro
+    [1] { $mistakes } erro
    *[other] { $mistakes } erros
 } em { $decisions ->
-    [one] { $decisions } decisão
+    [1] { $decisions } decisão
    *[other] { $decisions } decisões
 }
 salao-bb = bb
@@ -56,20 +56,20 @@ salao-bb = bb
 ## Lessons
 
 salao-lessons-of = de { $total ->
-    [one] 1 lição
+    [1] 1 lição
    *[other] { $total } lições
 }
 salao-of = de { $total }
 salao-track-current = Em andamento
 salao-track-locked = { $count ->
-    [one] 1 lição
+    [1] 1 lição
    *[other] { $count } lições
 } · libera quando você terminar a trilha anterior.
 salao-lesson-next = próxima
 salao-lesson-continue = Continuar
 salao-lesson-quiz = quiz { $score }
 salao-track-open = { $count ->
-    [one] 1 lição
+    [1] 1 lição
    *[other] { $count } lições
 }
 
@@ -87,7 +87,7 @@ salao-option-best = melhor EV
 salao-verdict-with = { $action } com
 salao-repeat-spot = Repetir este spot
 salao-session = Sessão · { $count ->
-    [one] 1 decisão
+    [1] 1 decisão
    *[other] { $count } decisões
 }
 salao-session-ev = EV perdido { $amount } bb

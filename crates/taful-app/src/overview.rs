@@ -8,9 +8,6 @@ use taful_store::{LessonState, Millis};
 use crate::i18n::Locale;
 use crate::{App, Home, Result};
 
-/// How many of the latest calc answers the pace and accuracy cover.
-const CALC_WINDOW: u32 = 50;
-
 /// The next lesson and where it sits in its track.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NextLesson {
@@ -72,8 +69,11 @@ pub fn date_parts(ms: Millis) -> Option<(u8, u8, u8)> {
 
 impl App {
     pub fn overview(&self, locale: Locale) -> Result<Overview> {
-        let home = self.home(locale)?;
         let tree = self.skill_tree(locale)?;
+        let recent = self
+            .store
+            .recent_calc_attempts(crate::services::HOME_CALC_WINDOW)?;
+        let home = self.home_from(&tree, &recent)?;
         let next = tree.iter().find_map(|t| {
             let at = t
                 .lessons
@@ -89,7 +89,6 @@ impl App {
                 track_states: t.lessons.iter().map(|l| l.state).collect(),
             })
         });
-        let recent = self.store.recent_calc_attempts(CALC_WINDOW)?;
         let calc_mean_ms = (!recent.is_empty()).then(|| {
             recent.iter().map(|a| a.duration_ms as f64).sum::<f64>() / recent.len() as f64
         });

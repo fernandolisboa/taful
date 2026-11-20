@@ -5,10 +5,8 @@
 use std::cell::Cell;
 use std::collections::VecDeque;
 use std::rc::Rc;
-use std::sync::OnceLock;
 
 use gpui::{AnyElement, Context, Div, FontWeight, Stateful, Window, canvas, div, prelude::*, px};
-use taful_app::layout::Layout;
 use taful_app::model::{Grade, Street, Trainers};
 use taful_app::preflop::{Action, Seat};
 use taful_app::story::StoryEvent;
@@ -20,7 +18,7 @@ use super::frame::{SIDE_W, WIDE_PAD};
 use super::kit::{self, CardSize};
 use crate::felt::{SeatExtras, TABLE_H, bb, num};
 use crate::screen::Screen;
-use crate::screens::table::{Mode, StoryTag, TableScreen};
+use crate::screens::table::{Mode, StoryTag, TableScreen, places_like_default};
 use crate::theme::alpha;
 use crate::tour;
 
@@ -36,6 +34,9 @@ const ZONE_BOTTOM: f32 = 22.;
 const PANEL_BOTTOM: f32 = 28.;
 /// Between the zone and the side panel.
 const PANEL_GAP: f32 = 8.;
+/// The smallest zone, against the mockup's, that still gets the mockup's
+/// arrangement.
+const MIN_K: f32 = 0.55;
 /// The grade dots the session's strip shows.
 const DOTS: usize = 12;
 
@@ -284,10 +285,17 @@ pub fn table(
                 .into_any_element();
         }
     };
-    // The mockup is the default layout; any other, and the edit mode, is
-    // the grid with this style's panels.
-    static DEFAULT: OnceLock<Layout> = OnceLock::new();
-    if screen.is_editing() || screen.layout != *DEFAULT.get_or_init(Layout::builtin_default) {
+    // The zone takes what the window leaves beside the side panel and
+    // under the controls, at the mockup's proportions.
+    let vp = window.viewport_size();
+    let (pane_w, pane_h) = ((f32::from(vp.width) - SIDE_W).max(0.), f32::from(vp.height));
+    let room_w = pane_w - 2. * WIDE_PAD - felt::PANEL_W - PANEL_GAP;
+    let fits = room_w >= ZONE_W * MIN_K
+        && pane_h - (CONTROLS_H - ZONE_LAP) - ZONE_BOTTOM >= ZONE_H * MIN_K;
+    // The mockup is the default layout; any other, the edit mode and a
+    // window too small for the zone beside the panel get the grid with
+    // this style's panels (it scrolls).
+    if screen.is_editing() || !places_like_default(&screen.layout) || !fits {
         return page()
             .id("salao_table_grid")
             .overflow_y_scroll()
@@ -296,14 +304,12 @@ pub fn table(
             .into_any_element();
     }
 
-    // The zone takes what the window leaves beside the side panel and
-    // under the controls, at the mockup's proportions.
-    let vp = window.viewport_size();
-    let (pane_w, pane_h) = ((f32::from(vp.width) - SIDE_W).max(0.), f32::from(vp.height));
+    // Controls that wrap push the zone down: it may shrink a little more.
     let top = screen.salao.controls_h.get().max(CONTROLS_H) - ZONE_LAP;
-    let room_w = pane_w - 2. * WIDE_PAD - felt::PANEL_W - PANEL_GAP;
     let room_h = pane_h - top - ZONE_BOTTOM;
-    let k = (room_w / ZONE_W).min(room_h / ZONE_H).clamp(0.55, 1.6);
+    let k = (room_w / ZONE_W)
+        .min(room_h / ZONE_H)
+        .clamp(MIN_K * 0.7, 1.6);
     let left = WIDE_PAD + ((room_w - ZONE_W * k) / 2.).max(0.);
 
     let parts = match screen.mode {
@@ -317,13 +323,18 @@ pub fn table(
     };
     let answered = screen.mode != Mode::Hand && screen.answer.is_some();
     // After the answer the felt shows it played: hero's chips in front,
-    // the pot with them.
+    // the pot with them. A fold changes no chips: the same table, with
+    // hero out.
     let after = match (&screen.question, &screen.answer) {
-        (Some(q), Some(d)) if answered && !screen.playing() => d
-            .actions
-            .get(d.chosen)
-            .and_then(|&a| q.state().apply(a).ok())
-            .map(|s| felt::draw(&ui, &p, &s, q.hero(), false, k, SeatExtras::default())),
+        (Some(q), Some(d)) if answered && !screen.playing() => match d.actions.get(d.chosen) {
+            Some(Action::Fold) => Some(felt::draw_folded(&ui, &p, q.state(), q.hero(), k)),
+            Some(&a) => q
+                .state()
+                .apply(a)
+                .ok()
+                .map(|s| felt::draw(&ui, &p, &s, q.hero(), false, k, SeatExtras::default())),
+            None => None,
+        },
         _ => None,
     };
     let table = if dealt {
