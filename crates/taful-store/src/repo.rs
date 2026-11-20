@@ -875,6 +875,17 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
+    /// How many decisions since `since` got each grade, as `(grade id, count)`.
+    pub fn grade_counts_since(&self, since: Millis) -> Result<Vec<(String, u32)>> {
+        let mut stmt = self.conn().prepare(
+            "SELECT grade, count(*) FROM decisions
+             WHERE deleted_at IS NULL AND created_at >= ?1
+             GROUP BY grade",
+        )?;
+        let rows = stmt.query_map(params![since], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     /// The grades of one leak bucket's decisions, oldest first, over the
     /// same window as [`Store::bucket_stats`].
     pub fn bucket_grades(&self, window: u32, bucket: &BucketStats) -> Result<Vec<String>> {
@@ -1306,6 +1317,13 @@ mod tests {
         assert_eq!(s.bucket_stats(1).unwrap()[0].decisions, 1, "window");
         assert_eq!(b[0].opponent, "reference");
         assert_eq!(ds[0].opponent.as_deref(), Some("reference"));
+
+        // Grades since a moment: everything so far, nothing after now.
+        let mut counts = s.grade_counts_since(0).unwrap();
+        counts.sort();
+        assert_eq!(counts.iter().map(|(_, n)| n).sum::<u32>(), 4);
+        assert!(counts.contains(&("blunder".to_owned(), 2)));
+        assert!(s.grade_counts_since(s.now() + 1).unwrap().is_empty());
 
         // The opponent profile is a bucket dimension.
         let mut vs_nit = decision(None, "mistake", 0.5);

@@ -99,6 +99,9 @@ pub struct TableScreen {
     pub(crate) auto_replay: bool,
     /// The replay's timer; dropping it stops the replay.
     pub(crate) _ticker: Option<Task<()>>,
+    /// The answered spot is on the table to be answered again: the new
+    /// answer is graded but not stored (one decision per dealt spot).
+    pub(crate) repeating: bool,
     /// Each visual style's own state (D19); a style that keeps none
     /// leaves its slot unused.
     #[allow(dead_code)]
@@ -126,6 +129,27 @@ impl Playback {
     pub(crate) fn playing(&self) -> bool {
         self.at < self.last()
     }
+}
+
+/// One street of the story of a hand ([`TableScreen::story_columns`]).
+pub(crate) struct StoryColumn {
+    pub(crate) street: Street,
+    /// The cards dealt on this street.
+    pub(crate) cards: Vec<taful_app::preflop::Card>,
+    /// The pot the street started with.
+    pub(crate) pot: Chips,
+    pub(crate) tags: Vec<StoryTag>,
+}
+
+/// One action of the story (or the openers' folds together).
+pub(crate) struct StoryTag {
+    pub(crate) who: String,
+    pub(crate) what: String,
+    /// The story state this action leads to.
+    pub(crate) step: usize,
+    pub(crate) hero: bool,
+    pub(crate) fold: bool,
+    pub(crate) aggressive: bool,
 }
 
 /// Replay pace (#53): the pause before the first action, then per action
@@ -215,6 +239,7 @@ impl TableScreen {
             playback: None,
             auto_replay,
             _ticker: None,
+            repeating: false,
             salao: Default::default(),
             cockpit: Default::default(),
             baralho: Default::default(),
@@ -278,6 +303,7 @@ impl TableScreen {
         let Ok(t) = self.trainers.clone() else { return };
         let seed = self.next_seed();
         self.answer = None;
+        self.repeating = false;
         self.generation += 1;
         self.playback = None;
         self._ticker = None;
@@ -379,6 +405,18 @@ impl TableScreen {
             Done::Hand(None) => self.hand = None,
             Done::Acted(Err(e)) => eprintln!("taful: hand: {e}"),
         }
+    }
+
+    /// Puts the answered spot back on the table, unanswered, with its
+    /// story from the deal (the spot modes).
+    pub(crate) fn repeat_spot(&mut self, cx: &mut Context<Self>) {
+        if self.mode == Mode::Hand || self.question.is_none() {
+            return;
+        }
+        self.answer = None;
+        self.repeating = true;
+        self.question_landed(cx);
+        cx.notify();
     }
 
     /// A new question is on the table: its story plays from the deal.
@@ -505,36 +543,15 @@ impl TableScreen {
         cx.notify();
     }
 
-    /// How the hand got here (#53), for the side panel: one block per
-    /// street (its board and the pot it started with) with a row per action,
-    /// openers' folds in one row. A row shows the felt at that moment; the
-    /// controls replay, step and toggle auto-replay.
-    pub(crate) fn story_panel(
-        &self,
-        hero: taful_app::preflop::Seat,
-        cx: &mut Context<Self>,
-    ) -> Option<Div> {
+    /// How the hand got here (#53) as data: one column per street (its
+    /// board and the pot it started with) with a tag per action, the
+    /// openers' folds in one tag.
+    pub(crate) fn story_columns(&self, hero: taful_app::preflop::Seat) -> Option<Vec<StoryColumn>> {
         let pb = self.playback.as_ref()?;
-        let (ui, p) = (self.ui.clone(), self.palette);
-        let (th, i18n) = (&ui.theme, &ui.i18n);
+        let ui = self.ui.clone();
+        let i18n = &ui.i18n;
         let story = &pb.story;
-
-        // Columns: (street, board cards, pot at its start, tags).
-        struct Tag {
-            who: String,
-            what: String,
-            step: usize,
-            hero: bool,
-            fold: bool,
-            aggressive: bool,
-        }
-        struct Column {
-            street: Street,
-            cards: Vec<taful_app::preflop::Card>,
-            pot: taful_app::preflop::Chips,
-            tags: Vec<Tag>,
-        }
-        let mut cols = vec![Column {
+        let mut cols = vec![StoryColumn {
             street: Street::Preflop,
             cards: Vec::new(),
             pot: story.states[0].pot(),
@@ -549,7 +566,7 @@ impl TableScreen {
                     street,
                     cards,
                     step,
-                } => cols.push(Column {
+                } => cols.push(StoryColumn {
                     street: *street,
                     cards: cards.clone(),
                     pot: story.states[*step].pot(),
@@ -566,7 +583,7 @@ impl TableScreen {
                                 t.who = who;
                                 t.step = a.step;
                             }
-                            _ => col.tags.push(Tag {
+                            _ => col.tags.push(StoryTag {
                                 who,
                                 what: i18n.tr("table-action-fold"),
                                 step: a.step,
@@ -613,7 +630,7 @@ impl TableScreen {
                     } else {
                         a.position.label().to_string()
                     };
-                    col.tags.push(Tag {
+                    col.tags.push(StoryTag {
                         who,
                         what,
                         step: a.step,
@@ -624,6 +641,32 @@ impl TableScreen {
                 }
             }
         }
+        Some(cols)
+    }
+
+    /// How the hand got here (#53), for the side panel, in the active
+    /// visual style.
+    pub(crate) fn story_panel(
+        &self,
+        hero: taful_app::preflop::Seat,
+        cx: &mut Context<Self>,
+    ) -> Option<Div> {
+        crate::style::by_style!(self.ui.style, story(self, hero, cx))
+    }
+
+    /// Classic's [`Self::story_panel`]: one block per street with a row per
+    /// action. A row shows the felt at that moment; the controls replay,
+    /// step and toggle auto-replay.
+    pub(crate) fn story_panel_classic(
+        &self,
+        hero: taful_app::preflop::Seat,
+        cx: &mut Context<Self>,
+    ) -> Option<Div> {
+        let pb = self.playback.as_ref()?;
+        let cols = self.story_columns(hero)?;
+        let (ui, p) = (self.ui.clone(), self.palette);
+        let (th, i18n) = (&ui.theme, &ui.i18n);
+        let story = &pb.story;
 
         let at = pb.at;
         let playing = pb.playing();
@@ -925,10 +968,12 @@ impl TableScreen {
                 {
                     match t.answer(q, action) {
                         Ok(d) => {
-                            cx.emit(TableEvent::Answered(
-                                Box::new(d.clone()),
-                                Box::new(q.context(&t)),
-                            ));
+                            if !self.repeating {
+                                cx.emit(TableEvent::Answered(
+                                    Box::new(d.clone()),
+                                    Box::new(q.context(&t)),
+                                ));
+                            }
                             self.answer = Some(d);
                         }
                         Err(e) => eprintln!("taful: answer: {e}"),
@@ -1116,7 +1161,14 @@ impl TableScreen {
         };
         let (panel, actions) = match &self.answer {
             Some(d) => (
-                div().child(felt::explanation(&self.ui, p, &Explain::of(d))),
+                div().child(felt::explanation(
+                    &self.ui,
+                    p,
+                    &Explain {
+                        to_call: q.state().bounds().map(|b| b.to_call),
+                        ..Explain::of(d)
+                    },
+                )),
                 div().child(self.button(
                     "next",
                     i18n.tr("table-next-spot"),
@@ -1346,35 +1398,34 @@ impl TableScreen {
         }
     }
 
-    /// Mode and spot pickers.
-    pub(crate) fn controls(&self, trainers: &Trainers, cx: &mut Context<Self>) -> Div {
-        let (p, th) = (self.palette, self.ui.theme.clone());
-        let ui = self.ui.clone();
-        let i18n = &ui.i18n;
-        let mut modes = crate::widgets::segmented(&ui, &p)
-            .child(self.segment(
+    /// The mode picker's options.
+    pub(crate) fn mode_segments(&self, cx: &mut Context<Self>) -> Vec<Stateful<Div>> {
+        let i18n = &self.ui.i18n;
+        let mut modes = vec![
+            self.segment(
                 "mode_spot",
                 i18n.tr("table-mode-spot"),
                 self.mode == Mode::Spot,
                 cx,
                 |this, cx| this.set_mode(Mode::Spot, cx),
-            ))
-            .child(self.segment(
+            ),
+            self.segment(
                 "mode_postflop",
                 i18n.tr("table-mode-postflop"),
                 self.mode == Mode::Postflop,
                 cx,
                 |this, cx| this.set_mode(Mode::Postflop, cx),
-            ))
-            .child(self.segment(
+            ),
+            self.segment(
                 "mode_hand",
                 i18n.tr("table-mode-hand"),
                 self.mode == Mode::Hand,
                 cx,
                 |this, cx| this.set_mode(Mode::Hand, cx),
-            ));
+            ),
+        ];
         if self.drill.is_some() {
-            modes = modes.child(self.segment(
+            modes.push(self.segment(
                 "mode_drill",
                 i18n.tr("table-mode-drill"),
                 self.mode == Mode::Drill,
@@ -1382,16 +1433,20 @@ impl TableScreen {
                 |this, cx| this.set_mode(Mode::Drill, cx),
             ));
         }
-        let edit = (!self.is_editing()).then(|| {
-            self.button(
-                "layout_edit",
-                i18n.tr("layout-edit-start"),
-                false,
-                cx,
-                |this, cx| this.start_edit(cx),
-            )
-        });
-        // Opponent picker (spec §9, D8): reference first, then each profile.
+        modes
+    }
+
+    /// The opponent picker (spec §9, D8): the reference first, then each
+    /// profile; in full hands, one profile for the whole table or one per
+    /// seat (#29).
+    pub(crate) fn opponent_chips(
+        &self,
+        trainers: &Trainers,
+        cx: &mut Context<Self>,
+    ) -> Vec<Stateful<Div>> {
+        let (p, th) = (self.palette, self.ui.theme.clone());
+        let ui = self.ui.clone();
+        let i18n = &ui.i18n;
         let mut opponents = vec![self.chip(
             "opp_reference",
             i18n.tr("bot-profile-reference"),
@@ -1407,7 +1462,6 @@ impl TableScreen {
                 this.set_opponent(Some(id.clone()), cx)
             }));
         }
-        // Full hands: one profile for the whole table, or one per seat (#29).
         let per_seat = self.mode == Mode::Hand && self.seats.is_some();
         if self.mode == Mode::Hand {
             opponents.push(self.chip(
@@ -1455,7 +1509,17 @@ impl TableScreen {
                 }));
             }
         }
-        let kinds: Vec<_> = trainers
+        opponents
+    }
+
+    /// The preflop spot kinds the charts have.
+    pub(crate) fn kind_chips(
+        &self,
+        trainers: &Trainers,
+        cx: &mut Context<Self>,
+    ) -> Vec<Stateful<Div>> {
+        let i18n = &self.ui.i18n;
+        trainers
             .preflop
             .available_kinds()
             .into_iter()
@@ -1467,7 +1531,17 @@ impl TableScreen {
                     this.set_kind(k, cx)
                 })
             })
-            .collect();
+            .collect()
+    }
+
+    /// The postflop configurations the library has, after "any".
+    pub(crate) fn postflop_chips(
+        &self,
+        trainers: &Trainers,
+        cx: &mut Context<Self>,
+    ) -> Vec<Stateful<Div>> {
+        let ui = self.ui.clone();
+        let i18n = &ui.i18n;
         let mut pf_chips = Vec::new();
         if let Some(pf) = trainers.post() {
             pf_chips.push(self.chip(
@@ -1489,6 +1563,27 @@ impl TableScreen {
                 ));
             }
         }
+        pf_chips
+    }
+
+    /// Mode and spot pickers.
+    pub(crate) fn controls(&self, trainers: &Trainers, cx: &mut Context<Self>) -> Div {
+        let (p, th) = (self.palette, self.ui.theme.clone());
+        let ui = self.ui.clone();
+        let i18n = &ui.i18n;
+        let modes = crate::widgets::segmented(&ui, &p).children(self.mode_segments(cx));
+        let edit = (!self.is_editing()).then(|| {
+            self.button(
+                "layout_edit",
+                i18n.tr("layout-edit-start"),
+                false,
+                cx,
+                |this, cx| this.start_edit(cx),
+            )
+        });
+        let opponents = self.opponent_chips(trainers, cx);
+        let kinds = self.kind_chips(trainers, cx);
+        let pf_chips = self.postflop_chips(trainers, cx);
         let title: SharedString = match self.mode {
             Mode::Postflop => i18n.tr("table-subtitle-postflop"),
             Mode::Hand => i18n.tr("table-subtitle-hand"),

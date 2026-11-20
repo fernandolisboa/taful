@@ -14,7 +14,8 @@
 //!   layouts and the theme choice (M6), and user themes from the theme
 //!   editor (#23); [`layout_edit`]: the layout edit mode (#22).
 //! - [`update`]: auto-update preferences and release selection (D18).
-//! - [`style`]: the visual styles and their fixed colors (D19).
+//! - [`style`]: the visual styles and their fixed colors (D19);
+//!   [`overview`]: the fuller home screen some of them show.
 //! - [`today`]: the day at a glance, for a home screen made of cards.
 
 pub mod appearance;
@@ -30,6 +31,7 @@ pub mod lessons;
 pub mod mixed;
 pub mod model;
 pub mod optimizer;
+pub mod overview;
 pub mod postflop;
 pub mod preflop;
 pub mod review;
