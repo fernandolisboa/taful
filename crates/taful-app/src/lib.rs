@@ -15,6 +15,8 @@
 //!   editor (#23); [`layout_edit`]: the layout edit mode (#22).
 //! - [`update`]: auto-update preferences and release selection (D18).
 //! - [`style`]: the visual styles and their fixed colors (D19).
+//! - [`dashboard`] and [`insight`]: the aggregates behind a dashboard and
+//!   the range, equity and hand description behind a decision.
 
 pub mod appearance;
 pub mod bots;
@@ -24,6 +26,7 @@ pub mod dashboard;
 pub mod fmt;
 pub mod hand;
 pub mod i18n;
+pub mod insight;
 pub mod layout;
 pub mod layout_edit;
 pub mod lessons;

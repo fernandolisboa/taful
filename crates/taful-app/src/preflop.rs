@@ -217,6 +217,28 @@ pub struct VsProfile {
 }
 
 impl GradedDecision {
+    /// The grade each action would have got here: the chosen one's is
+    /// [`Self::grade`].
+    pub fn grades(&self, t: &Thresholds) -> Vec<Grade> {
+        let best = self
+            .hand_evs
+            .iter()
+            .copied()
+            .fold(f32::NEG_INFINITY, f32::max);
+        (0..self.actions.len())
+            .map(|a| {
+                // Against a profile only EV counts (see `grade_at`).
+                let freq = if self.vs_profile.is_some() {
+                    0.0
+                } else {
+                    self.hand_freqs.get(a).copied().unwrap_or(0.0)
+                };
+                let loss = f64::from(best - self.hand_evs.get(a).copied().unwrap_or(best));
+                grade(loss.max(0.0), self.pot_bb, freq, self.tolerance_bb, t)
+            })
+            .collect()
+    }
+
     /// Index of the best action by EV for hero's hand.
     pub fn best(&self) -> usize {
         argmax(&self.hand_evs)
@@ -464,6 +486,14 @@ impl PreflopTrainer {
             .ok_or_else(|| PreflopError::UnknownProfile(key.into()))?;
         let hero = self.seat_of(self.chart.node(node).player);
         self.mixed.best_response(self, hero, &seats).map(|_| ())
+    }
+
+    /// The preflop all-in equity table by hand class, when the chart
+    /// ships with one.
+    pub(crate) fn class_tables(
+        &self,
+    ) -> Option<Arc<taful_solver::preflop_game::equity::ClassTables>> {
+        self.mixed.class_tables()
     }
 
     pub(crate) fn chart_arc(&self) -> Arc<PreflopChart> {
