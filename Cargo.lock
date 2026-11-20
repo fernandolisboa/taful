@@ -5904,6 +5904,7 @@ dependencies = [
 name = "taful-desktop"
 version = "0.1.0"
 dependencies = [
+ "embed-resource",
  "futures",
  "gpui",
  "image",
@@ -5911,6 +5912,7 @@ dependencies = [
  "taful-app",
  "tray-icon",
  "ureq",
+ "windows-registry 0.5.3",
 ]
 
 [[package]]

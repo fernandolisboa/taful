@@ -30,8 +30,6 @@ const SELECTION_BAR: f32 = 3.;
 const TICK: Duration = Duration::from_millis(250);
 /// App use is added to the backup clock in steps of this size.
 const USE_STEP: Duration = Duration::from_secs(60);
-/// The tray icon's size in pixels (Windows scales it to the tray).
-const TRAY_ICON_SIZE: u32 = 32;
 
 /// What a key did to the answer box.
 pub enum KeyResult {
@@ -139,12 +137,7 @@ impl Shell {
         ];
         let updater = Updater::new(app.update_prefs());
         let (tray_tx, mut tray_rx) = futures::channel::mpsc::unbounded();
-        let tray = Tray::new(
-            &ui.i18n,
-            crate::theme::tray_icon_pixels(&palette, TRAY_ICON_SIZE),
-            TRAY_ICON_SIZE,
-            tray_tx,
-        );
+        let tray = Tray::new(&ui.i18n, tray_tx);
         let tray_task = tray.is_some().then(|| {
             cx.spawn_in(window, async move |this, cx| {
                 use futures::StreamExt;

@@ -512,3 +512,26 @@ The author found the app flat, liked all three directions that were proposed, an
 - D7 still holds: no color literal outside `theme.rs`. A style's colors are data, like a theme's.
 - A screen that has no mockup takes the style through the shared widgets. A new shared widget needs a look in every style.
 - Fonts and art are embedded in the binary from `apps/desktop/assets/<id>/`, with their licenses next to them.
+
+
+---
+
+## D20 — The logo is a bow tie
+
+**Date:** 2026-11-20 · **Ref:** D10, D18, D19
+
+### Decision
+- The Taful mark is a **bow tie whose knot is a diamond**: amber wings (`#f0b040`), cream knot (`#f6efdc`). The app icon is the mark on a dark petrol tile.
+- It replaces the spade used in the first mockups of the visual styles (D19), and the felt disc the notification-area icon was drawn as (D18).
+- The brand does not use a spade.
+
+### Why
+The author found the spade in a chip too close to the PokerStars logo. Of three proposals (bow tie, two cards showing a T, a 3×3 range grid), he picked the bow tie: "taful" means a dandy and also a gambler, and it is the dealer's tie.
+
+### Implications
+- Sources in `apps/desktop/assets/icon/`: `mark.svg` (the mark, for 32 px and up), `mark-small.svg` (a simpler cut for 16 to 24 px), `icon.svg` and `icon-small.svg` (the same two cuts on the tile) and `taful.ico` (16 to 256 px, built from the two icon files).
+- `taful.exe` carries `taful.ico` as icon resource 1, which is the one GPUI gives its windows. Title bar, taskbar, Alt+Tab, Explorer, the Start menu shortcut, the uninstall entry and the installer all show it.
+- The notification-area icon is the small cut with no tile, painted by `taful_app::logo`. It no longer follows the theme: amber and cream on a dark taskbar, one dark ink on a light one (read from Windows when the icon is made).
+- The mark's colors are brand colors, the same in every theme and style, so they are constants in `taful_app::logo` and not theme tokens. D7's rule for the desktop UI is unchanged.
+- A visual style draws the mark in its navigation in these two colors, with no chip or badge around it.
+

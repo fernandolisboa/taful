@@ -18,6 +18,7 @@
 //! - [`dashboard`] and [`insight`]: the aggregates behind a dashboard and
 //!   the range, equity and hand description behind a decision.
 //! - [`today`]: the day at a glance, for a home screen made of cards.
+//! - [`logo`]: the Taful mark as geometry, for icons painted in code (D20).
 
 pub mod appearance;
 pub mod bots;
@@ -31,6 +32,7 @@ pub mod insight;
 pub mod layout;
 pub mod layout_edit;
 pub mod lessons;
+pub mod logo;
 pub mod mixed;
 pub mod model;
 pub mod optimizer;

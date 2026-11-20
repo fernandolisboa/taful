@@ -122,6 +122,21 @@ jobs:
       - name: Build
         run: cargo build --locked --release -p taful-desktop
 
+      # taful.exe must carry the app icon (D20). Windows hands back a generic
+      # icon when the resource is missing, so look at what it shows: the
+      # middle of the icon is the cream knot of the bow tie.
+      - name: App icon is in taful.exe
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $exe = (Resolve-Path target\release\taful.exe).Path
+          $bmp = [System.Drawing.Icon]::ExtractAssociatedIcon($exe).ToBitmap()
+          $bmp.Save("exe-icon.png", [System.Drawing.Imaging.ImageFormat]::Png)
+          $c = $bmp.GetPixel([int]($bmp.Width / 2), [int]($bmp.Height / 2))
+          Write-Host "Icon $($bmp.Width)x$($bmp.Height), middle pixel $($c.R),$($c.G),$($c.B)"
+          $off = [Math]::Abs($c.R - 0xf6) + [Math]::Abs($c.G - 0xef) + [Math]::Abs($c.B - 0xdc)
+          if ($off -gt 30) { throw "taful.exe does not show the Taful icon" }
+
       # Launch the app on the runner's desktop and capture the screen, so the
       # render can be checked without a local Windows machine. The runner has
       # no GPU, so this also exercises GPUI's software (WARP) fallback.
@@ -201,6 +216,7 @@ jobs:
           name: screenshot-windows
           path: |
             screenshot.png
+            exe-icon.png
             stdout.log
             stderr.log
             install.log
