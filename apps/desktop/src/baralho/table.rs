@@ -1261,6 +1261,17 @@ pub fn view(
         }
     };
     count_session(s);
+    // A list closes from its pill or from the layer under it: forget one
+    // whose pill this mode does not draw (a drill started from the home),
+    // or that layer would take a click.
+    let drawn = match s.baralho.menu {
+        Some(Menu::Spot) => matches!(s.mode, Mode::Spot | Mode::Postflop),
+        Some(Menu::Opponent) => s.mode != Mode::Drill,
+        None => true,
+    };
+    if !drawn {
+        s.baralho.menu = None;
+    }
 
     // Where the panels go: the mockup's places, or the layout's grid.
     let editing = s.is_editing();

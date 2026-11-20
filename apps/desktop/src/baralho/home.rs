@@ -2,6 +2,8 @@
 //! practice the biggest leak, mental math), one suit each, and the tracks
 //! along the bottom.
 
+use std::rc::Rc;
+
 use gpui::{AnyElement, Context, Div, Stateful, div, prelude::*};
 use taful_app::fmt;
 use taful_app::model::LessonState;
@@ -20,6 +22,9 @@ const CARD_H: f32 = 404.;
 const CARD_TOP: f32 = 232.;
 const CARD_STEP: f32 = 376.;
 /// Grade dots and review pips shown at most.
+/// A big card's width inside its border and padding, and a strip's mini.
+const CARD_INNER_W: f32 = CARD_W - 2. * 2.5 - 2. * 26.;
+const MINI_W: f32 = 22.;
 const MAX_DOTS: usize = 16;
 const MAX_PIPS: usize = 12;
 
@@ -238,8 +243,18 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     let bx = bx(&ui);
     let i18n = &ui.i18n;
     let loc = i18n.locale();
-    let today: Today = match shell.app.today(loc) {
-        Ok(t) => t,
+    let visit = (shell.screen_visit, loc);
+    let cached = shell
+        .baralho
+        .today
+        .as_ref()
+        .filter(|(at, _)| *at == visit)
+        .map(|(_, t)| t.clone());
+    let today: Rc<Today> = match cached.map_or_else(|| shell.app.today(loc).map(Rc::new), Ok) {
+        Ok(t) => {
+            shell.baralho.today = Some((visit, t.clone()));
+            t
+        }
         Err(e) => {
             return typo::text(15., 400)
                 .on(div())
@@ -316,7 +331,10 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                     &[("n", (l + 1).into()), ("total", total.into())],
                 ),
             };
-            let strip = div().flex().gap(u(5.)).children(
+            // A long track keeps to the card with a tighter gap.
+            let n = total.max(2) as f32;
+            let gap = ((CARD_INNER_W - MINI_W * n) / (n - 1.)).clamp(1., 5.);
+            let strip = div().flex().gap(u(gap)).children(
                 track
                     .lessons
                     .iter()

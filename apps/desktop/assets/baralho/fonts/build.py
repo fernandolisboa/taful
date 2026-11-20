@@ -20,7 +20,7 @@ https://github.com/google/fonts, ofl/bricolagegrotesque and ofl/figtree):
     python3 build.py <BricolageGrotesque[opsz,wdth,wght].ttf> <Figtree[wght].ttf> <Figtree-Italic[wght].ttf>
 
 The list of display faces must match `DISPLAY_FACES` in
-`apps/desktop/src/baralho/type_.rs` (a test there checks the files exist).
+`apps/desktop/src/baralho/typo.rs` (a test there checks the files exist).
 """
 import os
 import sys

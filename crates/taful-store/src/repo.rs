@@ -1318,6 +1318,12 @@ mod tests {
         assert_eq!((b[1].opponent.as_str(), b[1].decisions), ("nit", 1));
         assert_eq!((b[0].opponent.as_str(), b[0].decisions), ("reference", 3));
 
+        // A bucket's grades, oldest first, over the same window.
+        let grades = s.bucket_grades(100, &b[0]).unwrap();
+        assert_eq!((grades.len(), grades[0].as_str()), (3, "best"));
+        assert_eq!(s.bucket_grades(100, &b[1]).unwrap(), ["mistake"]);
+        assert!(s.bucket_grades(0, &b[0]).unwrap().is_empty(), "window");
+
         // Foreign keys are enforced.
         assert!(
             s.insert_decision(&decision(Some("nope"), "best", 0.0))

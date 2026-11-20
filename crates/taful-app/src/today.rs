@@ -252,5 +252,52 @@ mod tests {
         let t = a.today(Locale::SOURCE).unwrap();
         assert_eq!(t.due_now, 1);
         assert_eq!(t.review_minutes(), 1);
+        // A day before it is due, it is tomorrow's.
+        clock.store(due - 86_400_000, std::sync::atomic::Ordering::SeqCst);
+        let t = a.today(Locale::SOURCE).unwrap();
+        assert_eq!((t.due_now, t.due_tomorrow), (0, 1));
+    }
+
+    #[test]
+    fn the_biggest_leak_comes_with_its_grades() {
+        use taful_store::{DecisionContext, NewDecision};
+
+        let (mut a, clock) = app_at(1_800_000_000_000);
+        let decide = |node_type: &str, grade: &str, loss: f64| {
+            a.store
+                .insert_decision(&NewDecision {
+                    hand_id: None,
+                    node_key: "k",
+                    hero_combo: "AsAh",
+                    chosen_action: "f",
+                    ev_per_action: serde_json::json!([]),
+                    frequencies: serde_json::json!([]),
+                    pot: 1.5,
+                    ev_loss: loss,
+                    grade,
+                    thresholds_version: 1,
+                    context: Some(DecisionContext {
+                        template_key: "t",
+                        spot: "preflop",
+                        street: "preflop",
+                        node_type,
+                        texture: None,
+                        step: None,
+                        opponent: "reference",
+                    }),
+                })
+                .unwrap();
+            clock.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        };
+        decide("unopened", "best", 0.0);
+        decide("vs-raise", "mistake", 1.0);
+        decide("unopened", "blunder", 3.0);
+        decide("unopened", "inaccuracy", 0.4);
+        let t = a.today(Locale::SOURCE).unwrap();
+        let (leak, grades) = t.leak.expect("decisions with mistakes were stored");
+        assert_eq!(leak.bucket.node_type.id(), "unopened");
+        assert_eq!((leak.decisions, leak.mistakes), (3, 2));
+        // Its own decisions only, oldest first.
+        assert_eq!(grades, [Grade::Best, Grade::Blunder, Grade::Inaccuracy]);
     }
 }

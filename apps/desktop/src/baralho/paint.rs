@@ -51,37 +51,62 @@ enum Key {
 
 /// Frames a texture may go unused before it is freed.
 const KEEP_FRAMES: u64 = 240;
+/// Bytes of textures kept at most: past it, the ones that went unused the
+/// longest are freed first (a window being resized asks for new sizes on
+/// every frame).
+const BUDGET: usize = 48 << 20;
+/// The table top is computed at widths that are multiples of this many
+/// device pixels and stretched to its box: it is smooth, large and would
+/// otherwise be computed again on every frame of a resize.
+const TABLE_STEP: u32 = 96;
 /// The window glow is computed at one pixel in this many (it is smooth).
 const GLOW_STEP: f32 = 4.;
 /// Dot rows and columns per tile, and the dots' pitch in design pixels.
 const DOT_TILE: u32 = 24;
 const DOT_PITCH: f32 = 9.;
 
+/// A texture with the frame that last painted it and its size in bytes.
+type Kept = (Arc<RenderImage>, u64, usize);
+
 thread_local! {
-    static STORE: RefCell<HashMap<Key, (Arc<RenderImage>, u64)>> = RefCell::new(HashMap::new());
+    static STORE: RefCell<HashMap<Key, Kept>> = RefCell::new(HashMap::new());
     static FRAME: Cell<u64> = const { Cell::new(0) };
 }
 
-/// Starts a frame and frees the textures that went unused for a while
-/// (sizes change as the window is resized).
+/// The textures to free at frame `now`, given each one's last frame and
+/// bytes: those unused for [`KEEP_FRAMES`], then, while the rest is over
+/// `budget`, the least recently used that the last frame did not paint.
+fn stale<K: Copy>(mut entries: Vec<(K, u64, usize)>, now: u64, budget: usize) -> Vec<K> {
+    entries.sort_by_key(|e| e.1);
+    let mut total: usize = entries.iter().map(|e| e.2).sum();
+    let mut out = Vec::new();
+    for (key, used, bytes) in entries {
+        let on_screen = used + 1 >= now;
+        if used + KEEP_FRAMES < now || (total > budget && !on_screen) {
+            total -= bytes;
+            out.push(key);
+        }
+    }
+    out
+}
+
+/// Starts a frame and frees the textures that went unused for a while or
+/// that no longer fit the budget (sizes change as the window is resized).
 pub fn begin_frame(window: &mut Window, cx: &mut App) {
     let now = FRAME.with(|f| {
         f.set(f.get() + 1);
         f.get()
     });
-    let stale: Vec<Arc<RenderImage>> = STORE.with(|s| {
+    let freed: Vec<Arc<RenderImage>> = STORE.with(|s| {
         let mut s = s.borrow_mut();
-        let old: Vec<Key> = s
+        let entries = s.iter().map(|(k, e)| (*k, e.1, e.2)).collect();
+        stale(entries, now, BUDGET)
             .iter()
-            .filter(|(_, (_, used))| used + KEEP_FRAMES < now)
-            .map(|(k, _)| *k)
-            .collect();
-        old.iter()
             .filter_map(|k| s.remove(k))
-            .map(|(image, _)| image)
+            .map(|e| e.0)
             .collect()
     });
-    for image in stale {
+    for image in freed {
         cx.drop_image(image, Some(window));
     }
 }
@@ -90,9 +115,15 @@ fn cached(key: Key, make: impl FnOnce() -> RgbaImage) -> Arc<RenderImage> {
     let now = FRAME.with(Cell::get);
     STORE.with(|s| {
         let mut s = s.borrow_mut();
-        let entry = s
-            .entry(key)
-            .or_insert_with(|| (Arc::new(RenderImage::new(vec![Frame::new(make())])), now));
+        let entry = s.entry(key).or_insert_with(|| {
+            let image = make();
+            let bytes = image.as_raw().len();
+            (
+                Arc::new(RenderImage::new(vec![Frame::new(image)])),
+                now,
+                bytes,
+            )
+        });
         entry.1 = now;
         entry.0.clone()
     })
@@ -208,6 +239,14 @@ fn fill_image(tex: Tex, bx: &Bx, w: u32, h: u32, radius: f32, k: f32) -> RgbaIma
     img
 }
 
+/// A `w`×`h` texture at `k` device pixels per design pixel, widened to the
+/// next [`TABLE_STEP`]: the same picture, slightly finer.
+fn stepped(w: u32, h: u32, k: f32) -> (u32, u32, f32) {
+    let wide = w.div_ceil(TABLE_STEP) * TABLE_STEP;
+    let grow = wide as f32 / w as f32;
+    (wide, ((h as f32 * grow).round() as u32).max(1), k * grow)
+}
+
 /// An element that paints `tex` over its bounds with rounded corners
 /// (`radius` in design pixels). Size and position it like any element.
 pub fn fill(tex: Tex, bx: Bx, radius: f32) -> Canvas<()> {
@@ -220,6 +259,11 @@ pub fn fill(tex: Tex, bx: Bx, radius: f32) -> Canvas<()> {
             let k = scale * dpr;
             let w = (f32::from(bounds.size.width) * dpr).round().max(1.) as u32;
             let h = (f32::from(bounds.size.height) * dpr).round().max(1.) as u32;
+            let (w, h, k) = if tex == Tex::TableTop {
+                stepped(w, h, k)
+            } else {
+                (w, h, k)
+            };
             let key = Key::Fill {
                 tex,
                 w,
@@ -330,6 +374,29 @@ mod tests {
         assert!(stripe(5., 2., 8., 0.1) < 0.01);
         assert!(stripe(9., 2., 8., 0.1) > 0.99);
         assert!((stripe(0., 2., 8., 1.) - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn textures_over_budget_go_oldest_first() {
+        // Unused for too long, whatever the budget.
+        assert_eq!(stale(vec![(1, 0, 10)], KEEP_FRAMES + 2, 100), [1]);
+        // Over budget: the oldest go until the rest fits, never what the
+        // last frame painted.
+        let entries = vec![(1, 5, 40), (2, 7, 40), (3, 9, 40), (4, 10, 40)];
+        assert_eq!(stale(entries.clone(), 10, 100), [1, 2]);
+        assert_eq!(stale(entries.clone(), 10, 0), [1, 2]);
+        assert!(stale(entries, 10, 160).is_empty());
+    }
+
+    #[test]
+    fn the_table_top_keeps_its_shape_when_stepped() {
+        let (w, h, k) = stepped(1010, 584, 1.);
+        assert_eq!(w % TABLE_STEP, 0);
+        assert!((1010..1010 + TABLE_STEP).contains(&w));
+        // The same design size, so the same picture.
+        assert!((w as f32 / k - 1010.).abs() < 0.01);
+        assert!((h as f32 / k - 584.).abs() < 1.);
+        assert_eq!(stepped(960, 500, 2.), (960, 500, 2.));
     }
 
     #[test]

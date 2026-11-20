@@ -5908,7 +5908,6 @@ dependencies = [
  "gpui",
  "image",
  "semver",
- "smallvec",
  "taful-app",
  "tray-icon",
  "ureq",

@@ -189,6 +189,12 @@ pub struct ShellState {
     /// The shell's `ui` with every size scaled to the window, for the
     /// screens that are laid out from theme sizes.
     pub(crate) scaled: Option<(f32, Rc<Ui>, Rc<Ui>)>,
+    /// The home's data, read once per visit and locale (it takes a dozen
+    /// queries, and a frame is drawn on every hover).
+    pub(crate) today: Option<(
+        (usize, taful_app::i18n::Locale),
+        Rc<taful_app::today::Today>,
+    )>,
 }
 
 /// Chrome and content: everything under the tour and update overlays.
