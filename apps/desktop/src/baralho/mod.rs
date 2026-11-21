@@ -92,8 +92,8 @@ pub const WINDOW: Option<(f32, f32)> = Some((CANVAS_W, CANVAS_H));
 pub(crate) const CANVAS_W: f32 = 1600.;
 pub(crate) const CANVAS_H: f32 = 900.;
 /// The window scales the canvas within these bounds. It never grows past
-/// the mockup's size: a larger window shows the same screens with more
-/// felt around them, as the other styles do (D21).
+/// the mockup's size: a larger window shows the same screens, centered
+/// across it under the navigation, with more felt around them (D21).
 const MIN_SCALE: f32 = 0.5;
 const MAX_SCALE: f32 = 1.;
 

@@ -84,11 +84,12 @@ impl Raised {
         self.hug(face.flex_1()).mb(u(-self.drop))
     }
 
-    /// [`Raised::wrap`] without the negative margin, for a box whose parent
-    /// takes its height from what it holds (a page that scrolls): the
-    /// layout leaves a box with a negative margin out of that height, so
-    /// the page would come out too short to scroll. The drop's room stays
-    /// below the box.
+    /// A raised box as tall as what it holds, for a parent that takes its
+    /// height from its content (a page that scrolls). Unlike
+    /// [`Raised::wrap`] it has no negative margin: the layout leaves a box
+    /// with one out of that height, so the page came out too short to
+    /// scroll. The drop's room stays below the box, and the face hugs its
+    /// content rather than filling a fixed height.
     pub fn hug(self, face: Div) -> Div {
         div()
             .flex()
