@@ -869,25 +869,6 @@ pub(super) fn panel(
         )
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn frequencies_add_up_by_kind() {
-        let actions = [
-            Action::Check,
-            Action::Bet(300),
-            Action::Bet(700),
-            Action::AllIn,
-        ];
-        assert_eq!(by_kind(&actions, &[0.5, 0.2, 0.2, 0.1]), [0.5, 0.5, 0.]);
-        assert_eq!(kinds(&actions), [Kind::Raise, Kind::Call]);
-        assert_eq!(Kind::Raise.name_key(&actions), "cockpit-kind-bet");
-        assert_eq!(Kind::Call.name_key(&actions), "cockpit-kind-check");
-    }
-}
-
 /// The coach of a guided hand (D26), where the evaluation goes: the hand's
 /// name and step, the line to read, and why a wrong click is not the move.
 pub(super) fn coach(screen: &TableScreen, scrolls: bool, pal: &Pal) -> Stateful<Div> {
@@ -953,4 +934,23 @@ pub(super) fn coach(screen: &TableScreen, scrolls: bool, pal: &Pal) -> Stateful<
             pal,
         ))
         .child(body)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frequencies_add_up_by_kind() {
+        let actions = [
+            Action::Check,
+            Action::Bet(300),
+            Action::Bet(700),
+            Action::AllIn,
+        ];
+        assert_eq!(by_kind(&actions, &[0.5, 0.2, 0.2, 0.1]), [0.5, 0.5, 0.]);
+        assert_eq!(kinds(&actions), [Kind::Raise, Kind::Call]);
+        assert_eq!(Kind::Raise.name_key(&actions), "cockpit-kind-bet");
+        assert_eq!(Kind::Call.name_key(&actions), "cockpit-kind-check");
+    }
 }
