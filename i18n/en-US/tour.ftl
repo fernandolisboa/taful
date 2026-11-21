@@ -12,7 +12,7 @@ tour-reset-title = Guided tours
 tour-home-nav-title = Everything starts here
 tour-home-nav-body = Learn has the lessons, Practice has the table, mental math and your reviews, Analyze has the hands you played.
 tour-home-continue-title = Your next step
-tour-home-continue-body = The next lesson to read. Each quiz you pass marks a lesson done.
+tour-home-continue-body = What to do now: today's reviews, the lesson that is up, or table practice on your last lesson. One click takes you there.
 tour-home-stats-title = Your daily routine
 tour-home-stats-body = Reviews bring back what you got wrong, at the right time. Mental math trains the numbers you need at the table.
 

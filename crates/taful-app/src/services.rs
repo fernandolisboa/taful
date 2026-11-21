@@ -133,6 +133,8 @@ pub struct Home {
     pub calc_recent: (u32, u32),
     pub review_items: u32,
     pub reviews_logged: u32,
+    /// What to do now (D27), for the hero.
+    pub step: crate::next_step::NextStep,
 }
 
 impl App {
@@ -375,9 +377,9 @@ impl App {
             .map(|c| (c.id.clone(), c.title.clone()));
         let (items, reviews) = self.store.review_totals()?;
         Ok(Home {
-            due_now: self
-                .store
-                .count_due(now, crate::review_session::PRESENTABLE)?,
+            // What the review screen can show (postflop items wait without
+            // a library), as the next step counts them.
+            due_now: self.due_count_loaded()?,
             next_due: self.store.next_due_after(now)?,
             next_lesson,
             next_test: tree.next_test.clone(),
@@ -392,6 +394,7 @@ impl App {
             ),
             review_items: items,
             reviews_logged: reviews,
+            step: self.next_step_from(tree)?,
         })
     }
 }

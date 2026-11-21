@@ -12,7 +12,7 @@ tour-reset-title = Tours guiados
 tour-home-nav-title = Tudo começa aqui
 tour-home-nav-body = Em Aprender ficam as lições; em Praticar, a mesa, o cálculo mental e as suas revisões; em Analisar, as mãos que você jogou.
 tour-home-continue-title = Seu próximo passo
-tour-home-continue-body = A próxima lição para ler. Cada quiz em que você passa conclui uma lição.
+tour-home-continue-body = O que fazer agora: as revisões do dia, a lição da vez ou um treino na mesa sobre a última lição. Um clique e você está lá.
 tour-home-stats-title = Sua rotina do dia
 tour-home-stats-body = As revisões trazem de volta o que você errou, na hora certa. O cálculo mental treina as contas que você usa na mesa.
 

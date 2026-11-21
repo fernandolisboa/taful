@@ -16,7 +16,7 @@ pub mod quiz;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-pub use library::{CATALOG, Catalog, Entry, Files, LOCALES, Library, SOURCE_LOCALE};
+pub use library::{CATALOG, Catalog, Entry, Files, LOCALES, Library, PRACTICES, SOURCE_LOCALE};
 
 /// One problem found by a content check.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -332,6 +332,15 @@ mod tests {
                         CATALOG_OK.replace("{ id = \"b\", level = \"l1\", theme = \"t\" },\n", "")
                 }),
                 "not in catalog",
+            ),
+            (
+                Box::new(|c| {
+                    c[0].1 = CATALOG_OK.replace(
+                        "{ id = \"a\", level = \"l1\", theme = \"t\" }",
+                        "{ id = \"a\", level = \"l1\", theme = \"t\", practice = \"poker\" }",
+                    )
+                }),
+                "unknown practice",
             ),
             (
                 Box::new(|c| {

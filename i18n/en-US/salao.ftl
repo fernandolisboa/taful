@@ -25,9 +25,6 @@ salao-month-12 = December
 
 ## Home
 
-salao-home-lesson-place = Lesson { $n } of { $total }
-salao-home-lesson-read = { $minutes } min read and a quiz
-salao-home-continue-lesson = Continue lesson
 salao-home-lessons-total = { $done } of { $total } lessons in all
 salao-home-due-today = for today · about { $minutes } min
 salao-home-due-none = nothing for today

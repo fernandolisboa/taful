@@ -1,32 +1,18 @@
 //! What a home screen with more than the basics shows (the Salão visual
-//! style, D19): the next lesson with its place in its level, the calc
-//! trainer's pace and the week's table decisions by grade.
+//! style, D19): the next step, the calc trainer's pace and the week's table
+//! decisions by grade.
 
 use taful_core::grading::Grade;
-use taful_store::{LessonState, Millis};
+use taful_store::Millis;
 
 use crate::i18n::Locale;
 use crate::{App, Home, Result};
 
-/// The next lesson and where it sits in its level.
-#[derive(Debug, Clone, PartialEq)]
-pub struct NextLesson {
-    pub id: String,
-    pub title: String,
-    /// The level's id (title: Fluent `level-<id>`).
-    pub level: String,
-    /// Its place in the level, from 1.
-    pub number: usize,
-    pub minutes: Option<u32>,
-    /// The state of every lesson of the level, in order.
-    pub level_states: Vec<LessonState>,
-}
-
 /// The home screen's numbers.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Overview {
+    /// The basics, with the next step (D27) for the hero.
     pub home: Home,
-    pub next: Option<NextLesson>,
     /// Mean answer time over the latest calc answers, in milliseconds.
     pub calc_mean_ms: Option<f64>,
     /// Table decisions since Monday (local time), per grade in
@@ -74,18 +60,6 @@ impl App {
             .store
             .recent_calc_attempts(crate::services::HOME_CALC_WINDOW)?;
         let home = self.home_from(&tree, &recent)?;
-        let next = tree.next_at().map(|(g, at)| {
-            let t = &tree.groups[g];
-            let l = &t.lessons[at];
-            NextLesson {
-                id: l.id.clone(),
-                title: l.title.clone(),
-                level: t.id.clone(),
-                number: at + 1,
-                minutes: l.minutes,
-                level_states: t.lessons.iter().map(|l| l.state).collect(),
-            }
-        });
         let calc_mean_ms = (!recent.is_empty()).then(|| {
             recent.iter().map(|a| a.duration_ms as f64).sum::<f64>() / recent.len() as f64
         });
@@ -100,7 +74,6 @@ impl App {
         }
         Ok(Overview {
             home,
-            next,
             calc_mean_ms,
             week,
         })
@@ -119,18 +92,22 @@ mod tests {
         let o = app.overview(Locale::PtBr).unwrap();
         assert_eq!(o.week_total(), 0);
         assert_eq!(o.calc_mean_ms, None);
-        let next = o.next.expect("a fresh app has a first lesson");
-        assert_eq!(next.number, 1);
+        // A fresh app starts with the first lesson of its level, all of
+        // which Prova (the default) opens.
+        let crate::next_step::NextStep::Lesson(step) = &o.home.step else {
+            panic!("{:?}", o.home.step);
+        };
+        assert_eq!(step.number, 1);
+        assert!(!step.started);
         assert_eq!(
-            Some(&next.id),
+            Some(&step.id),
             o.home.next_lesson.as_ref().map(|(id, _)| id)
         );
-        assert_eq!(next.level, "primeiros-passos");
-        // Prova (the default) opens the whole first level.
+        assert_eq!(step.level, "primeiros-passos");
         assert!(
-            next.level_states
+            step.level_states
                 .iter()
-                .all(|s| *s == LessonState::Available)
+                .all(|s| *s == taful_store::LessonState::Available)
         );
     }
 

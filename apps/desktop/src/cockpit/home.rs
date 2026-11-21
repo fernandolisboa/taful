@@ -8,6 +8,7 @@ use gpui::{
 };
 use taful_app::dashboard::{Dashboard, HandClass, Trend};
 use taful_app::model::{Grade, Leak, LessonState, Street};
+use taful_app::next_step::NextStep;
 use taful_app::template::{street_id, texture_label_keys};
 
 use super::kit::{self, Btn, GAP, HEAD, MONO, STRONG, btn, figure, head, icon, kbd, label, mono};
@@ -46,8 +47,9 @@ pub fn home(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     let page = div().flex().flex_col().gap(px(GAP)).w(px(w));
     if w < super::frame::WIDE_ROOM {
         // A window narrower than designed: the same panels, restacked. Two
-        // numbers a row, the chart and the leaks each on the whole width,
-        // and the deviation map under the tracks and the shortcuts.
+        // numbers a row, then the tracks (with the next step) and the
+        // shortcuts, the chart and the leaks each on the whole width, and
+        // the deviation map last.
         let half = ((w - GAP) / 2.).floor();
         return page
             .child(
@@ -71,14 +73,16 @@ pub fn home(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                             .child(calc(&ui, &pal, &d, w - GAP - half)),
                     ),
             )
-            .child(row().h(px(MID_H)).child(chart(&ui, &pal, &d, w)))
-            .child(row().h(px(MID_H)).child(leaks(&ui, &pal, &d.leaks, w, cx)))
+            // The next step (D27) right under the numbers, before the
+            // chart and the leaks push it out of view.
             .child(
                 row()
                     .h(px(LOW_H))
                     .child(tracks(&ui, &pal, &lessons, half, cx))
                     .child(shortcuts(&ui, &pal, &d, w - GAP - half, cx)),
             )
+            .child(row().h(px(MID_H)).child(chart(&ui, &pal, &d, w)))
+            .child(row().h(px(MID_H)).child(leaks(&ui, &pal, &d.leaks, w, cx)))
             .child(row().child(deviation(&ui, &pal, &d, w)))
             .into_any_element();
     }
@@ -639,53 +643,58 @@ fn leaks(ui: &Ui, pal: &Pal, list: &[Leak], w: f32, cx: &mut Context<Shell>) -> 
 
 fn tracks(ui: &Ui, pal: &Pal, lessons: &Lessons, w: f32, cx: &mut Context<Shell>) -> Div {
     let (i18n, s) = (&ui.i18n, &lessons.summary);
-    let next = match &s.next {
-        Some(n) => div()
-            .flex()
-            .items_center()
-            .gap(px(14.))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w(px(0.))
-                    .child(label(&i18n.tr("cockpit-next-lesson"), pal).text_color(pal.amber))
-                    .child(
-                        div()
-                            .mt(px(3.))
-                            .text_size(px(21.))
-                            .font_weight(STRONG)
-                            .truncate()
-                            .child(n.title.clone()),
-                    )
-                    .child(
-                        div()
-                            .mt(px(2.))
-                            .text_size(px(12.))
-                            .text_color(pal.muted)
-                            .truncate()
-                            .child(next_meta(ui, n)),
-                    ),
-            )
-            .child(
-                btn(
-                    "cockpit_continue",
-                    i18n.tr("cockpit-continue"),
-                    Some("↵"),
-                    Btn::Amber,
-                    pal,
+    // The next step (D27), in the strip the design gives the next lesson.
+    let words = crate::next_step::words(ui, &s.step);
+    let next = div()
+        .flex()
+        .items_center()
+        .gap(px(14.))
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(0.))
+                .child(
+                    label(&words.eyebrow(ui), pal)
+                        .text_color(pal.amber)
+                        .truncate(),
                 )
-                .on_click(cx.listener(|this, _, window, cx| {
-                    go(this, Go::NextLesson, window, cx);
-                })),
-            ),
-        None => div()
-            .flex()
-            .items_center()
-            .text_color(pal.muted)
-            .child(crate::study::idle_text(
-                ui,
-                lessons.summary.list.next_test.as_deref(),
-            )),
+                .child(
+                    div()
+                        .mt(px(3.))
+                        .text_size(px(21.))
+                        .font_weight(STRONG)
+                        .truncate()
+                        .child(words.title.clone()),
+                )
+                .child(
+                    div()
+                        .mt(px(2.))
+                        .text_size(px(12.))
+                        .text_color(pal.muted)
+                        .truncate()
+                        .child(words.line.clone()),
+                ),
+        )
+        .child(
+            btn(
+                "cockpit_continue",
+                words.button.clone(),
+                Some("↵"),
+                Btn::Amber,
+                pal,
+            )
+            .on_click(cx.listener(|this, _, window, cx| {
+                go(this, Go::NextStep, window, cx);
+            })),
+        );
+    // The rows mark the lesson the step leads to (after the reviews, when
+    // some are due).
+    let marked = match &s.step {
+        NextStep::Lesson(l)
+        | NextStep::Review {
+            lesson: Some(l), ..
+        } => Some(l.id.as_str()),
+        _ => None,
     };
     let levels = &lessons.summary.levels;
     let last = levels.len().saturating_sub(1);
@@ -716,7 +725,7 @@ fn tracks(ui: &Ui, pal: &Pal, lessons: &Lessons, w: f32, cx: &mut Context<Shell>
             )
             .child(
                 div().flex_1().flex().gap(px(3.)).children(
-                    kit::steps(&track.lessons, s.next.as_ref().map(|n| n.id.as_str()), pal)
+                    kit::steps(&track.lessons, marked, pal)
                         .into_iter()
                         .map(|b| b.flex_1().h(px(10.)).rounded(px(1.5))),
                 ),

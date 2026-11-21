@@ -7,7 +7,7 @@
 //!    pictures (captions aside);
 //! 4. the catalog has a lesson without a known level or theme, a cycle, a
 //!    missing prerequisite, a prerequisite in a higher level or later in the
-//!    Jornada, or a lesson with no unlock;
+//!    Jornada, a lesson with no unlock, or an unknown table practice;
 //! 5. a glossary term is undefined in `i18n/*/glossary.ftl`;
 //! 6. a level with lessons has no level test, or a level test names an
 //!    unknown level, a question that does not exist or one from another
@@ -374,6 +374,18 @@ pub fn check_library(lib: &Library, content: &Files, i18n: &Files) -> Vec<Findin
             f.push(Finding::new(
                 CATALOG,
                 format!("lesson `{}`: unknown theme `{}`", e.id, e.theme),
+            ));
+        }
+        if let Some(p) = e.practice.as_deref()
+            && !crate::library::PRACTICES.contains(&p)
+        {
+            f.push(Finding::new(
+                CATALOG,
+                format!(
+                    "lesson `{}`: unknown practice `{p}` (one of {})",
+                    e.id,
+                    crate::library::PRACTICES.join(", ")
+                ),
             ));
         }
     }

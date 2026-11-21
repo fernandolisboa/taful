@@ -23,7 +23,7 @@ nav-settings = Configurações
 
 ## Screen descriptions shown until each screen is built
 
-screen-home-body = Revisões do dia, seus maiores vazamentos, a próxima lição e atalhos.
+screen-home-body = Seu próximo passo, as revisões do dia, seus maiores vazamentos e atalhos.
 screen-skill-tree-body = Do zero ao pró, por nível ou por tema. Na engrenagem você escolhe como as lições abrem.
 screen-lesson-body = Lições com glossário ao passar o mouse e um quiz no final.
 screen-table-body = Modo spot e mãos completas contra o bot de referência, com cada decisão avaliada pela perda de EV.
