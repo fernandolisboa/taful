@@ -2,7 +2,7 @@
 # `cargo run -p taful-content-check -- --bless`; review the diff.
 
 [en-US]
-"calc: choose(n=52, k=2) | int" = "1,326"
+"calc: add(a=0.5, b=1) | bb(1)" = "1.5 bb"
 
 [pt-BR]
-"calc: choose(n=52, k=2) | int" = "1.326"
+"calc: add(a=0.5, b=1) | bb(1)" = "1,5 bb"

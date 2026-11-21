@@ -1,0 +1,47 @@
+id = "chips-and-blinds-quiz"
+version = 1
+lesson = "chips-and-blinds"
+pass = 0.75
+
+[[questions]]
+id = "sb-amount"
+kind = "choice"
+prompt = { en-US = "How much does the small blind put in before the cards?", pt-BR = "Quanto o small blind põe no pote antes das cartas?" }
+choices = [
+    { en-US = "1 bb", pt-BR = "1 bb" },
+    { en-US = "0.5 bb", pt-BR = "0,5 bb" },
+    { en-US = "Nothing", pt-BR = "Nada" },
+]
+answer = 1
+
+[[questions]]
+id = "start-pot"
+kind = "numeric"
+prompt = { en-US = "How many big blinds are in the pot before anyone acts?", pt-BR = "Quantos big blinds há no pote antes de alguém agir?" }
+answer = "{{ calc: add(a=0.5, b=1) | bb(1) }}"
+tolerance = 0.0
+explanation = { en-US = "The small blind's 0.5 bb plus the big blind's 1 bb.", pt-BR = "O 0,5 bb do small blind mais o 1 bb do big blind." }
+
+[[questions]]
+id = "button-moves"
+kind = "choice"
+prompt = { en-US = "After each hand, the button...", pt-BR = "Depois de cada mão, o botão..." }
+choices = [
+    { en-US = "stays in the same seat", pt-BR = "fica no mesmo lugar" },
+    { en-US = "goes to whoever won the pot", pt-BR = "vai para quem ganhou o pote" },
+    { en-US = "moves one seat to the left", pt-BR = "anda um lugar para a esquerda" },
+]
+answer = 2
+explanation = { en-US = "It moves one seat to the left, and the blinds move with it.", pt-BR = "Ele anda um lugar para a esquerda, e os blinds andam junto." }
+
+[[questions]]
+id = "bb-folds"
+kind = "choice"
+prompt = { en-US = "You are the big blind and fold when someone raises. How much do you lose?", pt-BR = "Você é o big blind e desiste quando alguém aumenta. Quanto você perde?" }
+choices = [
+    { en-US = "The 1 bb you already put in", pt-BR = "O 1 bb que você já tinha posto" },
+    { en-US = "Nothing", pt-BR = "Nada" },
+    { en-US = "The raise", pt-BR = "O valor do aumento" },
+]
+answer = 0
+explanation = { en-US = "Chips already in the pot do not come back.", pt-BR = "Fichas que já estão no pote não voltam." }

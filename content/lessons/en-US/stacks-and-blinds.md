@@ -7,7 +7,6 @@ tags = ["basics"]
 glossary = ["big-blind", "effective-stack"]
 unlock = { quiz = "stacks-and-blinds-quiz" }
 minutes = 5
-guided = "first-hand"
 +++
 
 # Big blinds and effective stacks

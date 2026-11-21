@@ -1,9 +1,10 @@
 //! Content checks (spec §12.3). `content-check` fails the build when:
 //!
-//! 1. any placeholder errors in any locale;
+//! 1. any placeholder or picture errors in any locale;
 //! 2. a rendered value differs from its pinned snapshot (drift); snapshots
 //!    are rewritten with `content-check --bless`;
-//! 3. locales disagree on id, version, front matter or placeholder set;
+//! 3. locales disagree on id, version, front matter, placeholder set or
+//!    pictures (captions aside);
 //! 4. the catalog has a lesson without a known level or theme, a cycle, a
 //!    missing prerequisite, a prerequisite in a higher level or later in the
 //!    Jornada, or a lesson with no unlock;
@@ -13,7 +14,10 @@
 //!    level's lessons, a question twice, or asks more questions than its
 //!    pool holds;
 //! 7. a guided hand does not play through (`guided::check_script`), or a
-//!    lesson names one that does not exist.
+//!    lesson names one that does not exist;
+//! 8. a quiz with three or more choice questions has every right answer in
+//!    the same place (choices are shown in authored order, so always picking
+//!    the same button would pass it).
 //!
 //! Plus the structural checks those rules need: every lesson is in the
 //! catalog once and exists in every locale, every quiz belongs to the lesson
@@ -190,6 +194,12 @@ pub fn check_library(lib: &Library, content: &Files, i18n: &Files) -> Vec<Findin
                     format!("placeholder set differs from {SOURCE_LOCALE}"),
                 ));
             }
+            if l.picture_shapes() != src.picture_shapes() {
+                f.push(Finding::new(
+                    &path,
+                    format!("pictures (cards or seats) differ from {SOURCE_LOCALE}"),
+                ));
+            }
         }
     }
     for (id, quiz) in &lib.quizzes {
@@ -205,6 +215,23 @@ pub fn check_library(lib: &Library, content: &Files, i18n: &Files) -> Vec<Findin
         }
         if quiz.questions.is_empty() {
             f.push(Finding::new(&path, "no questions"));
+        }
+        let answers: Vec<usize> = quiz
+            .questions
+            .iter()
+            .filter_map(|q| match q.kind {
+                crate::quiz::QuestionKind::Choice { answer, .. } => Some(answer),
+                crate::quiz::QuestionKind::Numeric { .. } => None,
+            })
+            .collect();
+        if answers.len() >= 3 && answers.iter().all(|&a| a == answers[0]) {
+            f.push(Finding::new(
+                &path,
+                format!(
+                    "every choice answer is option {}: vary where the right one sits",
+                    answers[0] + 1
+                ),
+            ));
         }
         for (at, s) in quiz.strings() {
             for loc in LOCALES {

@@ -688,6 +688,11 @@ The author picked all three: "texto curto + quiz + mão de treino guiada na mesa
 - New content format: a scripted-hand file (seats, stacks, hole cards, board, opponent actions, and the text shown at each step), checked in CI like the lessons (the script must be a legal hand; every expected user action must be legal at that point).
 - The table screen needs a guided mode: actions other than the expected one are explained instead of played, and the coach line sits where the evaluation panel goes.
 
+### As built (2026-11-21, #90)
+- Eight lessons, theme O básico: `what-is-holdem`, `hand-rankings` (moved from Fundamentos and rewritten, version 2), `chips-and-blinds`, `betting-rounds`, `your-actions`, `showdown`, `seats-at-the-table`, `a-whole-hand`. Each has a guided hand on its topic (`content/guided/`); the sample `first-hand` moved from `stacks-and-blinds` to `betting-rounds`. The level has a test (`content/tests/primeiros-passos.toml`), and Fundamentos' test lost the hand-rankings questions.
+- **Pictures** are fenced `cards` and `seats` blocks (rows of cards; a table seen from above with seats, the button, the blinds and the order of play), drawn by the app in the active style. `docs/development.md` has the format.
+- A new user now starts at an open Primeiros passos with Fundamentos closed in Prova until the level test (D25's "Pular" lands here too). So that this never closes what someone already reads, a level with a lesson done stays open. Only that level opens: the levels below it still wait for their tests in Prova, so progress made in Guiado or Livre never skips a test. Old progress that had `hand-rankings` done counts as reading Primeiros passos, so its new lessons come first in "next lesson" until its test is passed.
+
 ---
 
 ## D27 — Home shows one next step

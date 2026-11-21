@@ -1,0 +1,64 @@
+# Primeiros passos, lesson 2 (hand-rankings): the ranking decides the
+# showdown. Hero, in the big blind with A♥ 4♥, checks to the river, makes
+# a flush there and calls; the small blind's straight loses to it.
+# Amounts in `act`, `hero` and `offer` are chips: 100 = 1 bb.
+
+id = "rankings-showdown"
+version = 1
+title = { en-US = "Flush against straight", pt-BR = "Flush contra sequência" }
+players = 6
+hero = "BB"
+board = "Kh7h2cTc6h"
+
+[cards]
+BB = "Ah4h"
+SB = "9c8d"
+
+[[steps]]
+say = { en-US = "You got A♥ 4♥: two cards of the same suit, hearts (♥).", pt-BR = "Você recebeu A♥ 4♥: duas cartas do mesmo naipe, copas (♥)." }
+
+[[steps]]
+act = "UTG:f,HJ:f,CO:f,BTN:f,SB:c"
+say = { en-US = "Everyone folded except the player on your right, who paid to stay in.", pt-BR = "Todos desistiram, menos o jogador à sua direita, que pagou para continuar." }
+
+[[steps]]
+hero = "x"
+say = { en-US = "Click Check to see the board without putting in more chips.", pt-BR = "Clique em Check para ver as cartas da mesa sem pôr mais fichas." }
+why = { en-US = "With no bet to match, Check is the free way to go on.", pt-BR = "Sem aposta para igualar, Check é o jeito de seguir de graça." }
+
+[[steps]]
+act = "SB:x"
+say = { en-US = "The flop: K♥ 7♥ 2♣. Two hearts on the board; with your two, that makes four. One more heart and you have a flush: five cards of the same suit. Your opponent checked.", pt-BR = "O flop: K♥ 7♥ 2♣. Duas copas na mesa; com as suas duas, já são quatro. Mais uma copa e você tem um flush: cinco cartas do mesmo naipe. O adversário deu check." }
+
+[[steps]]
+hero = "x"
+say = { en-US = "Nothing is made yet: your best hand is ace high. Check.", pt-BR = "Ainda não há nada formado: sua melhor mão é carta alta, o ás. Dê check." }
+why = { en-US = "With only ace high, checking costs nothing and shows you the next card.", pt-BR = "Com só carta alta, o check não custa nada e mostra a próxima carta." }
+
+[[steps]]
+act = "SB:x"
+say = { en-US = "The turn: T♣. No heart. Your opponent checked again.", pt-BR = "O turn: T♣. Nenhuma copa. O adversário deu check de novo." }
+
+[[steps]]
+hero = "x"
+say = { en-US = "Check once more.", pt-BR = "Dê check mais uma vez." }
+why = { en-US = "Still ace high: checking shows you the last card for free.", pt-BR = "Ainda carta alta: o check mostra a última carta de graça." }
+
+[[steps]]
+act = "SB:b100"
+say = { en-US = "The river: 6♥! The fifth heart. You made a flush: A♥ K♥ 7♥ 6♥ 4♥. Your opponent bet 1 bb.", pt-BR = "O river: 6♥! A quinta copa. Você fez um flush: A♥ K♥ 7♥ 6♥ 4♥. O adversário apostou 1 bb." }
+
+[[steps]]
+hero = "c"
+say = { en-US = "A flush is high in the ranking. Match the bet to see their cards: click Call.", pt-BR = "Flush fica no alto do ranking. Iguale a aposta para ver as cartas dele: clique em Call (pagar)." }
+why = { en-US = "Calling means putting in the same chips as the bet to stay in the hand. No hand possible on this board beats your flush.", pt-BR = "Pagar (call) é pôr as mesmas fichas da aposta para continuar na mão. Nenhuma mão possível nesta mesa ganha do seu flush." }
+
+[[steps.wrong]]
+act = "f"
+why = { en-US = "Folding would hand over the pot. No hand possible on this board beats your flush.", pt-BR = "Desistir (fold) entregaria o pote. Nenhuma mão possível nesta mesa ganha do seu flush." }
+
+[[steps]]
+say = { en-US = "Showdown. Your opponent had 9♣ 8♦: a straight, 6 7 8 9 T. A straight is strong, but a flush ranks above it. The pot is yours!", pt-BR = "Showdown. O adversário tinha 9♣ 8♦: uma sequência, 6 7 8 9 T. Sequência é forte, mas o flush fica acima dela no ranking. O pote é seu!" }
+
+[[steps]]
+say = { en-US = "When in doubt, remember the rule behind the order: the harder a hand is to make, the stronger it is.", pt-BR = "Na dúvida, lembre a regra por trás da ordem: quanto mais difícil de formar, mais forte a mão." }

@@ -457,6 +457,7 @@ pub fn document(doc: &Document, ui: &std::rc::Rc<Ui>, p: &Palette) -> Div {
                 .child(code.clone())
                 .into_any_element(),
             Block::Rule => div().h(px(1.)).bg(p.border).into_any_element(),
+            Block::Picture(pic) => crate::picture::picture(pic, ui, p),
         };
         out = out.child(el);
     }

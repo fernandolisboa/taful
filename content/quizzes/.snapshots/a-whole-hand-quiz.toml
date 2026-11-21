@@ -1,0 +1,8 @@
+# Rendered placeholder values, pinned (spec §12.3). Regenerate with
+# `cargo run -p taful-content-check -- --bless`; review the diff.
+
+[en-US]
+"calc: add(a=1, b=1) | int" = "2"
+
+[pt-BR]
+"calc: add(a=1, b=1) | int" = "2"

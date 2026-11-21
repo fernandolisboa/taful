@@ -1,0 +1,71 @@
+# Primeiros passos, lesson 1 (what-is-holdem): a first look at a hand.
+# Hero, in the big blind, only checks; the small blind checks along, and
+# hero's pair of jacks wins at showdown. The point: two cards of yours,
+# five on the board, the best five cards win.
+# Amounts in `act`, `hero` and `offer` are chips: 100 = 1 bb.
+
+id = "holdem-first-look"
+version = 1
+title = { en-US = "Two cards, five on the board", pt-BR = "Duas cartas, cinco na mesa" }
+players = 6
+hero = "BB"
+board = "Jd5c2sKh7d"
+
+[cards]
+BB = "Jc8c"
+SB = "Ts9s"
+
+[[steps]]
+say = { en-US = "Six players, one in each seat. You are the seat at the bottom. Before any cards came, you and the player on your right already put a few chips in the pot, the pile in the middle that everyone plays for. Lesson 3 explains why.", pt-BR = "Seis jogadores, um em cada lugar. Você é o lugar de baixo. Antes das cartas, você e o jogador à sua direita já puseram algumas fichas no pote, o monte no meio da mesa que todos disputam. A lição 3 explica por quê." }
+
+[[steps]]
+say = { en-US = "Everyone got two face-down cards. Yours are J♣ 8♣. Only you can see them, and they stay yours until the hand ends.", pt-BR = "Cada jogador recebeu duas cartas fechadas. As suas são J♣ 8♣. Só você as vê, e elas são suas até a mão acabar." }
+
+[[steps]]
+act = "UTG:f,HJ:f,CO:f,BTN:f"
+say = { en-US = "Four players gave up and threw their cards away. That is called a fold. Whoever folds no longer plays for the pot.", pt-BR = "Quatro jogadores desistiram e jogaram as cartas fora. Isso se chama fold. Quem desiste não disputa mais o pote." }
+
+[[steps]]
+act = "SB:c"
+say = { en-US = "The player on your right put in a few more chips to stay in. Now it is just the two of you.", pt-BR = "O jogador à sua direita pôs mais algumas fichas para continuar. Agora sobraram vocês dois." }
+
+[[steps]]
+hero = "x"
+say = { en-US = "Your turn. Nobody put in more chips than you, so you can go on without paying anything: click Check, which means passing your turn.", pt-BR = "Sua vez. Ninguém pôs mais fichas que você, então dá para seguir sem pagar nada: clique em Check, que é passar a vez." }
+why = { en-US = "In this hand you only use Check: passing your turn without putting in chips. The other actions come in lesson 5.", pt-BR = "Nesta mão você só usa Check: passar a vez sem pôr fichas. As outras ações vêm na lição 5." }
+
+[[steps]]
+say = { en-US = "The first three cards of the board came out: J♦ 5♣ 2♠. They are face up and count for everyone. The board's J♦ with your J♣ makes a pair of jacks.", pt-BR = "Saíram as três primeiras cartas da mesa: J♦ 5♣ 2♠. Elas ficam abertas e valem para todos. O J♦ da mesa com o seu J♣ forma um par de valetes." }
+
+[[steps]]
+act = "SB:x"
+say = { en-US = "Your opponent checked: passed without putting in chips.", pt-BR = "O adversário deu check: passou sem pôr fichas." }
+
+[[steps]]
+hero = "x"
+say = { en-US = "Check too.", pt-BR = "Dê check também." }
+why = { en-US = "In this hand you only use Check, to see every card come out.", pt-BR = "Nesta mão você só usa Check, para ver todas as cartas saírem." }
+
+[[steps]]
+act = "SB:x"
+say = { en-US = "One more card on the board: K♥. Four face-up cards now. Your opponent checked again.", pt-BR = "Mais uma carta na mesa: K♥. Agora são quatro cartas abertas. O adversário deu check de novo." }
+
+[[steps]]
+hero = "x"
+say = { en-US = "Check once more.", pt-BR = "Dê check mais uma vez." }
+why = { en-US = "In this hand you only use Check, to see every card come out.", pt-BR = "Nesta mão você só usa Check, para ver todas as cartas saírem." }
+
+[[steps]]
+act = "SB:x"
+say = { en-US = "The fifth and last card: 7♦. The board is complete, five cards for everyone. Your opponent checked.", pt-BR = "A quinta e última carta: 7♦. A mesa está completa: cinco cartas para todos. O adversário deu check." }
+
+[[steps]]
+hero = "x"
+say = { en-US = "Click Check, and let's see who won.", pt-BR = "Clique em Check e vamos ver quem ganhou." }
+why = { en-US = "Checking ends the hand: with two players left, the cards are shown.", pt-BR = "O check encerra a mão: com dois jogadores ainda nela, as cartas são mostradas." }
+
+[[steps]]
+say = { en-US = "Time to show the cards. Each player makes the best five-card hand from their two cards and the five on the board. You: a pair of jacks, J♣ J♦, with K♥ 8♣ 7♦. Your opponent, T♠ 9♠: no pair, the board's king is their highest card. Your pair wins the pot!", pt-BR = "Hora de mostrar as cartas. Cada um monta a melhor mão de cinco cartas com as suas duas e as cinco da mesa. Você: par de valetes, J♣ J♦, com K♥ 8♣ 7♦. O adversário, com T♠ 9♠: nenhum par, a carta mais alta dele é o rei da mesa. Seu par leva o pote!" }
+
+[[steps]]
+say = { en-US = "That is Texas Hold'em: two cards of yours, five on the board, and the best five-card hand takes the pot. Or, as you saw at the start, whoever is left when everyone else folds.", pt-BR = "Isso é Texas Hold'em: duas cartas suas, cinco na mesa, e a melhor mão de cinco cartas leva o pote. Ou, como você viu no começo, quem sobra quando todos os outros desistem." }

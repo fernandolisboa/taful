@@ -541,6 +541,12 @@ pub const FUNCTIONS: &[Function] = &[
         },
     ),
     f(
+        "add",
+        &[("a", Num), ("b", Num)],
+        "a + b (pots: the small blind plus the big blind).",
+        |a| num(a.num("a") + a.num("b")),
+    ),
+    f(
         "mul",
         &[("a", Num), ("b", Num)],
         "a × b (counting: 3 aces × 4 kings).",

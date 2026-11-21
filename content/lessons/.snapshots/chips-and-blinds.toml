@@ -1,0 +1,10 @@
+# Rendered placeholder values, pinned (spec §12.3). Regenerate with
+# `cargo run -p taful-content-check -- --bless`; review the diff.
+
+[en-US]
+"calc: add(a=0.5, b=1) | bb(1)" = "1.5 bb"
+"calc: div(a=1, b=2) | bb(1)" = "0.5 bb"
+
+[pt-BR]
+"calc: add(a=0.5, b=1) | bb(1)" = "1,5 bb"
+"calc: div(a=1, b=2) | bb(1)" = "0,5 bb"

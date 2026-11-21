@@ -1,0 +1,20 @@
+# Level test of Primeiros passos (D24): optional in every study mode.
+# Passing it opens Fundamentos in the Prova mode; it never marks lessons done
+# (D25). Each attempt draws `draw` questions spread over the level's lessons
+# (one per lesson, in a random order, before a second from any). Format:
+# crates/taful-content/src/level_test.rs.
+
+level = "primeiros-passos"
+version = 1
+pass = 0.8
+draw = 10
+pool = [
+    "what-is-holdem-quiz/hole-cards", "what-is-holdem-quiz/best-five", "what-is-holdem-quiz/use-board", "what-is-holdem-quiz/everyone-folds",
+    "hand-rankings-quiz/flush-vs-straight", "hand-rankings-quiz/full-house-vs-flush", "hand-rankings-quiz/trips-vs-two-pair", "hand-rankings-quiz/kicker",
+    "chips-and-blinds-quiz/sb-amount", "chips-and-blinds-quiz/start-pot", "chips-and-blinds-quiz/button-moves", "chips-and-blinds-quiz/bb-folds",
+    "betting-rounds-quiz/flop-cards", "betting-rounds-quiz/street-order", "betting-rounds-quiz/first-preflop", "betting-rounds-quiz/last-postflop",
+    "your-actions-quiz/check-when", "your-actions-quiz/facing-bet", "your-actions-quiz/raise-def", "your-actions-quiz/all-in",
+    "showdown-quiz/no-showdown", "showdown-quiz/flush-vs-trips", "showdown-quiz/board-plays", "showdown-quiz/split-amount",
+    "seats-at-the-table-quiz/left-of-bb", "seats-at-the-table-quiz/right-of-button", "seats-at-the-table-quiz/in-position", "seats-at-the-table-quiz/next-hand",
+    "a-whole-hand-quiz/limped-pot", "a-whole-hand-quiz/no-check", "a-whole-hand-quiz/flop-first", "a-whole-hand-quiz/showdown-hand",
+]

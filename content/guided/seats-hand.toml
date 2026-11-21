@@ -1,0 +1,73 @@
+# Primeiros passos, lesson 7 (seats-at-the-table): the order of play by
+# seat. Hero, in the cutoff with 9♠ 9♣, calls the hijack's raise and then
+# speaks after the hijack in every round; the pair of nines wins.
+# Amounts in `act`, `hero` and `offer` are chips: 100 = 1 bb.
+
+id = "seats-hand"
+version = 1
+title = { en-US = "Speaking last", pt-BR = "Falando por último" }
+players = 6
+hero = "CO"
+board = "Kc7d2h3s8d"
+
+[cards]
+CO = "9s9c"
+HJ = "AcJc"
+
+[[steps]]
+say = { en-US = "You are in the cutoff (CO), the seat on the button's right. Before the flop, the first to speak is UTG, on the big blind's left.", pt-BR = "Você está no cutoff (CO), o lugar à direita do botão. Antes do flop, quem fala primeiro é o UTG, à esquerda do big blind." }
+
+[[steps]]
+act = "UTG:f"
+say = { en-US = "UTG folded.", pt-BR = "O UTG desistiu." }
+
+[[steps]]
+act = "HJ:r250"
+say = { en-US = "Next, the hijack (HJ) raised to 2.5 bb.", pt-BR = "Em seguida, o hijack (HJ) aumentou para 2,5 bb." }
+
+[[steps]]
+hero = "c"
+say = { en-US = "You have 9♠ 9♣, a pair. In this hand, call the 2.5 bb and see the flop with the HJ.", pt-BR = "Você tem 9♠ 9♣, um par. Nesta mão, pague os 2,5 bb (call) e veja o flop com o HJ." }
+why = { en-US = "The point of this hand is the order of play: by calling, you go on with the HJ and speak after them in every round.", pt-BR = "O assunto desta mão é a ordem de falar: pagando, você segue com o HJ e fala depois dele em todas as rodadas." }
+
+[[steps.wrong]]
+act = "r"
+why = { en-US = "Raising again is a possible play too, but in this hand we call and see the flop with the HJ.", pt-BR = "Aumentar de novo também é uma jogada possível, mas nesta mão vamos pagar e ver o flop com o HJ." }
+
+[[steps.wrong]]
+act = "f"
+why = { en-US = "A pair of nines is too good to fold to a small raise.", pt-BR = "Um par de noves é bom demais para desistir diante de um aumento pequeno." }
+
+[[steps]]
+act = "BTN:f,SB:f,BB:f"
+say = { en-US = "The button, the small blind and the big blind folded. It is you and the HJ. The pot is 6.5 bb. The flop: K♣ 7♦ 2♥.", pt-BR = "Botão, small blind e big blind desistiram. Sobraram você e o HJ. O pote tem 6,5 bb. O flop: K♣ 7♦ 2♥." }
+
+[[steps]]
+act = "HJ:x"
+say = { en-US = "After the flop, the first to speak is the player still in the hand closest to the button's left. Of you two, that is the HJ: they checked. You saw what they did before deciding. That is the edge of speaking later.", pt-BR = "Depois do flop, fala primeiro quem ainda está na mão mais perto da esquerda do botão. Entre vocês dois, é o HJ: ele deu check. Você viu o que ele fez antes de decidir. Essa é a vantagem de falar depois." }
+
+[[steps]]
+hero = "x"
+say = { en-US = "With a king on the board, your nines may be behind. Check and see the turn for free.", pt-BR = "Com um rei na mesa, seus noves podem estar atrás. Dê check e veja o turn de graça." }
+why = { en-US = "Betting would risk chips without knowing whether you are ahead; checking is free.", pt-BR = "Apostar arriscaria fichas sem saber se você está na frente; o check é de graça." }
+
+[[steps]]
+act = "HJ:b300"
+say = { en-US = "The turn: 3♠. The HJ bet 3 bb.", pt-BR = "O turn: 3♠. O HJ apostou 3 bb." }
+
+[[steps]]
+hero = "c"
+say = { en-US = "They bet, so you can fold, call or raise. Call.", pt-BR = "Ele apostou, então você pode desistir, pagar ou aumentar. Pague (call)." }
+why = { en-US = "Your pair may still be ahead, and calling costs 3 bb in a 9.5 bb pot.", pt-BR = "Seu par ainda pode estar na frente, e pagar custa 3 bb num pote de 9,5 bb." }
+
+[[steps]]
+act = "HJ:x"
+say = { en-US = "The river: 8♦. The HJ checked.", pt-BR = "O river: 8♦. O HJ deu check." }
+
+[[steps]]
+hero = "x"
+say = { en-US = "You are the last to speak in this round. Check, and the cards are shown.", pt-BR = "Você é o último a falar nesta rodada. Dê check, e as cartas são mostradas." }
+why = { en-US = "Betting here would make worse hands fold and better hands call. Checking goes straight to the showdown.", pt-BR = "Apostar aqui faria as mãos piores desistirem e as melhores pagarem. O check leva direto ao showdown." }
+
+[[steps]]
+say = { en-US = "Showdown: the HJ had A♣ J♣, only ace high. Your pair of nines takes the 12.5 bb pot. In every round after the flop, you spoke after them.", pt-BR = "Showdown: o HJ tinha A♣ J♣, só carta alta. Seu par de noves leva o pote de 12,5 bb. Em todas as rodadas depois do flop, você falou depois dele." }
