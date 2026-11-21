@@ -643,3 +643,24 @@ The author found "Você já joga?" crude and wanted the question to ask for a le
 
 ### Implications
 - Progress keeps two separate facts: unlocked levels and done lessons. Home counts and the level badge read only done lessons.
+
+---
+
+## D26 — Primeiros passos: short text, quiz and a guided hand
+
+**Date:** 2026-11-21 · **Ref:** D23, D25
+
+### Decision
+- Every lesson of **Primeiros passos** has three parts, in this order:
+  1. **Short text** with pictures, in plain words, a few minutes long (what a hand is, blinds, the four betting rounds, fold/check/call/bet/raise, showdown, hand rankings, chips and stacks, seats).
+  2. **Quiz**, as in the current lessons.
+  3. **Guided hand** on the real table: a scripted hand (fixed seats, cards and opponent actions) that pauses at each step with one sentence about what is happening, and asks the user to click the right action. A wrong click gets a short explanation and a retry, never a penalty.
+- The lesson is done when the quiz is passed and the guided hand is finished.
+- The guided hand is a lesson part any level can use later; Primeiros passos is the first to need it.
+
+### Why
+The author picked all three: "texto curto + quiz + mão de treino guiada na mesa". Someone who never saw a table learns the order of play by doing it, and the text and quiz give them the words first.
+
+### Implications
+- New content format: a scripted-hand file (seats, stacks, hole cards, board, opponent actions, and the text shown at each step), checked in CI like the lessons (the script must be a legal hand; every expected user action must be legal at that point).
+- The table screen needs a guided mode: actions other than the expected one are explained instead of played, and the coach line sits where the evaluation panel goes.
