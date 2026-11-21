@@ -579,3 +579,107 @@ The author asked to hide the blue Windows title bar: it clashed with the dark st
 - `apps/desktop/src/caption.rs` draws the strip; `caption::viewport(window)` is the room the styles draw in. A style asks it, not `window.viewport_size()`.
 - The window title is still set: it names the window in the taskbar and Alt+Tab.
 - `TAFUL_WINDOW=1600x900` sizes the room below the strip, so screenshots of a style at its mockup size are unchanged below the strip.
+
+---
+
+## D23 — Lessons: one catalog, several ways to browse it
+
+**Date:** 2026-11-21 · **Ref:** D5, brief §3 (lesson track)
+
+### Context
+The lessons screen showed 40 lessons in five topic tracks chained one after another, the first of which already assumes the reader knows how a hand is played. The author asked for a path that starts from someone who never played and climbs to pro, with levels.
+
+### Decision
+- Lessons form **one catalog**. Every lesson carries a **level** and a **theme**; the screen has a **"Ver por"** switch (in the spirit of a "view by" picker, drawn for Taful) that regroups the same lessons:
+  - **Jornada** (default): from zero to pro, grouped by level: Primeiros passos, Fundamentos, Iniciante, Intermediário, Avançado, Pró.
+  - **Temas**: math, preflop, postflop, reading the game, mind and bankroll (the current tracks, refined).
+  - Further views may be added (for example by moment of the hand, or lessons tied to the user's own leaks); the format must not assume a fixed list.
+- A lesson's progress and lock state are the same in every view; the view only changes grouping and order.
+- The current 40 lessons are placed in Fundamentos through Intermediário. Primeiros passos, Avançado and Pró are new content.
+
+### Why
+The author: "acho que é outra coisa que podemos deixar o usuário escolher". A beginner reads a journey by level best; someone who already plays wants to jump to a theme. One catalog with views serves both without duplicating lessons.
+
+### Implications
+- `content/skill-tree.toml` gives way to per-lesson `level` and `theme` (in the front matter or in one catalog file); content checks verify every lesson has both and that prerequisites never point to a higher level.
+- Unlocking can no longer be "the next lesson in the track", since order depends on the view. How locks work is decided separately.
+
+---
+
+## D24 — The user picks how lessons unlock
+
+**Date:** 2026-11-21 · **Ref:** D23
+
+### Decision
+- How lessons unlock is a **user setting** with three modes:
+  - **Prova** (default): every lesson of the user's current level is open. A short level test opens the next level, and it can be taken early to skip a level the user already knows.
+  - **Guiado**: one lesson at a time; passing a lesson's quiz opens the next one in the Jornada order.
+  - **Livre**: nothing is locked. The app marks the recommended next lesson and warns when a lesson's prerequisites are not done, but opens it anyway.
+- The setting lives behind a **gear on the lessons screen**, which opens a small popover with the three modes, a one-line label each and an (i) with a short explanation on hover. The same setting is also in Settings.
+- Changing the mode never loses progress: done lessons stay done, passed level tests stay passed.
+- Lock state is computed from the mode, the lesson's level and its prerequisites, so it is the same in every "Ver por" view (D23).
+
+### Why
+The author liked the level test with a skip option but did not want to limit anyone: "o usuário consegue dizer se prefere prova, guiado, ou sugerido".
+
+### Implications
+- A level test is new content per level (a quiz drawn from that level's lessons); it is the only thing that marks a level as passed in Prova mode.
+- In Livre mode the level tests still exist, as a way to see where one stands.
+
+---
+
+## D25 — First run: the user says their level, nothing is forced
+
+**Date:** 2026-11-21 · **Ref:** D23, D24
+
+### Decision
+- On the first run the app asks **"Qual é o seu nível no poker?"** and lists the six levels of the Jornada, each with a one-line description in plain words (for example "Nunca joguei", "Sei as regras", "Jogo por diversão", "Jogo e estudo"). A "Pular" link starts at Primeiros passos.
+- The answer only sets where the Jornada starts: every level up to the chosen one is **unlocked**. Nothing is marked done or passed: lessons in skipped levels stay unread, with no score, and the user can open them any time.
+- **No test is ever forced.** Level tests are an option the user can take to unlock or to see where they stand, never a gate at the start. In Prova mode (D24) the level picked on the first run is open without a test.
+- The level can be changed later from the gear on the lessons screen.
+
+### Why
+The author found "Você já joga?" crude and wanted the question to ask for a level; he wants skipping to unlock, not to complete; and he finds forcing a placement test intrusive ("que fossem 3 minutos! 10, pior ainda").
+
+### Implications
+- Progress keeps two separate facts: unlocked levels and done lessons. Home counts and the level badge read only done lessons.
+
+---
+
+## D26 — Primeiros passos: short text, quiz and a guided hand
+
+**Date:** 2026-11-21 · **Ref:** D23, D25
+
+### Decision
+- Every lesson of **Primeiros passos** has three parts, in this order:
+  1. **Short text** with pictures, in plain words, a few minutes long (what a hand is, blinds, the four betting rounds, fold/check/call/bet/raise, showdown, hand rankings, chips and stacks, seats).
+  2. **Quiz**, as in the current lessons.
+  3. **Guided hand** on the real table: a scripted hand (fixed seats, cards and opponent actions) that pauses at each step with one sentence about what is happening, and asks the user to click the right action. A wrong click gets a short explanation and a retry, never a penalty.
+- The lesson is done when the quiz is passed and the guided hand is finished.
+- The guided hand is a lesson part any level can use later; Primeiros passos is the first to need it.
+
+### Why
+The author picked all three: "texto curto + quiz + mão de treino guiada na mesa". Someone who never saw a table learns the order of play by doing it, and the text and quiz give them the words first.
+
+### Implications
+- New content format: a scripted-hand file (seats, stacks, hole cards, board, opponent actions, and the text shown at each step), checked in CI like the lessons (the script must be a legal hand; every expected user action must be legal at that point).
+- The table screen needs a guided mode: actions other than the expected one are explained instead of played, and the coach line sits where the evaluation panel goes.
+
+---
+
+## D27 — Home shows one next step
+
+**Date:** 2026-11-21 · **Ref:** D23–D26
+
+### Decision
+- The Home's hero shows **one thing to do now**, picked in this order:
+  1. Reviews that are due.
+  2. The lesson in progress (or the next one in the Jornada).
+  3. Practice at the table on the theme of the last lesson done.
+- The other cards stay on the Home as shortcuts; only the hero changes. Nothing is mandatory and nothing is tracked as a daily plan.
+
+### Why
+The author did not understand the app's flow (lessons, drills, table). One button that answers "what do I do now?" ties lessons, reviews and the table together without turning study into a chore.
+
+### Implications
+- `taful_app` computes the next step (a small enum with its target) for every style's Home; each style draws it in its own hero.
