@@ -37,9 +37,15 @@ cockpit-month-9 = set
 cockpit-month-10 = out
 cockpit-month-11 = nov
 cockpit-month-12 = dez
-cockpit-lessons-crumb = { $tracks ->
-    [1] 1 trilha
-   *[other] { $tracks } trilhas
+cockpit-lessons-crumb = { $view ->
+    [themes] { $groups ->
+        [1] 1 tema
+       *[other] { $groups } temas
+    }
+   *[journey] { $groups ->
+        [1] 1 nível
+       *[other] { $groups } níveis
+    }
 } · { $lessons ->
     [1] 1 lição
    *[other] { $lessons } lições
@@ -84,7 +90,7 @@ cockpit-leaks-train = Treinar
 
 ## Home: tracks, preflop deviation and shortcuts
 
-cockpit-tracks-title = Trilhas
+cockpit-tracks-title = Jornada
 cockpit-next-lesson = Próxima lição
 cockpit-next-meta = { $track } · { $n } de { $total } · { $minutes } min
 cockpit-continue = Continuar

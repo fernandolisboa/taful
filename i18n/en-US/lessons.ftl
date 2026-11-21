@@ -1,12 +1,33 @@
 # Skill tree, lesson reader and quiz strings.
 
-## Track titles (`track-<id>`, checked by content-check)
+## Catalog (D23): level and theme titles, checked by content-check
 
-track-foundations = Foundations
-track-poker-math = Poker math
-track-preflop = Preflop
-track-postflop = Postflop
-track-game-plan = Game plan
+level-primeiros-passos = First steps
+level-primeiros-passos-about = I have never played
+level-fundamentos = Fundamentals
+level-fundamentos-about = I know the rules
+level-iniciante = Beginner
+level-iniciante-about = I play for fun
+level-intermediario = Intermediate
+level-intermediario-about = I play and study
+level-avancado = Advanced
+level-avancado-about = I study and I win
+level-pro = Pro
+level-pro-about = I want the top level
+
+theme-basics = The basics
+theme-math = Math
+theme-preflop = Preflop
+theme-postflop = Postflop
+theme-reading = Reading the game
+theme-mind = Mind and bankroll
+
+## "View by" switch on the lessons screen
+
+tree-view-by = View by
+tree-view-journey = Journey
+tree-view-themes = Themes
+tree-soon = Coming soon
 
 ## Skill tree
 
@@ -46,4 +67,4 @@ tree-start = Start
 tree-track-locked = { $count ->
     [one] 1 lesson
    *[other] { $count } lessons
-} · unlocks when you finish the previous track. Click to preview.
+} · unlocks as you finish the lessons it builds on. Click to preview.

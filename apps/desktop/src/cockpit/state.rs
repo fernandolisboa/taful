@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use taful_app::dashboard::{Dashboard, LessonsSummary, Today};
 use taful_app::i18n::Locale;
-use taful_app::lessons::TrackView;
+use taful_app::lessons::ViewBy;
 
 use crate::screen::Screen;
 use crate::shell::Shell;
@@ -15,10 +15,11 @@ use crate::shell::Shell;
 /// Numbers older than this are read again even without a write.
 const MAX_AGE: Duration = Duration::from_secs(30);
 
-/// The lessons tree with its totals.
+/// The lessons grouped as the lessons screen shows them, with the totals
+/// (the groups are `summary.list`).
 pub struct Lessons {
     locale: Locale,
-    pub tracks: Vec<TrackView>,
+    view: ViewBy,
     pub summary: LessonsSummary,
 }
 
@@ -67,11 +68,12 @@ pub fn sync(shell: &mut Shell) {
     if !fresh {
         shell.cockpit = ShellState::default();
     }
+    let view = shell.view_by();
     if shell
         .cockpit
         .lessons
         .as_ref()
-        .is_some_and(|l| l.locale != locale)
+        .is_some_and(|l| l.locale != locale || l.view != view)
     {
         shell.cockpit.lessons = None;
     }
@@ -92,14 +94,14 @@ pub fn sync(shell: &mut Shell) {
     }
     let wants_lessons = matches!(shell.screen, Screen::Home | Screen::SkillTree);
     if wants_lessons && shell.cockpit.lessons.is_none() {
-        let read = shell.app.skill_tree(locale).and_then(|tracks| {
-            let summary = shell.app.lessons_summary(locale)?;
-            Ok(Lessons {
+        let read = shell
+            .app
+            .lessons_summary(view, locale)
+            .map(|summary| Lessons {
                 locale,
-                tracks,
+                view,
                 summary,
-            })
-        });
+            });
         match read {
             Ok(l) => shell.cockpit.lessons = Some(Rc::new(l)),
             Err(e) => log("the lessons", &e),

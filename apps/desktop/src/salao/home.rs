@@ -154,12 +154,12 @@ pub fn home(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     let hero_left = match &o.next {
         Some(next) => {
             let id = next.id.clone();
-            let track = i18n.tr(&format!("track-{}", next.track));
+            let track = i18n.tr(&format!("level-{}", next.level));
             let place = i18n.tr_args(
                 "salao-home-lesson-place",
                 &[
                     ("n", next.number.into()),
-                    ("total", next.track_states.len().into()),
+                    ("total", next.level_states.len().into()),
                 ],
             );
             let meta = match next.minutes {
@@ -590,13 +590,13 @@ fn ticks(next: &NextLesson, p: &crate::theme::Palette) -> Vec<Div> {
     let gold = p.accent;
     // The mockup's ticks (22 pixels, for a track of ten); a longer track's
     // are narrower so the row keeps its width.
-    let n = next.track_states.len().max(1) as f32;
+    let n = next.level_states.len().max(1) as f32;
     let width = if n <= 10. {
         22.
     } else {
         ((10. * 22. + 9. * 5. - (n - 1.) * 5.) / n).floor()
     };
-    next.track_states
+    next.level_states
         .iter()
         .enumerate()
         .map(|(i, state)| {

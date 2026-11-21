@@ -1,11 +1,12 @@
 //! Cockpit's lessons: a summary strip (overall progress, time left, quiz
-//! average, the next lesson) over one column per track.
+//! average, the next lesson) over one column per level or theme ("Ver por"
+//! sits in the status bar).
 
 use gpui::{
     AnyElement, Context, Div, FontWeight, div, linear_color_stop, linear_gradient, prelude::*, px,
     relative,
 };
-use taful_app::lessons::{LessonCard, TrackView};
+use taful_app::lessons::{GroupKind, LessonCard, LessonGroup, ViewBy};
 use taful_app::model::LessonState;
 
 use super::kit::{self, Btn, GAP, MONO, STRONG, btn, figure, head, icon, label, mono};
@@ -29,6 +30,8 @@ const NEXT_H: f32 = 72.;
 /// The narrowest a track's column gets: what the design gives it at 1280.
 const COLUMN_MIN: f32 = 224.;
 const ROW_H: f32 = 54.;
+/// A level without lessons yet ("em breve"), when the columns share a row.
+const SOON_W: f32 = 190.;
 
 /// The lessons tree's body.
 pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
@@ -41,17 +44,21 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             .child(ui.i18n.tr("cockpit-kpi-empty"))
             .into_any_element();
     };
-    let tracks: Vec<&TrackView> = data
-        .tracks
-        .iter()
-        .filter(|t| !t.lessons.is_empty())
-        .collect();
+    let tracks: Vec<&LessonGroup> = data.summary.list.groups.iter().collect();
     let n = tracks.len().max(1);
     let per_row = per_row(w, n);
     let wraps = per_row < n;
     let column_w = (w - (per_row - 1) as f32 * GAP) / per_row as f32;
     let column_w = if wraps { column_w.floor() } else { column_w };
     let next = data.summary.next.as_ref().map(|n| n.id.as_str());
+    // On one row, a level without lessons yet takes a narrow column and
+    // leaves the room to the ones with lessons.
+    let soon = tracks.iter().filter(|t| t.is_soon()).count();
+    let full_w = if wraps || soon == 0 || soon == n {
+        column_w
+    } else {
+        ((w - (n - 1) as f32 * GAP - soon as f32 * SOON_W) / (n - soon) as f32).max(SOON_W)
+    };
     let mut columns = div()
         .flex()
         .flex_none()
@@ -59,7 +66,12 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
         .gap(px(GAP))
         .when(wraps, |d| d.flex_wrap().w(px(w)));
     for (k, track) in tracks.into_iter().enumerate() {
-        columns = columns.child(column(&ui, &pal, track, k, next, column_w, cx));
+        let cw = if track.is_soon() && !wraps && soon < n {
+            SOON_W
+        } else {
+            full_w
+        };
+        columns = columns.child(column(&ui, &pal, track, k, next, cw, cx));
     }
     let page = div().flex().flex_col().gap(px(GAP)).w(px(w));
     if w < SUMMARY_MIN {
@@ -195,7 +207,9 @@ fn summary(
     let narrow = progress_w < 520.;
     // Every lesson as a block, one group per track.
     let all = div().flex().gap(px(8.)).mt(px(10.)).children(
-        data.tracks
+        data.summary
+            .list
+            .groups
             .iter()
             .filter(|t| !t.lessons.is_empty())
             .map(|t| {
@@ -286,7 +300,7 @@ fn summary(
 fn column(
     ui: &Ui,
     pal: &Pal,
-    track: &TrackView,
+    track: &LessonGroup,
     k: usize,
     next: Option<&str>,
     w: f32,
@@ -305,8 +319,8 @@ fn column(
         .w(px(w))
         .when(k == 0, |d| d.child(crate::tour::anchor("tree_first")))
         .child(head(
-            &i18n.tr(&format!("track-{}", track.id)),
-            Some(mono(format!("{done}/{total}")).into_any_element()),
+            &i18n.tr(&track.title_key()),
+            (!track.is_soon()).then(|| mono(format!("{done}/{total}")).into_any_element()),
             open,
             pal,
         ))
@@ -318,6 +332,35 @@ fn column(
                     .bg(pal.teal),
             ),
         );
+    if track.is_soon() {
+        // A level without lessons yet.
+        let about = (track.kind == GroupKind::Level)
+            .then(|| i18n.tr(&format!("{}-about", track.title_key())));
+        col = col.child(
+            div()
+                .flex()
+                .flex_col()
+                .justify_center()
+                .h(px(ROW_H))
+                .px(px(12.))
+                .child(
+                    div()
+                        .text_size(px(12.5))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(pal.locked_text)
+                        .child(i18n.tr("tree-soon")),
+                )
+                .children(about.map(|a| {
+                    div()
+                        .mt(px(2.))
+                        .font_family(MONO)
+                        .text_size(px(10.))
+                        .text_color(pal.dim)
+                        .truncate()
+                        .child(a)
+                })),
+        );
+    }
     for (i, lesson) in track.lessons.iter().enumerate() {
         let is_next = next == Some(lesson.id.as_str());
         col = col.child(
@@ -440,6 +483,54 @@ fn row(
                 })),
         )
         .child(state)
+}
+
+/// "Ver por" for the status bar: a label and one small toggle per view.
+pub(super) fn view_switch(shell: &mut Shell, pal: &Pal, cx: &mut Context<Shell>) -> Div {
+    let current = shell.view_by();
+    let i18n = &shell.ui.i18n;
+    let item = |view: ViewBy| {
+        let on = view == current;
+        div()
+            .id(("cockpit_view", view as usize))
+            .flex()
+            .items_center()
+            .h_full()
+            .px(px(10.))
+            .rounded(px(3.))
+            .text_size(px(12.))
+            .font_weight(FontWeight::MEDIUM)
+            .cursor_pointer()
+            .when(on, |d| d.bg(pal.raised).text_color(pal.amber))
+            .when(!on, |d| {
+                let hover = pal.text;
+                d.text_color(pal.muted).hover(move |s| s.text_color(hover))
+            })
+            .child(i18n.tr(view.label_key()))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.set_view_by(view);
+                cx.notify();
+            }))
+    };
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(8.))
+        .ml(px(10.))
+        .child(label(&i18n.tr("tree-view-by"), pal))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .h(px(26.))
+                .p(px(2.))
+                .gap(px(2.))
+                .rounded(px(4.))
+                .border_1()
+                .border_color(pal.line2)
+                .children(ViewBy::ALL.into_iter().map(item)),
+        )
 }
 
 // The summary's one-row arrangement fits the width it was designed for.

@@ -24,7 +24,7 @@ nav-settings = Settings
 ## Screen descriptions shown until each screen is built
 
 screen-home-body = Due reviews, your top leaks, the next lesson and quick actions.
-screen-skill-tree-body = Tracks and lessons, unlocked as you pass each quiz or drill.
+screen-skill-tree-body = From zero to pro, by level or by theme. Each quiz you pass unlocks the lessons that build on it.
 screen-lesson-body = Lessons with glossary tooltips and a quiz at the end.
 screen-table-body = Spot mode and full hands against the reference bot, with every decision graded by EV loss.
 screen-hand-review-body = Every decision of a hand with its grade, and a step-by-step replay.

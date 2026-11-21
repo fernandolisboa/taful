@@ -241,19 +241,23 @@ const TIE: f32 = 1e-4;
 pub struct NextLesson {
     pub id: String,
     pub title: String,
-    pub track: String,
-    /// 1-based position in its track.
+    /// The level's id (title: Fluent `level-<id>`).
+    pub level: String,
+    /// 1-based position in its level.
     pub number: usize,
-    pub track_len: usize,
+    pub level_len: usize,
     pub minutes: Option<u32>,
 }
 
-/// Lesson progress across the whole tree.
+/// Lesson progress across the whole catalog.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LessonsSummary {
     pub done: usize,
     pub total: usize,
-    pub tracks: usize,
+    /// The catalog grouped as the lessons screen shows it.
+    pub list: crate::lessons::LessonList,
+    /// The Jornada's levels with lessons, for the home.
+    pub levels: Vec<crate::lessons::LessonGroup>,
     /// Reading time of the lessons not done yet, minutes.
     pub minutes_left: u32,
     /// Mean best quiz score over lessons with one, 0–1.
@@ -612,9 +616,14 @@ impl App {
         })
     }
 
-    /// Lesson progress and the next lesson, from the skill tree.
-    pub fn lessons_summary(&self, locale: Locale) -> Result<LessonsSummary> {
-        let tree = self.skill_tree(locale)?;
+    /// Lesson progress and the next lesson, with the catalog grouped as
+    /// `view` asks.
+    pub fn lessons_summary(
+        &self,
+        view: crate::lessons::ViewBy,
+        locale: Locale,
+    ) -> Result<LessonsSummary> {
+        let tree = self.journey(locale)?;
         let lessons = || tree.iter().flat_map(|t| &t.lessons);
         let next = tree.iter().find_map(|t| {
             let i = t
@@ -625,16 +634,17 @@ impl App {
             Some(NextLesson {
                 id: l.id.clone(),
                 title: l.title.clone(),
-                track: t.id.clone(),
+                level: t.id.clone(),
                 number: i + 1,
-                track_len: t.lessons.len(),
+                level_len: t.lessons.len(),
                 minutes: l.minutes,
             })
         });
         Ok(LessonsSummary {
             done: lessons().filter(|l| l.state == LessonState::Done).count(),
             total: lessons().count(),
-            tracks: tree.iter().filter(|t| !t.lessons.is_empty()).count(),
+            list: self.lesson_list(view, locale)?,
+            levels: tree.iter().filter(|g| !g.is_soon()).cloned().collect(),
             minutes_left: lessons()
                 .filter(|l| l.state != LessonState::Done)
                 .filter_map(|l| l.minutes)
@@ -995,15 +1005,17 @@ mod tests {
     #[test]
     fn lessons_summary_reads_the_tree() {
         let (app, _) = app_at(NOON);
-        let s = app.lessons_summary(Locale::PtBr).unwrap();
+        let s = app
+            .lessons_summary(crate::lessons::ViewBy::Journey, Locale::PtBr)
+            .unwrap();
         assert!(s.total > 0);
         assert_eq!(s.done, 0);
-        assert!(s.tracks > 0);
+        assert!(s.list.groups.iter().any(|g| !g.is_soon()));
         assert!(s.minutes_left > 0);
         assert_eq!(s.quiz_mean, None);
         let next = s.next.unwrap();
         assert_eq!(next.number, 1);
-        assert!(next.track_len >= 1);
+        assert!(next.level_len >= 1);
         assert!(!next.title.is_empty());
     }
 }

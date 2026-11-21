@@ -38,6 +38,9 @@ pub mod keys {
     /// Animation and table replay speed: `slow`, `normal` (default),
     /// `fast` or `very_fast`.
     pub const UI_ANIMATION_SPEED: &str = "ui.animation_speed";
+    /// How the lessons screen groups the catalog (D23): a
+    /// [`crate::lessons::ViewBy`] id; unset means the Jornada.
+    pub const LESSONS_VIEW: &str = "lessons.view";
     /// Visual style (D19): a [`crate::style::Style`] id; unset means the
     /// default style (D21).
     pub const UI_STYLE: &str = "ui.style";
@@ -111,7 +114,7 @@ pub struct App {
 pub struct Home {
     pub due_now: u32,
     pub next_due: Option<Millis>,
-    /// First available lesson not done yet, in tree order: `(id, title)`.
+    /// First available lesson not done yet, in Jornada order: `(id, title)`.
     pub next_lesson: Option<(String, String)>,
     pub lessons_done: usize,
     pub lessons_total: usize,
@@ -341,16 +344,16 @@ impl App {
     // ---- home ---------------------------------------------------------------------------------
 
     pub fn home(&self, locale: Locale) -> Result<Home> {
-        let tree = self.skill_tree(locale)?;
+        let journey = self.journey(locale)?;
         let recent = self.store.recent_calc_attempts(HOME_CALC_WINDOW)?;
-        self.home_from(&tree, &recent)
+        self.home_from(&journey, &recent)
     }
 
-    /// [`App::home`] from a skill tree and the latest
+    /// [`App::home`] from the Jornada and the latest
     /// [`HOME_CALC_WINDOW`] calc answers already read.
     pub(crate) fn home_from(
         &self,
-        tree: &[crate::lessons::TrackView],
+        tree: &[crate::lessons::LessonGroup],
         recent: &[taful_store::CalcAttempt],
     ) -> Result<Home> {
         let now = self.store.now();

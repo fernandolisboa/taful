@@ -93,7 +93,7 @@ taful/
 ├─ content/
 │  ├─ lessons/{en-US,pt-BR}/*.md
 │  ├─ quizzes/*.toml
-│  ├─ skill-tree.toml
+│  ├─ catalog.toml
 │  ├─ bots/*.toml       # bot profiles (after first slice)
 │  ├─ layouts/*.json
 │  └─ themes/*.json
@@ -417,10 +417,11 @@ Facing a half-pot bet you need {{ calc: pot_odds(pot=100, bet=50) | pct(1) }} eq
 ```
 
 - Source in en-US; pt-BR translations are AI-drafted like the source. Both locales share id, version and the exact set of placeholders.
-- `content/skill-tree.toml` orders lessons and groups them into tracks. The first track has ~40 lessons up to intermediate cash 6-max 100bb.
+- `content/catalog.toml` (D23) lists the levels (Primeiros passos → Pró) and themes in display order, and every lesson with its level and theme, in Jornada order (level by level). The lessons screen regroups the same lessons by level or by theme ("Ver por"). The first ~40 lessons go up to intermediate cash 6-max 100bb.
 - Quizzes are TOML: multiple choice, numeric (with tolerance), range-painting (wave 2) and spot questions (a `SpotTemplate` id). Numeric answers are placeholders too. A quiz has a `pass` share (default 0.8); passing it marks the lesson done and unlocks lessons whose prerequisites are all done.
-- Glossary terms are linked inline as `[text](term:<id>)` and must be listed in the lesson's `glossary`; strings are `glossary-<id>` and `glossary-<id>-def`. Track names are `track-<id>` (M2).
+- Glossary terms are linked inline as `[text](term:<id>)` and must be listed in the lesson's `glossary`; strings are `glossary-<id>` and `glossary-<id>-def`. Level names are `level-<id>` with a one-liner `level-<id>-about`; theme names are `theme-<id>` (D23).
 - **As built (M6):** 40 lessons in five tracks: foundations (4), poker math (10), preflop (9), postflop (12), game plan (5). Every lesson unlocks through a quiz (choice and numeric questions, `pass` 0.75); drill unlocks stay available in the format. Preflop lessons quote the embedded reference chart (open, defend and 3-bet frequencies), so a chart rebuild should be followed by a read of those lines. Choice answers are spread over the positions because the app shows choices in file order.
+- **As built (#85, D23):** the five tracks became a catalog: Fundamentos 10, Iniciante 14, Intermediário 16; Primeiros passos, Avançado and Pró are empty ("em breve"). Themes: the basics 3, math 10, preflop 9, postflop 13, reading the game 3, mind and bankroll 2 (`content/catalog.toml`). Lock state is still per lesson (prerequisites) until unlock modes (D24) land.
 
 ### 12.2 Expression language
 
@@ -435,7 +436,7 @@ Facing a half-pot bet you need {{ calc: pot_odds(pot=100, bet=50) | pct(1) }} eq
 1. Any placeholder errors in any locale.
 2. A rendered value differs from the pinned snapshot in `content/lessons/.snapshots/<id>.toml` or `content/quizzes/.snapshots/<id>.toml` (drift; a missing or stale snapshot fails too). Snapshots are updated explicitly with `content-check --bless`.
 3. Locales disagree on id, version or placeholder set.
-4. The skill tree has a cycle, a missing prerequisite, or a lesson with no unlock.
+4. The catalog has a lesson without a known level or theme, a cycle, a missing prerequisite, a prerequisite in a higher level or later in the Jornada, or a lesson with no unlock.
 5. A glossary term is undefined in `i18n/*/glossary.ftl`.
 
 ### 12.4 Versioning
@@ -496,7 +497,7 @@ Facing a half-pot bet you need {{ calc: pot_odds(pot=100, bet=50) | pct(1) }} eq
 ### 15.1 Screens (first slice)
 
 1. **Home:** due reviews, top leaks, continue lesson, quick actions.
-2. **Skill tree:** tracks and lessons with lock state.
+2. **Lessons:** the catalog by level (Jornada, default) or by theme, with lock state (D23).
 3. **Lesson reader:** rendered Markdown, glossary tooltips, quiz at the end.
 4. **Table:** spot and full-hand modes; action buttons; sizing buttons from the tree; explanation panel.
 5. **Hand review:** decision list with grades; replay controls (step through the seed).

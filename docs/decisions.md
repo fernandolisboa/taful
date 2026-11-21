@@ -604,6 +604,11 @@ The author: "acho que é outra coisa que podemos deixar o usuário escolher". A 
 - `content/skill-tree.toml` gives way to per-lesson `level` and `theme` (in the front matter or in one catalog file); content checks verify every lesson has both and that prerequisites never point to a higher level.
 - Unlocking can no longer be "the next lesson in the track", since order depends on the view. How locks work is decided separately.
 
+### As built (#85)
+- One file, `content/catalog.toml`: the levels and themes in display order and every lesson with its level and theme, listed in Jornada order. Level and theme names are Fluent `level-<id>` (with a one-liner `level-<id>-about`, reused by D25) and `theme-<id>`.
+- Themes got a sixth group, **O básico** (rules and table basics: hand rankings, positions, blinds and stacks), since those lessons fit none of the five and Primeiros passos will add more of them.
+- The view choice is remembered (`lessons.view` setting). The next lesson is always the first open one in the Jornada, whatever the view.
+
 ---
 
 ## D24 — The user picks how lessons unlock

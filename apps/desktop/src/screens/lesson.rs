@@ -15,8 +15,11 @@ pub struct LessonView {
     /// Rendered lesson, or the render error.
     pub open: Option<Result<OpenLesson, String>>,
     pub quiz: Option<QuizRun>,
-    /// Locked tracks the user expanded in the tree to preview.
+    /// Lesson groups the user unfolded (or folded) on the lessons screen,
+    /// by their title key.
     pub expanded: std::collections::HashSet<String>,
+    /// "Ver por": read from settings on first use.
+    pub view_by: Option<taful_app::lessons::ViewBy>,
 }
 
 pub struct QuizRun {
