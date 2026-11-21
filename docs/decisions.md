@@ -661,6 +661,12 @@ The author found "Você já joga?" crude and wanted the question to ask for a le
 ### As built (amended 2026-11-21, #86)
 - `lessons.start_level` holds the level picked on the first run (#88 builds the picker). Until then it is derived from existing progress, so a user from before D24 keeps every lesson they had open: the highest level where a lesson is done or every prerequisite is done. The derived value is stored the first time new progress is recorded (a quiz or a level test), so later progress does not move it.
 
+### As built (amended 2026-11-21, #88)
+- The question shows when no level is stored and there is no lesson progress at all (no lesson read, no quiz, no level test passed). A data dir with progress from before is never asked: on its first launch with #88 the level its progress opens is stored, once, as #86 derived it.
+- It is a card over the current screen, before that screen's tour, in all four styles: one row per level with its plain line (`level-<id>-about`), the level's mark as the style draws it elsewhere, and "Em breve" on a level with no lessons yet (still selectable: picking it opens every level below). One click answers; 1–6 also pick, and Escape is "Pular". At 940 × 600 the plain line moves beside the name so the card fits without scrolling.
+- "Pular" stores the first level (Primeiros passos), so the question does not come back.
+- Changing it later: "Seu nível" under the study modes in the gear popover, and a card in Settings › Estudo, both with "Mudar", which opens the same question with the current level tagged and "Cancelar" instead of "Pular". Done lessons and passed tests stay; a lower level can close levels that were open only because of the old choice.
+
 ---
 
 ## D26 — Primeiros passos: short text, quiz and a guided hand

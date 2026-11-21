@@ -232,6 +232,7 @@ impl Shell {
         let left = (right - w).clamp(EDGE, (vw - w - EDGE).max(EDGE));
         let top = f32::from(gear.origin.y + gear.size.height) + POPOVER_GAP;
         let rows = self.study_mode_rows("study_mode", cx);
+        let level = self.start_level_row("study_level_change", cx);
         let card = div()
             .id("study_popover")
             .occlude()
@@ -267,7 +268,18 @@ impl Shell {
                     .line_height(px(t.text_size.sm * 1.4))
                     .text_color(p.text_muted)
                     .child(ui.i18n.tr("study-mode-note")),
-            );
+            )
+            // Where the Jornada starts (D25), changed with the level question.
+            .child(div().h(px(1.)).mx(px(t.spacing.sm)).bg(p.border))
+            .child(
+                div()
+                    .px(px(t.spacing.sm))
+                    .text_size(px(t.text_size.sm))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(p.text_muted)
+                    .child(ui.i18n.tr("study-level-title")),
+            )
+            .child(level);
         let scrim = div()
             .id("study_scrim")
             .absolute()

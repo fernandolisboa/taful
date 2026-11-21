@@ -79,6 +79,11 @@ pub fn story(
     screen.story_panel_classic(hero, cx)
 }
 
+/// How the level question (D25) is dressed.
+pub fn level_look(shell: &Shell) -> crate::level_question::Look {
+    crate::level_question::classic_look(shell)
+}
+
 pub use crate::felt::{
     card_classic as felt_card, explanation_classic as explanation, panel_classic as felt_panel,
     table_classic as felt_table,

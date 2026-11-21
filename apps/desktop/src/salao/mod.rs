@@ -25,7 +25,7 @@ pub use self::felt::{
 };
 pub use self::frame::frame;
 pub use self::home::{ShellState, home};
-pub use self::lessons::lessons;
+pub use self::lessons::{lessons, level_look};
 pub use self::table::{TableState, story, table};
 pub use self::widgets::{
     answer_box, button, card, chip, empty_state, eyebrow, muted, progress, segment, segmented,

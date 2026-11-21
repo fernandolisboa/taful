@@ -453,6 +453,80 @@ fn medal(index: usize, stage: Stage, p: &Palette) -> Div {
         )
 }
 
+/// How the level question (D25) is dressed: a Salão panel, the serif
+/// title, and each level's roman medallion as on the Jornada.
+pub fn level_look(shell: &Shell) -> crate::level_question::Look {
+    let (c, p) = (colors(), shell.palette);
+    crate::level_question::Look {
+        scrim: alpha(c.black, 0.62),
+        card: |s, content| kit::panel(&s.palette).child(content),
+        pad: 30.,
+        eyebrow: |_, text| kit::eyebrow(text, colors().gold2),
+        title: |_, text| kit::H1.lines(32., 1.2).child(text),
+        text: |s, text| {
+            kit::sans_lines(14., FontWeight::NORMAL)
+                .text_color(s.palette.text_muted)
+                .child(text)
+        },
+        name: |_, text| kit::sans_text(15., FontWeight::SEMIBOLD).child(text),
+        about: |s, text| {
+            kit::sans_text(12.5, FontWeight::NORMAL)
+                .text_color(s.palette.text_muted)
+                .child(text)
+        },
+        tag: |s, text, strong| {
+            let (c, p) = (colors(), s.palette);
+            kit::label(
+                kit::SANS_S18,
+                10.,
+                if strong { p.on_accent } else { c.dim },
+                text,
+            )
+            .flex_none()
+            .px(px(9.))
+            .rounded(px(10.))
+            .border_1()
+            .border_color(if strong {
+                p.accent
+            } else {
+                alpha(p.text, 0.14)
+            })
+            .when(strong, |d| d.bg(p.accent))
+        },
+        mark: |s, n, place| {
+            let (c, p, soon) = (colors(), s.palette, place.is_none());
+            div()
+                .relative()
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .size(px(38.))
+                .rounded(px(19.))
+                .bg(c.medal_bg)
+                .border(px(1.5))
+                .border_color(if soon { alpha(p.text, 0.14) } else { p.accent })
+                .child(
+                    kit::MEDAL
+                        .text(16., kit::LEADING)
+                        .text_color(if soon { c.dim } else { c.gold2 })
+                        .child(roman(n + 1)),
+                )
+                .into_any_element()
+        },
+        link: (p.text_muted, c.gold2),
+        row: crate::level_question::RowLook {
+            radius: 11.,
+            ring: alpha(p.text, 0.07),
+            fill: alpha(c.black, 0.12),
+            ring_hot: alpha(p.accent, 0.55),
+            fill_hot: alpha(p.accent, 0.07),
+            ring_on: alpha(p.accent, 0.6),
+            fill_on: alpha(p.accent, 0.1),
+        },
+    }
+}
+
 /// One lesson of an open track. `k` is its place in the track, `n` among
 /// all lessons.
 fn lesson_row(
@@ -586,7 +660,7 @@ fn lesson_row(
 }
 
 /// A small number in roman numerals (the tracks' medallions).
-fn roman(mut n: usize) -> String {
+pub(crate) fn roman(mut n: usize) -> String {
     let mut out = String::new();
     for (value, numeral) in [(10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")] {
         while n >= value {

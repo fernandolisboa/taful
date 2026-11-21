@@ -189,12 +189,16 @@ A fenced block whose info string is `cards` or `seats` is drawn as a picture ins
 
 Only captions are translated: `content-check` fails when a picture does not parse or when locales draw different cards or seats.
 
+## Level question (D25)
+
+On a first run (no `lessons.start_level` stored, no row in `lesson_progress`, no level test passed) the app asks "Qual é o seu nível no poker?" before the screen's tour: `App::level_question_due`, drawn by `apps/desktop/src/level_question.rs` over every style. A data dir with lesson progress from before is never asked; that call stores the level its progress opens instead. Picking a level stores it with `App::set_start_level`; "Pular" (or Escape) stores the first level (`App::skip_level_question`); 1–6 pick from the keyboard. The same card opens from the lessons screen's gear and Settings › Estudo ("Mudar"), with "Cancelar" and the current level tagged. The layout is shared; each style dresses it through its `level_look` hook (panel, type, row colors, level marks). `TAFUL_LEVEL_QUESTION=0` never asks (CI screenshots), `=1` always does (screenshots of the card).
+
 ## Visual styles (D19)
 
 The desktop app draws itself through the active visual style (`ui.style`): Salão (the default, D21), Cockpit, Baralho or Classic.
 
 - One module per style: `apps/desktop/src/<id>/mod.rs`. `classic` is the reference set of hooks, listed at the top of `apps/desktop/src/style.rs`. Another style starts as `pub use crate::classic::*;` and replaces a hook by defining an item with the same name. Shared code calls `by_style!(ui.style, hook(args))` and never names a style.
-- Hooks: constants (`READY`, `ASSETS`, `FONTS`, `FONT_FAMILY`, `WINDOW`, `FELT_SCALE`, `FELT_WIDTH`, `PANEL_WIDTH`), state (`ShellState`, `TableState`), views (`frame`, `key`, `home`, `lessons`, `table`, `story`), the felt (`felt_table`, `felt_card`, `explanation`, `felt_panel`) and the widgets the top of `widgets.rs` dispatches (`button`, `chip`, `card`, `title`, `muted`, `answer_box`, `progress`, `eyebrow`, `segmented`, `segment`, `empty_state`, `subhead`, `toggle`). The lesson text renderer (`document`) is shared by every style.
+- Hooks: constants (`READY`, `ASSETS`, `FONTS`, `FONT_FAMILY`, `WINDOW`, `FELT_SCALE`, `FELT_WIDTH`, `PANEL_WIDTH`), state (`ShellState`, `TableState`), views (`frame`, `key`, `home`, `lessons`, `table`, `story`, `level_look`), the felt (`felt_table`, `felt_card`, `explanation`, `felt_panel`) and the widgets the top of `widgets.rs` dispatches (`button`, `chip`, `card`, `title`, `muted`, `answer_box`, `progress`, `eyebrow`, `segmented`, `segment`, `empty_state`, `subhead`, `toggle`). The lesson text renderer (`document`) is shared by every style.
 - Colors: `content/styles/<id>.json` holds `{"theme": <theme tokens>, "extra": {"name": "#rrggbb[aa]"}}`. In that style `ui.theme` is the file's theme and `ui.extra.get("name")` gives an extra color. `theme::alpha(color, a)` makes a translucent variant. No color literal outside `src/theme.rs`, as before. CI builds the desktop app in release mode, where a misspelled extra name draws nothing instead of panicking: give the style a test that checks every name it uses with `ui.extra.contains(name)`.
 - Files: fonts and art live in `apps/desktop/assets/<id>/` and are listed in the style's `ASSETS` (served to `img()` and `svg()`, paths start with `<id>/`) and `FONTS` (added to the text system at startup).
 - Strings only one style shows go in `i18n/<locale>/<id>.ftl`.

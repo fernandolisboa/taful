@@ -118,3 +118,18 @@ lesson-guided-play = Play the guided hand
 lesson-guided-again = Play the guided hand again
 lesson-guided-finished = Hand finished.
 quiz-guided-pending = One step left: play the guided hand to finish the lesson.
+
+## Level question (D25): first run, the gear and Settings › Study
+
+level-question-welcome = Welcome to Taful
+level-question-change = Your level
+level-question-title = What is your poker level?
+level-question-lead = The Journey starts at the level you pick, and every level up to it opens. Nothing is marked done, and there is no test.
+level-question-note = Skip starts at { $level }. You can change it later from the gear on the Lessons screen.
+level-question-change-note = Finished lessons and passed tests stay.
+level-question-skip = Skip
+level-question-cancel = Cancel
+level-question-current = Current
+study-level-title = Your level
+study-level-line = The Journey starts at { $level }.
+study-level-change = Change

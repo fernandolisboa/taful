@@ -225,6 +225,11 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     lessons::view(shell, cx)
 }
 
+/// How the level question is dressed.
+pub fn level_look(shell: &Shell) -> crate::level_question::Look {
+    lessons::level_look(shell)
+}
+
 /// The table screen.
 pub fn table(
     screen: &mut TableScreen,

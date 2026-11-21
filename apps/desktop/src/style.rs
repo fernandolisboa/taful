@@ -22,7 +22,8 @@
 //!   on the table screen, owned by the style.
 //! - Views: `frame` (chrome and content, under the tour and update
 //!   overlays), `key` (shortcuts), `home`, `lessons`, `table`, `story` (the
-//!   table's "how the hand got here").
+//!   table's "how the hand got here"), `level_look` (how the level question
+//!   of D25 is dressed; its layout is shared).
 //! - Felt: `felt_table`, `felt_card`, `explanation`, `felt_panel`.
 //! - Widgets: the ones the top of `widgets.rs` dispatches (the lesson text
 //!   renderer is shared).
