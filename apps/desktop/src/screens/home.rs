@@ -1,4 +1,4 @@
-//! Home (spec §15.1 item 1): due reviews, next lesson, calc, quick actions.
+//! Home (spec §15.1 item 1): the next step (D27), due reviews, calc, leaks.
 
 use gpui::{AnyElement, Context, div, prelude::*, px};
 use taful_app::fmt;
@@ -30,52 +30,42 @@ impl Shell {
                 ("total", home.lessons_total.into()),
             ],
         );
-        // The one thing to do next, big, at the top.
+        // The one thing to do next (D27), big, at the top.
+        let words = crate::next_step::words(&ui, &home.step);
         let lesson = card(&ui, &p)
             .relative()
             .child(crate::tour::anchor("home_continue"))
             .border_l(px(4.))
             .border_color(p.accent)
             .gap(px(t.spacing.lg))
-            .child(eyebrow(ui.i18n.tr("home-continue-title"), &ui, &p))
-            .child(match &home.next_lesson {
-                Some((id, name)) => {
-                    let id = id.clone();
-                    div()
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .gap(px(t.spacing.lg))
-                        .child(
-                            div()
-                                .text_size(px(t.text_size.xl))
-                                .font_weight(gpui::FontWeight::BOLD)
-                                .child(name.clone()),
-                        )
-                        .child(
-                            button(
-                                "home_lesson",
-                                ui.i18n.tr("home-start-lesson"),
-                                true,
-                                &ui,
-                                &p,
+            .child(eyebrow(words.eyebrow(&ui), &ui, &p))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(px(t.spacing.lg))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .gap(px(t.spacing.xs))
+                            .child(
+                                div()
+                                    .text_size(px(t.text_size.xl))
+                                    .font_weight(gpui::FontWeight::BOLD)
+                                    .child(words.title.clone()),
                             )
-                            .on_click(cx.listener(
-                                move |this, _, window, cx| {
-                                    this.open_lesson(&id);
-                                    this.select(Screen::Lesson, window, cx);
-                                },
-                            )),
-                        )
-                        .into_any_element()
-                }
-                None => muted(
-                    crate::study::idle_text(&ui, home.next_test.as_deref()),
-                    &ui,
-                    &p,
-                )
-                .into_any_element(),
-            })
+                            .child(muted(words.paragraph(), &ui, &p)),
+                    )
+                    .child(
+                        button("home_lesson", words.button.clone(), true, &ui, &p)
+                            .flex_none()
+                            .on_click(crate::next_step::on_click(home.step.clone(), cx)),
+                    ),
+            )
             .child(
                 div()
                     .flex()

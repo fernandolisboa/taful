@@ -19,6 +19,8 @@
 //! - [`dashboard`] and [`insight`]: the aggregates behind a dashboard and
 //!   the range, equity and hand description behind a decision.
 //! - [`today`]: the day at a glance, for a home screen made of cards.
+//! - [`next_step`]: the one thing every style's Home suggests doing now
+//!   (D27).
 //! - [`logo`]: the Taful mark as geometry, for icons painted in code (D20).
 
 pub mod appearance;
@@ -37,6 +39,7 @@ pub mod lessons;
 pub mod logo;
 pub mod mixed;
 pub mod model;
+pub mod next_step;
 pub mod optimizer;
 pub mod overview;
 pub mod postflop;

@@ -23,6 +23,7 @@ use taful_app::layout::{Layout, PanelId, Rect};
 use taful_app::model::{
     DrillSpot, FullHand, HandEnd, LeakBucket, LeftReason, SpotContext, Street, Trainers,
 };
+use taful_app::next_step::Practice;
 use taful_app::postflop::{PostflopError, SpotRequest};
 use taful_app::preflop::{Action, Chips, GameState, GradedDecision, Seat, SpotKind};
 use taful_app::story::{Story, StoryEvent};
@@ -1234,6 +1235,27 @@ impl TableScreen {
         self.mode = Mode::Drill;
         self.deal(cx);
         cx.notify();
+    }
+
+    /// The table the Home's next step opens (D27): full hands, postflop
+    /// spots, or preflop spots of one kind (the first kind the library has
+    /// when it lacks that one).
+    pub(crate) fn start_practice(&mut self, practice: Practice, cx: &mut Context<Self>) {
+        match practice {
+            Practice::Hand => self.set_mode(Mode::Hand, cx),
+            Practice::Postflop => self.set_postflop_spot(None, cx),
+            Practice::Spot(kind) => {
+                let kinds = self
+                    .trainers
+                    .as_ref()
+                    .map(|t| t.preflop.available_kinds())
+                    .unwrap_or_default();
+                match kinds.iter().find(|k| **k == kind).or(kinds.first()) {
+                    Some(k) => self.set_kind(*k, cx),
+                    None => self.set_mode(Mode::Spot, cx),
+                }
+            }
+        }
     }
 
     pub(crate) fn set_postflop_spot(&mut self, id: Option<String>, cx: &mut Context<Self>) {

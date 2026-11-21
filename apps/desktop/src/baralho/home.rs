@@ -1,12 +1,15 @@
-//! Home: "today's hand". Four big cards (continue the lesson, review,
-//! practice the biggest leak, mental math), one suit each, and the tracks
-//! along the bottom.
+//! Home: "today's hand". Four big cards (the lesson, review, practice the
+//! biggest leak, mental math), one suit each, and the tracks along the
+//! bottom. The first card is the next step (D27) with the amber button:
+//! the lesson, or the table once nothing is left to read, or the reviews
+//! when some are due (the heart is dealt first and the lesson second).
 
 use std::rc::Rc;
 
 use gpui::{AnyElement, Context, Div, Stateful, div, prelude::*};
 use taful_app::fmt;
 use taful_app::model::LessonState;
+use taful_app::next_step::{NextStep, StepLesson};
 use taful_app::today::Today;
 
 use super::chrome::MARGIN;
@@ -318,81 +321,130 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                 .child(i18n.tr("baralho-home-body")),
         );
 
-    // ---- spades: the next lesson -------------------------------------------
-    let lesson = match today.next_lesson {
-        Some((t, l)) => {
-            let track = &today.levels[t];
-            let card = &track.lessons[l];
-            let total = track.lessons.len();
-            let body = match card.minutes {
-                Some(m) => i18n.tr_args(
-                    "baralho-home-lesson-body",
-                    &[
-                        ("n", (l + 1).into()),
-                        ("total", total.into()),
-                        ("minutes", m.into()),
-                    ],
-                ),
-                None => i18n.tr_args(
-                    "baralho-home-lesson-body-plain",
-                    &[("n", (l + 1).into()), ("total", total.into())],
-                ),
-            };
-            // A long level keeps to the card with a tighter gap, then
-            // narrower cards.
-            let n = total.max(2) as f32;
-            let gap = ((CARD_INNER_W - MINI_W * n) / (n - 1.)).clamp(1., 5.);
-            let mini_w = MINI_W.min(((CARD_INNER_W - gap * (n - 1.)) / n).floor());
-            let strip = div().flex().gap(u(gap)).children(
-                track
-                    .lessons
-                    .iter()
-                    .enumerate()
-                    .map(|(i, c)| mini(c.state, i == l, mini_w, &bx, &p)),
-            );
-            let id = card.id.clone();
-            Big {
-                pip: Pip::Spade,
-                index: (l + 1).to_string(),
-                eyebrow: i18n.tr_args(
-                    "baralho-home-continue",
-                    &[("track", i18n.tr(&track.title_key()).into())],
-                ),
-                title: card.title.clone(),
-                body,
-                visual: Some(strip),
-                corner: None,
-                button: kit::btn(
-                    "home_lesson",
-                    i18n.tr("baralho-home-lesson-go"),
-                    Fill::Amber,
-                    false,
-                    &bx,
-                )
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.open_lesson(&id);
-                    this.select(Screen::Lesson, window, cx);
-                })),
-            }
+    // ---- the next step (D27) ---------------------------------------------
+    // The first card is the step, with the amber button; the others follow
+    // as shortcuts in their usual order.
+    let step = &today.step;
+    let words = crate::next_step::words(&shell.ui, step);
+    // "Próximo passo · Fundamentos", or "Próximo passo" alone when that
+    // would not fit the card (about 9.5 pixels a letter, tracked caps).
+    let hero_eyebrow = {
+        let full = words.eyebrow(&shell.ui);
+        if full.chars().count() as f32 * 9.5 <= CARD_INNER_W {
+            full
+        } else {
+            i18n.tr("next-step-label")
         }
-        None => Big {
+    };
+    let lesson_card = |l: &StepLesson, hero: bool, cx: &mut Context<Shell>| {
+        let total = l.level_len();
+        let body = match l.minutes {
+            Some(m) => i18n.tr_args(
+                "baralho-home-lesson-body",
+                &[
+                    ("n", l.number.into()),
+                    ("total", total.into()),
+                    ("minutes", m.into()),
+                ],
+            ),
+            None => i18n.tr_args(
+                "baralho-home-lesson-body-plain",
+                &[("n", l.number.into()), ("total", total.into())],
+            ),
+        };
+        // A long level keeps to the card with a tighter gap, then narrower
+        // cards.
+        let n = total.max(2) as f32;
+        let gap = ((CARD_INNER_W - MINI_W * n) / (n - 1.)).clamp(1., 5.);
+        let mini_w = MINI_W.min(((CARD_INNER_W - gap * (n - 1.)) / n).floor());
+        let strip = div().flex().gap(u(gap)).children(
+            l.level_states
+                .iter()
+                .enumerate()
+                .map(|(i, s)| mini(*s, i + 1 == l.number, mini_w, &bx, &p)),
+        );
+        let id = l.id.clone();
+        Big {
             pip: Pip::Spade,
-            index: today.lessons_done().to_string(),
-            eyebrow: i18n.tr("baralho-home-lessons-done"),
-            title: i18n.tr("baralho-home-lessons-done-title"),
-            body: crate::study::idle_text(&shell.ui, today.next_test.as_deref()),
-            visual: None,
+            index: l.number.to_string(),
+            eyebrow: if hero {
+                hero_eyebrow.clone()
+            } else {
+                i18n.tr_args(
+                    "baralho-home-continue",
+                    &[("track", i18n.tr(&format!("level-{}", l.level)).into())],
+                )
+            },
+            title: l.title.clone(),
+            body,
+            visual: Some(strip),
             corner: None,
             button: kit::btn(
                 "home_lesson",
-                i18n.tr("baralho-home-all-lessons"),
-                Fill::Ink,
+                if hero {
+                    words.button.clone()
+                } else {
+                    i18n.tr("baralho-home-lesson-go")
+                },
+                if hero { Fill::Amber } else { Fill::Ink },
                 false,
                 &bx,
             )
-            .on_click(
-                cx.listener(|this, _, window, cx| this.select(Screen::SkillTree, window, cx)),
-            ),
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.open_lesson(&id);
+                this.select(Screen::Lesson, window, cx);
+            })),
+        }
+    };
+    let lesson = match step {
+        NextStep::Lesson(l) => lesson_card(l, true, cx),
+        // Nothing left to read: the spade deals the table practice.
+        NextStep::Table { .. } => Big {
+            pip: Pip::Spade,
+            index: today.lessons_done().to_string(),
+            eyebrow: hero_eyebrow.clone(),
+            title: words.title.clone(),
+            body: words.paragraph(),
+            visual: None,
+            corner: None,
+            button: kit::btn("home_lesson", words.button.clone(), Fill::Amber, false, &bx)
+                .on_click(crate::next_step::on_click(step.clone(), cx)),
+        },
+        // Reviews lead; the lesson stays at hand.
+        NextStep::Review { .. } => match today.next_lesson {
+            Some((g, l)) => {
+                let level = &today.levels[g];
+                let card = &level.lessons[l];
+                let next = StepLesson {
+                    id: card.id.clone(),
+                    title: card.title.clone(),
+                    level: level.id.clone(),
+                    number: l + 1,
+                    minutes: card.minutes,
+                    level_states: level.lessons.iter().map(|c| c.state).collect(),
+                    started: false,
+                };
+                lesson_card(&next, false, cx)
+            }
+            None => Big {
+                pip: Pip::Spade,
+                index: today.lessons_done().to_string(),
+                eyebrow: i18n.tr("baralho-home-lessons-done"),
+                title: i18n.tr("baralho-home-lessons-done-title"),
+                body: crate::study::idle_text(&shell.ui, today.next_test.as_deref()),
+                visual: None,
+                corner: None,
+                button: kit::btn(
+                    "home_lesson",
+                    i18n.tr("baralho-home-all-lessons"),
+                    Fill::Ink,
+                    false,
+                    &bx,
+                )
+                .on_click(
+                    cx.listener(|this, _, window, cx| this.select(Screen::SkillTree, window, cx)),
+                ),
+            },
         },
     };
 
@@ -431,10 +483,17 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                     .map(|_| kit::icon(Pip::Heart.path(), 24., p.suit_hearts)),
             )
     });
+    let review_leads = matches!(step, NextStep::Review { .. });
     let review = Big {
         pip: Pip::Heart,
         index: due.to_string(),
-        eyebrow: i18n.tr("baralho-home-review"),
+        eyebrow: if review_leads {
+            hero_eyebrow.clone()
+        } else {
+            i18n.tr("baralho-home-review")
+        },
+        // The card's own short title: a second line would push the pips
+        // into the button.
         title: if due > 0 {
             i18n.tr_args("baralho-home-review-title", &[("count", due.into())])
         } else {
@@ -445,8 +504,12 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
         corner: None,
         button: kit::btn(
             "home_review",
-            i18n.tr("baralho-home-review-go"),
-            Fill::Ink,
+            if review_leads {
+                words.button.clone()
+            } else {
+                i18n.tr("baralho-home-review-go")
+            },
+            if review_leads { Fill::Amber } else { Fill::Ink },
             false,
             &bx,
         )
@@ -601,6 +664,13 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
         .on_click(cx.listener(|this, _, window, cx| this.select(Screen::Calc, window, cx))),
     };
 
+    // Due reviews deal the heart first (D27).
+    let (first, second) = if review_leads {
+        (review, lesson)
+    } else {
+        (lesson, review)
+    };
+
     // ---- tracks ------------------------------------------------------------
     let row_head = div()
         .absolute()
@@ -671,8 +741,8 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     div()
         .size_full()
         .child(head)
-        .child(big(lesson, 0, &bx, &p).child(crate::tour::anchor("home_continue")))
-        .child(big(review, 1, &bx, &p))
+        .child(big(first, 0, &bx, &p).child(crate::tour::anchor("home_continue")))
+        .child(big(second, 1, &bx, &p))
         .child(big(practice, 2, &bx, &p))
         .child(big(calc, 3, &bx, &p))
         .child(

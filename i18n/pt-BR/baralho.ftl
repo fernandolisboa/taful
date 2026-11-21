@@ -26,7 +26,7 @@ baralho-month-12 = dezembro
 ## Início
 
 baralho-home-title = Sua mão de hoje
-baralho-home-body = Quatro cartas na mesa. Por qual você começa?
+baralho-home-body = A primeira carta é o seu próximo passo. As outras ficam à mão.
 baralho-home-continue = Continuar · { $track }
 baralho-home-lesson-body = Lição { $n } de { $total }. Uns { $minutes } min de leitura e um quiz.
 baralho-home-lesson-body-plain = Lição { $n } de { $total }. Uma leitura e um quiz.

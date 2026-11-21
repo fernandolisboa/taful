@@ -23,7 +23,7 @@ nav-settings = Settings
 
 ## Screen descriptions shown until each screen is built
 
-screen-home-body = Due reviews, your top leaks, the next lesson and quick actions.
+screen-home-body = Your next step, due reviews, your top leaks and quick actions.
 screen-skill-tree-body = From zero to pro, by level or by theme. The gear sets how lessons open.
 screen-lesson-body = Lessons with glossary tooltips and a quiz at the end.
 screen-table-body = Spot mode and full hands against the reference bot, with every decision graded by EV loss.

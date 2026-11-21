@@ -144,7 +144,17 @@ pub struct Entry {
     pub id: String,
     pub level: String,
     pub theme: String,
+    /// What the Home suggests practicing at the table after this lesson
+    /// (D27): one of [`PRACTICES`]. Left out, the theme decides.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub practice: Option<String>,
 }
+
+/// The table practices a catalog entry may name (D27): full hands, postflop
+/// spots, or preflop spots of one kind (the spot kind's id).
+pub const PRACTICES: &[&str] = &[
+    "hand", "postflop", "rfi", "vs-open", "squeeze", "vs-3bet", "vs-4bet", "vs-allin", "bvb",
+];
 
 impl Catalog {
     /// Every lesson id in Jornada order.

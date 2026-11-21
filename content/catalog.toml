@@ -9,6 +9,12 @@
 # `lessons` is the Jornada: level by level, in reading order within a level.
 # The Temas view keeps the same order inside each theme. A lesson's
 # prerequisites must come earlier in this list, never in a higher level.
+#
+# `practice` (optional) is what the Home suggests at the table once the
+# lesson is the last one done (D27): `hand` (full hands), `postflop`
+# (postflop spots) or a preflop spot kind (`rfi`, `vs-open`, `squeeze`,
+# `vs-3bet`, `vs-4bet`, `vs-allin`, `bvb`). Left out, the theme decides:
+# preflop → `rfi`, postflop and math → `postflop`, the rest → `hand`.
 
 levels = ["primeiros-passos", "fundamentos", "iniciante", "intermediario", "avancado", "pro"]
 themes = ["basics", "math", "preflop", "postflop", "reading", "mind"]
@@ -27,9 +33,9 @@ lessons = [
     { id = "opening-ranges", level = "fundamentos", theme = "preflop" },
 
     # ---- Iniciante: plays for fun; first decisions before and after the flop ----
-    { id = "facing-an-open", level = "iniciante", theme = "preflop" },
-    { id = "blind-defense", level = "iniciante", theme = "preflop" },
-    { id = "three-bet-101", level = "iniciante", theme = "preflop" },
+    { id = "facing-an-open", level = "iniciante", theme = "preflop", practice = "vs-open" },
+    { id = "blind-defense", level = "iniciante", theme = "preflop", practice = "vs-open" },
+    { id = "three-bet-101", level = "iniciante", theme = "preflop", practice = "vs-open" },
     { id = "board-texture", level = "iniciante", theme = "postflop" },
     { id = "range-advantage", level = "iniciante", theme = "postflop" },
     { id = "cbet-101", level = "iniciante", theme = "postflop" },
@@ -43,10 +49,10 @@ lessons = [
     { id = "bet-sizing", level = "iniciante", theme = "postflop" },
 
     # ---- Intermediário: plays and studies; bigger pots, later streets, the plan ----
-    { id = "facing-a-3bet", level = "intermediario", theme = "preflop" },
-    { id = "squeeze-101", level = "intermediario", theme = "preflop" },
-    { id = "small-blind-play", level = "intermediario", theme = "preflop" },
-    { id = "four-bet-pots", level = "intermediario", theme = "preflop" },
+    { id = "facing-a-3bet", level = "intermediario", theme = "preflop", practice = "vs-3bet" },
+    { id = "squeeze-101", level = "intermediario", theme = "preflop", practice = "squeeze" },
+    { id = "small-blind-play", level = "intermediario", theme = "preflop", practice = "bvb" },
+    { id = "four-bet-pots", level = "intermediario", theme = "preflop", practice = "vs-4bet" },
     { id = "check-raise-101", level = "intermediario", theme = "postflop" },
     { id = "out-of-position", level = "intermediario", theme = "postflop" },
     { id = "multiway-pots", level = "intermediario", theme = "postflop" },

@@ -263,6 +263,8 @@ pub struct LessonsSummary {
     /// Mean best quiz score over lessons with one, 0–1.
     pub quiz_mean: Option<f64>,
     pub next: Option<NextLesson>,
+    /// What to do now (D27), for the home's hero strip.
+    pub step: crate::next_step::NextStep,
 }
 
 /// Everything the dashboard shows that is not lessons.
@@ -652,6 +654,7 @@ impl App {
                 .sum(),
             quiz_mean: self.store.mean_best_quiz_score()?.map(|(mean, _)| mean),
             next,
+            step: self.next_step_from(&journey)?,
         })
     }
 }

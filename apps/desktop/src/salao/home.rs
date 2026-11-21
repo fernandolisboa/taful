@@ -1,4 +1,4 @@
-//! Salão's home: the next lesson as a hero, three numbers, the leaks.
+//! Salão's home: the next step (D27) as a hero, three numbers, the leaks.
 
 use std::rc::Rc;
 
@@ -6,7 +6,8 @@ use gpui::{AnyElement, Context, Div, FontWeight, div, prelude::*, px};
 use taful_app::fmt;
 use taful_app::i18n::Locale;
 use taful_app::model::{Grade, LessonState};
-use taful_app::overview::{NextLesson, Overview, date_parts};
+use taful_app::next_step::{NextStep, StepLesson};
+use taful_app::overview::{Overview, date_parts};
 
 use super::colors::colors;
 use super::frame::page_title;
@@ -151,119 +152,97 @@ pub fn home(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     };
     let column = shell.salao.column;
     let fit = HeroFit::new(column);
-    let hero_left = match &o.next {
-        Some(next) => {
-            let id = next.id.clone();
-            let track = i18n.tr(&format!("level-{}", next.level));
-            let place = i18n.tr_args(
-                "salao-home-lesson-place",
-                &[
-                    ("n", next.number.into()),
-                    ("total", next.level_states.len().into()),
-                ],
-            );
-            let meta = match next.minutes {
-                Some(m) => format!(
-                    "{place} · {}",
-                    i18n.tr_args("salao-home-lesson-read", &[("minutes", m.into())])
-                ),
-                None => place,
-            };
-            // The mockup's size for a short title; long ones step down to
-            // stay on one line.
-            let letters = next.title.chars().count();
-            let size: f32 = match letters {
-                0..=20 => 50.,
-                21..=27 => 40.,
-                _ => 32.,
-            };
-            // A smaller hero has a shorter title line, and a narrow one a
-            // smaller title still (about half its size per letter).
-            let title_h = (51. * fit.art).round();
-            let size = if fit.full() {
-                size
-            } else {
-                size.min(title_h - 2.)
-                    .min(fit.inner / (letters.max(1) as f32 * 0.5))
-                    .max(20.)
-                    .floor()
-            };
-            // The track's name goes when the label would not fit one line
-            // (about 8.6 pixels per letter, tracked).
-            let label = i18n.tr("home-continue-title");
-            let with_track = format!("{label} · {track}");
-            let label = if with_track.chars().count() as f32 * 8.6 <= fit.inner {
-                with_track
-            } else {
-                label
-            };
-            div()
-                .child(kit::eyebrow(label, p.accent).when(!fit.full(), |d| d.truncate()))
-                .child(
-                    kit::HERO
-                        .text(size, 1.02)
-                        .h(px(title_h))
-                        .flex()
-                        .items_center()
-                        .mt(px(10.))
-                        .mb(px(6.))
-                        .whitespace_nowrap()
-                        .when(!fit.full(), |d| d.overflow_hidden())
-                        .child(next.title.clone()),
-                )
-                .child(
-                    kit::sans_text(14., FontWeight::NORMAL)
-                        .text_color(p.text_muted)
-                        .when(!fit.full(), |d| d.truncate())
-                        .child(meta),
-                )
-                .child(div().flex_1())
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(22.))
-                        .child(
-                            kit::btn(
-                                "salao_home_lesson",
-                                i18n.tr("salao-home-continue-lesson"),
-                                true,
-                                fit.art < 0.85,
-                                &p,
-                            )
-                            .on_click(cx.listener(
-                                move |this, _, window, cx| {
-                                    this.open_lesson(&id);
-                                    this.select(Screen::Lesson, window, cx);
-                                },
-                            )),
-                        )
-                        .when(fit.ticks, |d| {
-                            d.child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(5.))
-                                    .children(ticks(next, &p))
-                                    .when(fit.count, |d| {
-                                        d.child(small_note(total_line).ml(px(8.)))
-                                    }),
-                            )
-                        }),
-                )
-        }
-        None => div()
-            .child(kit::eyebrow(i18n.tr("home-continue-title"), p.accent))
-            .child(
-                // The only text here that may take several lines.
-                kit::sans_wraps(14., FontWeight::NORMAL)
-                    .mt(px(10.))
-                    .text_color(p.text_muted)
-                    .child(crate::study::idle_text(&ui, o.home.next_test.as_deref())),
-            )
-            .child(div().flex_1())
-            .child(small_note(total_line)),
+    // The next step (D27): its words in the mockup's places. A lesson
+    // keeps the level's ticks beside the button.
+    let step = &o.home.step;
+    let words = crate::next_step::words(&ui, step);
+    let lesson = match step {
+        NextStep::Lesson(l) => Some(l),
+        _ => None,
     };
+    // The mockup's size for a short title; long ones step down to stay on
+    // one line.
+    let letters = words.title.chars().count();
+    let size: f32 = match letters {
+        0..=20 => 50.,
+        21..=27 => 40.,
+        _ => 32.,
+    };
+    // A smaller hero has a shorter title line, and a narrow one a smaller
+    // title still (about half its size per letter).
+    let title_h = (51. * fit.art).round();
+    let size = if fit.full() {
+        size
+    } else {
+        size.min(title_h - 2.)
+            .min(fit.inner / (letters.max(1) as f32 * 0.5))
+            .max(20.)
+            .floor()
+    };
+    // What the step is about goes when the label would not fit one line
+    // (about 8.6 pixels per letter, tracked).
+    let with_about = words.eyebrow(&ui);
+    let label = if with_about.chars().count() as f32 * 8.6 <= fit.inner {
+        with_about
+    } else {
+        i18n.tr("next-step-label")
+    };
+    // A lesson's line is its place and reading time, on one line as mocked.
+    // The other steps say a sentence or two: the mockup's hero has room for
+    // two lines; a smaller one keeps their short line.
+    let meta = if lesson.is_none() && fit.full() {
+        kit::sans_wraps(14., FontWeight::NORMAL).child(words.paragraph())
+    } else {
+        kit::sans_text(14., FontWeight::NORMAL)
+            .when(!fit.full(), |d| d.truncate())
+            .child(words.line.clone())
+    };
+    let hero_left = div()
+        .child(kit::eyebrow(label, p.accent).when(!fit.full(), |d| d.truncate()))
+        .child(
+            kit::HERO
+                .text(size, 1.02)
+                .h(px(title_h))
+                .flex()
+                .items_center()
+                .mt(px(10.))
+                .mb(px(6.))
+                .whitespace_nowrap()
+                .when(!fit.full(), |d| d.overflow_hidden())
+                .child(words.title.clone()),
+        )
+        .child(meta.text_color(p.text_muted))
+        .child(div().flex_1())
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(22.))
+                .child(
+                    kit::btn(
+                        "salao_home_lesson",
+                        words.button.clone(),
+                        true,
+                        fit.art < 0.85,
+                        &p,
+                    )
+                    .on_click(crate::next_step::on_click(step.clone(), cx)),
+                )
+                .when(fit.ticks, |d| {
+                    d.child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(5.))
+                            .when_some(lesson, |d, l| d.children(ticks(l, &p)))
+                            .when(fit.count, |d| {
+                                d.child(
+                                    small_note(total_line).when(lesson.is_some(), |d| d.ml(px(8.))),
+                                )
+                            }),
+                    )
+                }),
+        );
     let hero = kit::panel(&p)
         .mt(px(22.))
         .h(px((ART_H * fit.art).round() + 2.))
@@ -584,8 +563,8 @@ pub fn home(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
         .into_any_element()
 }
 
-/// One tick per lesson of the next lesson's track: done, current, to come.
-fn ticks(next: &NextLesson, p: &crate::theme::Palette) -> Vec<Div> {
+/// One tick per lesson of the step's level: done, current, to come.
+fn ticks(next: &StepLesson, p: &crate::theme::Palette) -> Vec<Div> {
     let c = colors();
     let gold = p.accent;
     // The mockup's ticks (22 pixels, for a track of ten); a longer track's

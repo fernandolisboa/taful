@@ -133,6 +133,8 @@ pub struct Home {
     pub calc_recent: (u32, u32),
     pub review_items: u32,
     pub reviews_logged: u32,
+    /// What to do now (D27), for the hero.
+    pub step: crate::next_step::NextStep,
 }
 
 impl App {
@@ -392,6 +394,7 @@ impl App {
             ),
             review_items: items,
             reviews_logged: reviews,
+            step: self.next_step_from(tree)?,
         })
     }
 }

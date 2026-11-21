@@ -26,7 +26,7 @@ baralho-month-12 = December
 ## Home
 
 baralho-home-title = Today's hand
-baralho-home-body = Four cards on the table. Which one do you start with?
+baralho-home-body = The first card is your next step. The others stay at hand.
 baralho-home-continue = Continue · { $track }
 baralho-home-lesson-body = Lesson { $n } of { $total }. About { $minutes } min of reading and a quiz.
 baralho-home-lesson-body-plain = Lesson { $n } of { $total }. A read and a quiz.

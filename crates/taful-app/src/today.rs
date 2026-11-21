@@ -65,6 +65,8 @@ pub struct Today {
     pub calc: Option<CalcPace>,
     /// Three exercise kinds to practice: the least accurate recently.
     pub calc_focus: [ExerciseKind; 3],
+    /// What to do now (D27): the card dealt first.
+    pub step: crate::next_step::NextStep,
 }
 
 impl Today {
@@ -119,6 +121,7 @@ impl App {
             now,
         ));
         let journey = self.journey(locale)?;
+        let step = self.next_step_from(&journey)?;
         let next_lesson = journey.next_at();
         let next_test = journey.next_test;
         let levels = journey.groups;
@@ -203,6 +206,7 @@ impl App {
             leaks,
             calc,
             calc_focus: [picks[0], picks[1], picks[2]],
+            step,
         })
     }
 }

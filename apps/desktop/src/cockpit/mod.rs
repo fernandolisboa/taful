@@ -86,6 +86,8 @@ pub(crate) enum Go {
     TopLeak,
     /// Open the next lesson.
     NextLesson,
+    /// Take the home's next step (D27).
+    NextStep,
 }
 
 /// Runs a dashboard shortcut (a click or its key).
@@ -106,6 +108,12 @@ pub(crate) fn go(shell: &mut Shell, to: Go, window: &mut Window, cx: &mut Contex
                     .table
                     .update(cx, |t, cx| t.start_drill(leak.bucket, cx));
                 shell.select(Screen::Table, window, cx);
+            }
+        }
+        Go::NextStep => {
+            let step = shell.cockpit.lessons().map(|l| l.summary.step.clone());
+            if let Some(step) = step {
+                crate::next_step::go(shell, &step, window, cx);
             }
         }
         Go::NextLesson => {
@@ -143,7 +151,8 @@ pub fn key(
         return false;
     }
     let to = match (shell.screen, ks.key.as_str()) {
-        (Screen::Home | Screen::SkillTree, "enter") => Go::NextLesson,
+        (Screen::Home, "enter") => Go::NextStep,
+        (Screen::SkillTree, "enter") => Go::NextLesson,
         (Screen::Home, "r") => Go::Screen(Screen::Review),
         (Screen::Home, k) => match HOME_KEYS.iter().find(|(key, _)| *key == k) {
             Some((_, to)) => *to,
