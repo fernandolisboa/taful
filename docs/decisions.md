@@ -625,3 +625,21 @@ The author liked the level test with a skip option but did not want to limit any
 ### Implications
 - A level test is new content per level (a quiz drawn from that level's lessons); it is the only thing that marks a level as passed in Prova mode.
 - In Livre mode the level tests still exist, as a way to see where one stands.
+
+---
+
+## D25 — First run: the user says their level, nothing is forced
+
+**Date:** 2026-11-21 · **Ref:** D23, D24
+
+### Decision
+- On the first run the app asks **"Qual é o seu nível no poker?"** and lists the six levels of the Jornada, each with a one-line description in plain words (for example "Nunca joguei", "Sei as regras", "Jogo por diversão", "Jogo e estudo"). A "Pular" link starts at Primeiros passos.
+- The answer only sets where the Jornada starts: every level up to the chosen one is **unlocked**. Nothing is marked done or passed: lessons in skipped levels stay unread, with no score, and the user can open them any time.
+- **No test is ever forced.** Level tests are an option the user can take to unlock or to see where they stand, never a gate at the start. In Prova mode (D24) the level picked on the first run is open without a test.
+- The level can be changed later from the gear on the lessons screen.
+
+### Why
+The author found "Você já joga?" crude and wanted the question to ask for a level; he wants skipping to unlock, not to complete; and he finds forcing a placement test intrusive ("que fossem 3 minutos! 10, pior ainda").
+
+### Implications
+- Progress keeps two separate facts: unlocked levels and done lessons. Home counts and the level badge read only done lessons.
