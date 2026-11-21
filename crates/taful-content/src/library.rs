@@ -153,16 +153,6 @@ impl Catalog {
     pub fn entry(&self, id: &str) -> Option<&Entry> {
         self.lessons.iter().find(|e| e.id == id)
     }
-
-    /// The lessons of `level`, in order.
-    pub fn in_level<'a>(&'a self, level: &'a str) -> impl Iterator<Item = &'a Entry> + 'a {
-        self.lessons.iter().filter(move |e| e.level == level)
-    }
-
-    /// The lessons of `theme`, in Jornada order.
-    pub fn in_theme<'a>(&'a self, theme: &'a str) -> impl Iterator<Item = &'a Entry> + 'a {
-        self.lessons.iter().filter(move |e| e.theme == theme)
-    }
 }
 
 /// The loaded content.

@@ -693,10 +693,6 @@ fn tracks(ui: &Ui, pal: &Pal, lessons: &Lessons, w: f32, cx: &mut Context<Shell>
             .iter()
             .filter(|l| l.state == LessonState::Done)
             .count();
-        let current = track
-            .lessons
-            .iter()
-            .position(|l| s.next.as_ref().is_some_and(|n| n.id == l.id));
         let open = track.lessons.iter().any(|l| l.state != LessonState::Locked);
         div()
             .flex()
@@ -717,7 +713,7 @@ fn tracks(ui: &Ui, pal: &Pal, lessons: &Lessons, w: f32, cx: &mut Context<Shell>
             )
             .child(
                 div().flex_1().flex().gap(px(3.)).children(
-                    kit::steps(done, current, total, pal)
+                    kit::steps(&track.lessons, s.next.as_ref().map(|n| n.id.as_str()), pal)
                         .into_iter()
                         .map(|b| b.flex_1().h(px(10.)).rounded(px(1.5))),
                 ),

@@ -115,6 +115,8 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     let mut panels = Vec::new();
     // Each track's top and the top of the track in progress, for the line.
     let (mut y, mut current_y, mut last_y) = (0., None, 0.);
+    // The first and last groups with lessons: the gold runs between them.
+    let (mut first_y, mut last_real_y): (Option<f32>, f32) = (None, 0.);
     let mut first_locked = true;
     let mut n = 0usize;
     for (k, track) in tracks.into_iter().enumerate() {
@@ -231,7 +233,9 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             .mb(px(TRACK_GAP))
             .px(px(24.))
             .py(px(16.))
-            .when(k == 0, |d| d.child(crate::tour::anchor("tree_first")))
+            .when(stage != Stage::Soon && first_y.is_none(), |d| {
+                d.child(crate::tour::anchor("tree_first"))
+            })
             .child(medal(k, stage, &p))
             .child(head);
         panel = match stage {
@@ -274,6 +278,10 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             panel = panel.children(bar).child(grid);
         }
         n += count;
+        if stage != Stage::Soon {
+            first_y.get_or_insert(y);
+            last_real_y = y;
+        }
         if stage == Stage::Current && current_y.is_none() {
             current_y = Some(y);
         }
@@ -285,7 +293,11 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     // then fading.
     if !panels.is_empty() {
         let (top, bottom) = (MEDAL_Y - 8., last_y + MEDAL_Y + 2.);
-        let gold_to = current_y.map_or(bottom, |y| (y + MEDAL_Y + 64.6).min(bottom));
+        // Empty levels above the first one with lessons are not progress.
+        let gold_from = first_y.map_or(top, |y| (y + MEDAL_Y).max(top));
+        let gold_to = current_y
+            .map_or(last_real_y + MEDAL_Y, |y| y + MEDAL_Y + 64.6)
+            .clamp(gold_from, bottom);
         let fade_to = (gold_to + 67.).min(bottom);
         let piece = |from: f32, to: f32| {
             div()
@@ -296,7 +308,8 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                 .h(px(to - from))
         };
         list = list
-            .child(piece(top, gold_to).bg(p.accent))
+            .child(piece(top, gold_from).bg(alpha(p.accent, 0.12)))
+            .child(piece(gold_from, gold_to).bg(p.accent))
             .child(piece(gold_to, fade_to).bg(kit::vgrad(p.accent, alpha(p.accent, 0.18))))
             .child(
                 piece(fade_to, bottom).bg(kit::vgrad(alpha(p.accent, 0.18), alpha(p.accent, 0.12))),

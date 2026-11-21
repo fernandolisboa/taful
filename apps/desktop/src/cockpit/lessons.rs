@@ -44,35 +44,54 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             .child(ui.i18n.tr("cockpit-kpi-empty"))
             .into_any_element();
     };
-    let tracks: Vec<&LessonGroup> = data.summary.list.groups.iter().collect();
-    let n = tracks.len().max(1);
-    let per_row = per_row(w, n);
-    let wraps = per_row < n;
-    let column_w = (w - (per_row - 1) as f32 * GAP) / per_row as f32;
-    let column_w = if wraps { column_w.floor() } else { column_w };
+    let groups = &data.summary.list.groups;
     let next = data.summary.next.as_ref().map(|n| n.id.as_str());
-    // On one row, a level without lessons yet takes a narrow column and
-    // leaves the room to the ones with lessons.
-    let soon = tracks.iter().filter(|t| t.is_soon()).count();
-    let full_w = if wraps || soon == 0 || soon == n {
-        column_w
-    } else {
-        ((w - (n - 1) as f32 * GAP - soon as f32 * SOON_W) / (n - soon) as f32).max(SOON_W)
+    let first = groups.iter().position(|g| !g.is_soon());
+    // Levels without lessons yet ("em breve") take narrow columns when
+    // everything fits on one row; otherwise the groups with lessons wrap
+    // into even rows and the empty ones follow on a short row of their own.
+    let (real, soon): (Vec<_>, Vec<_>) = groups.iter().enumerate().partition(|(_, g)| !g.is_soon());
+    let one_row = real.len() as f32 * COLUMN_MIN
+        + soon.len() as f32 * SOON_W
+        + groups.len().saturating_sub(1) as f32 * GAP
+        <= w;
+    let row = |items: &[(usize, &LessonGroup)], col_w: f32, cx: &mut Context<Shell>| {
+        let mut r = div().flex().flex_none().items_start().gap(px(GAP));
+        for (k, g) in items {
+            r = r.child(column(
+                &ui,
+                &pal,
+                g,
+                (*k, first == Some(*k)),
+                next,
+                col_w,
+                cx,
+            ));
+        }
+        r
     };
-    let mut columns = div()
-        .flex()
-        .flex_none()
-        .items_start()
-        .gap(px(GAP))
-        .when(wraps, |d| d.flex_wrap().w(px(w)));
-    for (k, track) in tracks.into_iter().enumerate() {
-        let cw = if track.is_soon() && !wraps && soon < n {
-            SOON_W
-        } else {
-            full_w
-        };
-        columns = columns.child(column(&ui, &pal, track, k, next, cw, cx));
-    }
+    let columns = if one_row && !real.is_empty() {
+        let full_w =
+            (w - (groups.len() - 1) as f32 * GAP - soon.len() as f32 * SOON_W) / real.len() as f32;
+        let mut r = div().flex().flex_none().items_start().gap(px(GAP));
+        for (k, g) in groups.iter().enumerate() {
+            let cw = if g.is_soon() { SOON_W } else { full_w };
+            r = r.child(column(&ui, &pal, g, (k, first == Some(k)), next, cw, cx));
+        }
+        r
+    } else {
+        let mut block = div().flex().flex_col().flex_none().gap(px(GAP));
+        for items in [&real, &soon] {
+            if items.is_empty() {
+                continue;
+            }
+            let n = items.len();
+            let per = per_row(w, n);
+            let col_w = ((w - (per - 1) as f32 * GAP) / per as f32).floor();
+            block = block.child(row(items, col_w, cx).when(per < n, |d| d.flex_wrap().w(px(w))));
+        }
+        block
+    };
     let page = div().flex().flex_col().gap(px(GAP)).w(px(w));
     if w < SUMMARY_MIN {
         return page
@@ -213,20 +232,11 @@ fn summary(
             .iter()
             .filter(|t| !t.lessons.is_empty())
             .map(|t| {
-                let done = t
-                    .lessons
-                    .iter()
-                    .filter(|l| l.state == LessonState::Done)
-                    .count();
-                let current = t
-                    .lessons
-                    .iter()
-                    .position(|l| s.next.as_ref().is_some_and(|n| n.id == l.id));
                 div()
                     .flex()
                     .gap(px(2.))
                     .children(
-                        kit::steps(done, current, t.lessons.len(), pal)
+                        kit::steps(&t.lessons, s.next.as_ref().map(|n| n.id.as_str()), pal)
                             .into_iter()
                             .map(|b| {
                                 let b = b.h(px(12.)).rounded(px(1.5));
@@ -296,12 +306,13 @@ fn summary(
         })
 }
 
-/// One track: its lessons in order, each with its state.
+/// One group: its lessons in order, each with its state. `first` marks
+/// the first group with lessons (the tour points at it).
 fn column(
     ui: &Ui,
     pal: &Pal,
     track: &LessonGroup,
-    k: usize,
+    (k, first): (usize, bool),
     next: Option<&str>,
     w: f32,
     cx: &mut Context<Shell>,
@@ -317,7 +328,7 @@ fn column(
     let mut col = kit::panel(pal)
         .relative()
         .w(px(w))
-        .when(k == 0, |d| d.child(crate::tour::anchor("tree_first")))
+        .when(first, |d| d.child(crate::tour::anchor("tree_first")))
         .child(head(
             &i18n.tr(&track.title_key()),
             (!track.is_soon()).then(|| mono(format!("{done}/{total}")).into_any_element()),
@@ -542,8 +553,10 @@ mod tests {
 
     #[test]
     fn columns_wrap_into_even_rows() {
-        // Five tracks, as shipped: one row from the 1280 px design up.
+        // Five tracks: one row from the 1280 px design up.
         assert_eq!(per_row(super::super::frame::WIDE_ROOM, 5), 5);
+        // Six themes wrap into two even rows at 1280, not five and one.
+        assert_eq!(per_row(super::super::frame::WIDE_ROOM, 6), 3);
         assert_eq!(per_row(1484., 5), 5);
         // The smallest window: three and two, not four and one.
         let least = crate::MIN_WINDOW.0 - super::super::frame::RAIL - 2. * kit::EDGE;

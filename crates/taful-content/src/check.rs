@@ -375,10 +375,9 @@ pub fn check_library(lib: &Library, content: &Files, i18n: &Files) -> Vec<Findin
                 None if !lib.lessons.contains_key(p) => {
                     f.push(Finding::new(&path, format!("missing prerequisite `{p}`")))
                 }
-                Some(_) if rank(p) > rank(id) => f.push(Finding::new(
-                    &path,
-                    format!("prerequisite `{p}` is in a higher level"),
-                )),
+                Some(_) if matches!((rank(p), rank(id)), (Some(a), Some(b)) if a > b) => f.push(
+                    Finding::new(&path, format!("prerequisite `{p}` is in a higher level")),
+                ),
                 Some(&pp) if pp >= pos => f.push(Finding::new(
                     &path,
                     format!("prerequisite `{p}` comes later in the catalog"),

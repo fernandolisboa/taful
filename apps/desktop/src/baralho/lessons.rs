@@ -252,11 +252,17 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     let mut page = div().relative().w(u(CANVAS_W)).child(head);
     let mut y = ROW_TOP;
     let mut n = 0usize;
+    // Groups with lessons take the suits in order, as on the home; an
+    // empty level shows a lock instead.
+    let mut suit = 0usize;
     let mut first = true;
-    for (row, track) in list.groups.iter().enumerate() {
+    for track in &list.groups {
         let total = track.lessons.len();
-        let pip = Pip::TRACKS[row % Pip::TRACKS.len()];
         let soon = track.is_soon();
+        let pip = Pip::TRACKS[suit % Pip::TRACKS.len()];
+        if !soon {
+            suit += 1;
+        }
         let tone = if soon {
             bx.on_felt_mut
         } else {
@@ -321,7 +327,11 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .child(kit::icon(pip.path(), 26., tone)),
+                        .child(kit::icon(
+                            if soon { kit::LOCK } else { pip.path() },
+                            26.,
+                            tone,
+                        )),
                 ),
             )
             .child(

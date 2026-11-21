@@ -53,8 +53,8 @@ impl Shell {
         }))
     }
 
-    /// Whether a group's lessons start folded away: Classic and Salão
-    /// unfold the group holding the next lesson and the ones clicked open.
+    /// Whether the user unfolded a group (Classic and Salão keep groups
+    /// without open lessons folded until clicked).
     pub(crate) fn group_expanded(&self, group: &LessonGroup) -> bool {
         self.lesson.expanded.contains(&group.title_key())
     }

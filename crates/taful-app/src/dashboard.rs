@@ -643,7 +643,14 @@ impl App {
         Ok(LessonsSummary {
             done: lessons().filter(|l| l.state == LessonState::Done).count(),
             total: lessons().count(),
-            list: self.lesson_list(view, locale)?,
+            list: match view {
+                crate::lessons::ViewBy::Journey => crate::lessons::LessonList {
+                    view,
+                    groups: tree.clone(),
+                    next: next.as_ref().map(|n| n.id.clone()),
+                },
+                _ => self.lesson_list(view, locale)?,
+            },
             levels: tree.iter().filter(|g| !g.is_soon()).cloned().collect(),
             minutes_left: lessons()
                 .filter(|l| l.state != LessonState::Done)

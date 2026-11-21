@@ -375,12 +375,17 @@ pub fn figure(value: &str, unit: Option<String>, size_px: f32, pal: &Pal) -> Div
 }
 
 /// Progress as one block per step: done, the current one, and the rest.
-pub fn steps(done: usize, current: Option<usize>, total: usize, pal: &Pal) -> Vec<Div> {
-    (0..total)
-        .map(|i| {
-            div().bg(if i < done {
+pub fn steps(
+    lessons: &[taful_app::lessons::LessonCard],
+    next: Option<&str>,
+    pal: &Pal,
+) -> Vec<Div> {
+    lessons
+        .iter()
+        .map(|l| {
+            div().bg(if l.state == taful_app::model::LessonState::Done {
                 pal.teal
-            } else if current == Some(i) {
+            } else if next == Some(l.id.as_str()) {
                 pal.amber
             } else {
                 pal.track
