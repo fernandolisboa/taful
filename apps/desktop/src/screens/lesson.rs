@@ -1,7 +1,8 @@
-//! Lesson reader and quiz (spec §15.1 item 3).
+//! Lesson reader and quiz (spec §15.1 item 3), and the level tests (D24).
 
 use gpui::{AnyElement, Context, FontWeight, div, prelude::*, px};
 use taful_app::fmt;
+use taful_app::lessons::{LevelTestResult, LevelTestView, LockReason};
 use taful_app::model::{Answer, LessonState, OpenLesson, QuizResult, QuizView, RenderedQuestion};
 
 use crate::screen::Screen;
@@ -23,6 +24,36 @@ pub struct LessonView {
     pub expanded: std::collections::HashSet<String>,
     /// "Ver por": read from settings on first use.
     pub view_by: Option<taful_app::lessons::ViewBy>,
+    /// The study-mode popover is open (D24).
+    pub gear_open: bool,
+    /// A level test being taken, in place of a lesson (D24).
+    pub test: Option<TestRun>,
+}
+
+/// A level test from its introduction to its result.
+pub struct TestRun {
+    pub level: String,
+    /// The questions drawn once the user starts (`None`: the introduction).
+    pub view: Option<LevelTestView>,
+    pub index: usize,
+    pub answers: Vec<Answer>,
+    pub feedback: Option<bool>,
+    pub started: i64,
+    pub result: Option<LevelTestResult>,
+}
+
+impl TestRun {
+    pub fn new(level: &str) -> TestRun {
+        TestRun {
+            level: level.to_owned(),
+            view: None,
+            index: 0,
+            answers: Vec::new(),
+            feedback: None,
+            started: 0,
+            result: None,
+        }
+    }
 }
 
 pub struct QuizRun {
@@ -50,6 +81,7 @@ impl Shell {
         self.lesson.current = Some(id.to_owned());
         self.lesson.open = None;
         self.lesson.quiz = None;
+        self.lesson.test = None;
         self.input.clear();
         self.scroll_to_top();
     }
@@ -202,7 +234,11 @@ impl Shell {
         }
     }
 
-    pub(crate) fn quiz_key(&mut self, key: KeyResult, _cx: &mut Context<Self>) {
+    pub(crate) fn quiz_key(&mut self, key: KeyResult, cx: &mut Context<Self>) {
+        if self.lesson.test.is_some() {
+            self.test_key(key, cx);
+            return;
+        }
         let Some(run) = &self.lesson.quiz else {
             return;
         };
@@ -414,6 +450,9 @@ impl Shell {
     }
 
     pub(crate) fn lesson_view(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        if self.lesson.test.is_some() {
+            return self.test_view(cx);
+        }
         if self.lesson.current.is_none() {
             // Default to the next lesson to read.
             let loc = self.ui.i18n.locale();
@@ -460,8 +499,30 @@ impl Shell {
                 )
                 .child(ui.i18n.tr("lesson-back-to-tree")),
         );
-        if open.state == LessonState::Locked {
-            col = col.child(muted(ui.i18n.tr("lesson-locked-note"), &ui, &p));
+        let loc = ui.i18n.locale();
+        let note = match &open.locked_by {
+            Some(LockReason::Test { level }) => Some(ui.i18n.tr_args(
+                "lesson-locked-test",
+                &[("level", ui.i18n.tr(&format!("level-{level}")).into())],
+            )),
+            Some(LockReason::OneAtATime { next: Some(next) }) => {
+                self.app.library().lesson(next, loc.tag()).map(|l| {
+                    ui.i18n.tr_args(
+                        "lesson-locked-step-next",
+                        &[("lesson", l.meta.title.clone().into())],
+                    )
+                })
+            }
+            Some(LockReason::OneAtATime { next: None }) => Some(ui.i18n.tr("lesson-locked-step")),
+            None if open.state == LessonState::Locked => Some(ui.i18n.tr("lesson-locked-note")),
+            None if !open.missing.is_empty() => Some(ui.i18n.tr_args(
+                "lesson-missing",
+                &[("lessons", open.missing.join(", ").into())],
+            )),
+            None => None,
+        };
+        if let Some(note) = note {
+            col = col.child(muted(note, &ui, &p));
         }
         col = col.child(
             card(&ui, &p)
@@ -513,5 +574,269 @@ impl Shell {
             col = col.child(g);
         }
         col.into_any_element()
+    }
+
+    // ---- level tests (D24) -----------------------------------------------------------
+
+    fn start_test(&mut self) {
+        let Some(level) = self.lesson.test.as_ref().map(|r| r.level.clone()) else {
+            return;
+        };
+        let loc = self.ui.i18n.locale();
+        match self.app.level_test(&level, loc) {
+            Ok(view) => {
+                let mut run = TestRun::new(&level);
+                run.view = Some(view);
+                run.started = self.app.now();
+                self.lesson.test = Some(run);
+                self.input.clear();
+            }
+            Err(e) => eprintln!("taful: level test failed to load: {e}"),
+        }
+    }
+
+    fn test_answer(&mut self, a: Answer) {
+        let Some(run) = self.lesson.test.as_mut() else {
+            return;
+        };
+        if run.feedback.is_some() || run.result.is_some() {
+            return;
+        }
+        let Some(q) = run.view.as_ref().and_then(|v| v.questions.get(run.index)) else {
+            return;
+        };
+        run.feedback = Some(q.is_correct(a));
+        run.answers.push(a);
+    }
+
+    fn test_next(&mut self) {
+        let now = self.app.now();
+        let Some(run) = self.lesson.test.as_mut() else {
+            return;
+        };
+        let Some(view) = &run.view else {
+            return;
+        };
+        if run.feedback.is_none() {
+            return;
+        }
+        run.index += 1;
+        run.feedback = None;
+        self.input.clear();
+        if run.index >= view.questions.len() {
+            let (view, answers) = (view.clone(), run.answers.clone());
+            let duration = now - run.started;
+            match self.app.submit_level_test(&view, &answers, duration) {
+                Ok(r) => {
+                    if let Some(run) = self.lesson.test.as_mut() {
+                        run.result = Some(r);
+                    }
+                }
+                Err(e) => eprintln!("taful: level test submit failed: {e}"),
+            }
+        }
+    }
+
+    fn test_key(&mut self, key: KeyResult, _cx: &mut Context<Self>) {
+        let Some(run) = &self.lesson.test else {
+            return;
+        };
+        if run.result.is_some() || !matches!(key, KeyResult::Submit) {
+            return;
+        }
+        let Some(view) = &run.view else {
+            self.start_test();
+            return;
+        };
+        if run.feedback.is_some() {
+            self.test_next();
+            return;
+        }
+        let numeric = view
+            .questions
+            .get(run.index)
+            .is_some_and(|q| q.numeric.is_some());
+        if numeric && let Some(x) = fmt::parse_number(&self.input, self.ui.i18n.locale()) {
+            self.test_answer(Answer::Numeric(x));
+        }
+    }
+
+    /// The level test page: its introduction, one question at a time, then
+    /// the result.
+    fn test_view(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let (ui, p) = (self.ui.clone(), self.palette);
+        let t = &ui.theme;
+        let loc = ui.i18n.locale();
+        let pct = |x: f64| format!("{}%", fmt::number(x * 100.0, 0, loc));
+        let Some(run) = &self.lesson.test else {
+            return div().into_any_element();
+        };
+        let level = run.level.clone();
+        let level_name = ui.i18n.tr(&format!("level-{level}"));
+        let back = div()
+            .id("test_back")
+            .text_size(px(t.text_size.md))
+            .text_color(p.accent)
+            .cursor_pointer()
+            .hover(|s| s.opacity(0.8))
+            .on_click(cx.listener(|this, _, window, cx| this.select(Screen::SkillTree, window, cx)))
+            .child(ui.i18n.tr("lesson-back-to-tree"));
+        let mut c = card(&ui, &p).child(title(
+            ui.i18n
+                .tr_args("level-test-title", &[("level", level_name.into())]),
+            &ui,
+        ));
+        match (&run.view, &run.result) {
+            (None, _) => {
+                let test = self.app.library().test_for(&level);
+                let (questions, pass) =
+                    test.map_or((0, 0.0), |t| (t.draw.min(t.pool.len()), t.pass));
+                let need = (pass * questions as f64 - 1e-9).ceil() as usize;
+                c = c
+                    .child(
+                        div()
+                            .text_size(px(t.text_size.md))
+                            .line_height(px(t.text_size.md * 1.5))
+                            .child(ui.i18n.tr_args(
+                                "level-test-intro",
+                                &[("questions", questions.into()), ("need", need.into())],
+                            )),
+                    )
+                    .child(
+                        div().flex().child(
+                            button("test_start", ui.i18n.tr("level-test-start"), true, &ui, &p)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.start_test();
+                                    window.focus(&this.focus);
+                                    cx.notify();
+                                })),
+                        ),
+                    );
+            }
+            (Some(view), Some(r)) => {
+                c = c.child(div().text_size(px(t.text_size.lg)).child(if r.passed {
+                    ui.i18n
+                        .tr_args("level-test-passed", &[("score", pct(r.score).into())])
+                } else {
+                    ui.i18n.tr_args(
+                        "level-test-failed",
+                        &[
+                            ("score", pct(r.score).into()),
+                            ("pass", pct(view.pass).into()),
+                        ],
+                    )
+                }));
+                if !r.unlocked.is_empty() {
+                    let names: Vec<String> = r
+                        .unlocked
+                        .iter()
+                        .map(|l| ui.i18n.tr(&format!("level-{l}")))
+                        .collect();
+                    c = c.child(muted(
+                        ui.i18n
+                            .tr_args("level-test-opened", &[("levels", names.join(", ").into())]),
+                        &ui,
+                        &p,
+                    ));
+                }
+                c = c.child(
+                    div()
+                        .flex()
+                        .gap(px(t.spacing.sm))
+                        .child(
+                            button(
+                                "test_tree",
+                                ui.i18n.tr("lesson-back-to-tree"),
+                                true,
+                                &ui,
+                                &p,
+                            )
+                            .on_click(cx.listener(
+                                |this, _, window, cx| this.select(Screen::SkillTree, window, cx),
+                            )),
+                        )
+                        .when(!r.passed, |d| {
+                            d.child(
+                                button(
+                                    "test_retry",
+                                    ui.i18n.tr("tree-test-retake"),
+                                    false,
+                                    &ui,
+                                    &p,
+                                )
+                                .on_click(cx.listener(
+                                    |this, _, window, cx| {
+                                        this.start_test();
+                                        window.focus(&this.focus);
+                                        cx.notify();
+                                    },
+                                )),
+                            )
+                        }),
+                );
+            }
+            (Some(view), None) => {
+                let Some(q) = view.questions.get(run.index) else {
+                    return div().into_any_element();
+                };
+                let last = run.index + 1 == view.questions.len();
+                c = c
+                    .child(muted(
+                        ui.i18n.tr_args(
+                            "quiz-progress",
+                            &[
+                                ("n", (run.index + 1).into()),
+                                ("total", view.questions.len().into()),
+                            ],
+                        ),
+                        &ui,
+                        &p,
+                    ))
+                    .child(self.question_view(
+                        "test_choice",
+                        q,
+                        QuestionState {
+                            picked: run.feedback.and(run.answers.last().copied()),
+                            feedback: run.feedback,
+                            input: &self.input,
+                        },
+                        |this, i| this.test_answer(Answer::Choice(i)),
+                        cx,
+                    ));
+                if run.feedback.is_some() {
+                    let label = if last { "quiz-finish" } else { "quiz-next" };
+                    c = c.child(
+                        button("test_next", ui.i18n.tr(label), true, &ui, &p).on_click(
+                            cx.listener(|this, _, window, cx| {
+                                this.test_next();
+                                window.focus(&this.focus);
+                                cx.notify();
+                            }),
+                        ),
+                    );
+                } else if q.numeric.is_some() {
+                    c = c.child(
+                        button("test_check", ui.i18n.tr("quiz-check"), true, &ui, &p).on_click(
+                            cx.listener(|this, _, window, cx| {
+                                if let Some(x) =
+                                    fmt::parse_number(&this.input, this.ui.i18n.locale())
+                                {
+                                    this.test_answer(Answer::Numeric(x));
+                                }
+                                window.focus(&this.focus);
+                                cx.notify();
+                            }),
+                        ),
+                    );
+                }
+            }
+        }
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(t.spacing.lg))
+            .child(back)
+            .child(c)
+            .into_any_element()
     }
 }

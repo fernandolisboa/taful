@@ -69,7 +69,12 @@ impl Shell {
                         )
                         .into_any_element()
                 }
-                None => muted(ui.i18n.tr("home-lesson-none"), &ui, &p).into_any_element(),
+                None => muted(
+                    crate::study::idle_text(&ui, home.next_test.as_deref()),
+                    &ui,
+                    &p,
+                )
+                .into_any_element(),
             })
             .child(
                 div()

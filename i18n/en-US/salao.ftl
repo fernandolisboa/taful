@@ -64,7 +64,7 @@ salao-track-current = In progress
 salao-track-locked = { $count ->
     [one] 1 lesson
    *[other] { $count } lessons
-} · unlocks as you finish the lessons it builds on.
+} · locked for now.
 salao-lesson-next = next
 salao-lesson-continue = Continue
 salao-lesson-quiz = quiz { $score }

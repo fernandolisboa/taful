@@ -267,9 +267,44 @@ pub struct TermTip {
     size: (f32, f32),
 }
 
+impl TermTip {
+    /// A tooltip with a title over a short explanation, in the theme's
+    /// sizes (glossary terms, the study modes' (i)).
+    pub fn new(
+        title: impl Into<SharedString>,
+        body: impl Into<SharedString>,
+        ui: &Ui,
+        palette: Palette,
+    ) -> TermTip {
+        let t = &ui.theme;
+        TermTip {
+            title: title.into(),
+            body: body.into(),
+            palette,
+            pad: t.spacing.md,
+            radius: t.radii.md,
+            size: (t.text_size.md, t.text_size.lg),
+        }
+    }
+}
+
 impl Render for TermTip {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let p = &self.palette;
+        // A title alone (a button's name) is a small label.
+        if self.body.is_empty() {
+            return div()
+                .px(px(self.pad / 1.5))
+                .py(px(self.pad / 3.))
+                .rounded(px(self.radius))
+                .bg(p.surface_raised)
+                .border_1()
+                .border_color(p.border)
+                .text_size(px(self.size.0 * 0.9))
+                .text_color(p.text)
+                .child(self.title.clone());
+        }
+        let body = div().text_size(px(self.size.0)).child(self.body.clone());
         div()
             .w(px(TIP_WIDTH))
             .flex()
@@ -288,7 +323,7 @@ impl Render for TermTip {
                     .text_color(p.accent)
                     .child(self.title.clone()),
             )
-            .child(div().text_size(px(self.size.0)).child(self.body.clone()))
+            .child(body)
     }
 }
 
@@ -342,15 +377,12 @@ fn rich_text(id: ElementId, spans: &[Span], ui: &std::rc::Rc<Ui>, p: &Palette) -
     InteractiveText::new(id, styled)
         .tooltip(move |ix, _window, cx: &mut App| {
             let (_, term) = terms.iter().find(|(r, _)| r.contains(&ix))?;
-            let t = &ui.theme;
-            let tip = TermTip {
-                title: ui.i18n.tr(&format!("glossary-{term}")).into(),
-                body: ui.i18n.tr(&format!("glossary-{term}-def")).into(),
+            let tip = TermTip::new(
+                ui.i18n.tr(&format!("glossary-{term}")),
+                ui.i18n.tr(&format!("glossary-{term}-def")),
+                &ui,
                 palette,
-                pad: t.spacing.md,
-                radius: t.radii.md,
-                size: (t.text_size.md, t.text_size.lg),
-            };
+            );
             Some(cx.new(|_| tip).into())
         })
         .into_any_element()

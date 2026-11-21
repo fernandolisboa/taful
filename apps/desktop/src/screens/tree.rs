@@ -3,11 +3,12 @@
 
 use gpui::{AnyElement, Context, Div, FontWeight, div, prelude::*, px};
 use taful_app::fmt;
-use taful_app::lessons::{LessonGroup, LessonList, ViewBy};
+use taful_app::lessons::{LessonGroup, LessonList, TestState, ViewBy};
 use taful_app::model::LessonState;
 
 use crate::screen::Screen;
 use crate::shell::Shell;
+use crate::study::{GearLook, on_test_click};
 use crate::widgets::{button, card, muted, progress, segment, segmented, title};
 
 impl Shell {
@@ -77,17 +78,62 @@ impl Shell {
             Err(e) => return muted(e.to_string(), &ui, &p).into_any_element(),
         };
         let next = list.next.clone();
+        let gear = self.study_gear(
+            GearLook {
+                size: 32.,
+                radius: t.radii.md,
+                icon: p.text_muted,
+                icon_on: p.text,
+                ring: p.border,
+                fill_on: p.surface_raised,
+            },
+            cx,
+        );
         let switch = div()
             .flex()
             .items_center()
             .gap(px(t.spacing.md))
             .child(muted(ui.i18n.tr("tree-view-by"), &ui, &p))
-            .child(self.view_switch(cx));
+            .child(self.view_switch(cx))
+            .child(div().flex_1())
+            .child(gear);
         let mut col = div().flex().flex_col().gap(px(t.spacing.lg)).child(switch);
+        // Prova with nothing left to read: the test that opens what follows.
+        if let (None, Some(level)) = (&next, &list.next_test) {
+            col = col.child(
+                card(&ui, &p).border_1().border_color(p.accent_muted).child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(t.spacing.md))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w(px(0.))
+                                .text_size(px(t.text_size.md))
+                                .child(crate::study::next_test_text(&ui, level)),
+                        )
+                        .child(
+                            button(
+                                "tree_next_test",
+                                ui.i18n.tr("tree-test-take"),
+                                true,
+                                &ui,
+                                &p,
+                            )
+                            .flex_none()
+                            .on_click(on_test_click(level.clone(), cx)),
+                        ),
+                ),
+            );
+        }
         let mut n = 0usize;
         let mut g = 0usize;
+        let next_test = list.next_test.clone();
         for track in list.groups {
             g += 1;
+            let test = crate::study::test_line(&ui, &track, next_test.as_deref());
+            let opens_with = crate::study::opens_with_text(&ui, &track);
             let total = track.lessons.len();
             if total == 0 {
                 // A level without lessons yet: its title and "em breve".
@@ -155,8 +201,15 @@ impl Shell {
                             cx.notify();
                         }))
                         .child(muted(
-                            ui.i18n
-                                .tr_args("tree-track-locked", &[("count", total.into())]),
+                            match &opens_with {
+                                Some(o) => format!(
+                                    "{} · {o}",
+                                    ui.i18n.tr_args("tree-lessons", &[("count", total.into())])
+                                ),
+                                None => ui
+                                    .i18n
+                                    .tr_args("tree-track-locked", &[("count", total.into())]),
+                            },
                             &ui,
                             &p,
                         )),
@@ -271,6 +324,58 @@ impl Shell {
                                     })),
                             )
                         }),
+                );
+            }
+            if let Some(test) = test.filter(|t| t.state != TestState::Locked) {
+                let passed = test.state == TestState::Passed;
+                let level = track.id.clone();
+                c = c.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(t.spacing.md))
+                        .mt(px(t.spacing.xs))
+                        .pt(px(t.spacing.md))
+                        .px(px(t.spacing.md))
+                        .border_t_1()
+                        .border_color(p.border)
+                        .child(
+                            div()
+                                .flex_1()
+                                .flex()
+                                .flex_col()
+                                .child(
+                                    div()
+                                        .text_size(px(t.text_size.md))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(if passed { p.accent } else { p.text })
+                                        .child(if passed {
+                                            format!("✓ {}", test.action)
+                                        } else {
+                                            ui.i18n.tr("tree-test")
+                                        }),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(t.text_size.sm))
+                                        .text_color(p.text_muted)
+                                        .child(test.meta),
+                                ),
+                        )
+                        .child(
+                            button(
+                                ("tree_test", g),
+                                ui.i18n.tr(if passed {
+                                    "tree-test-retake"
+                                } else {
+                                    "tree-test-take"
+                                }),
+                                test.suggested,
+                                &ui,
+                                &p,
+                            )
+                            .on_click(on_test_click(level, cx)),
+                        ),
                 );
             }
             col = col.child(c);

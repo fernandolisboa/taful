@@ -380,7 +380,7 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             index: today.lessons_done().to_string(),
             eyebrow: i18n.tr("baralho-home-lessons-done"),
             title: i18n.tr("baralho-home-lessons-done-title"),
-            body: i18n.tr("home-lesson-none"),
+            body: crate::study::idle_text(&shell.ui, today.next_test.as_deref()),
             visual: None,
             corner: None,
             button: kit::btn(

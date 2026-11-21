@@ -1,0 +1,22 @@
+# Level test of Fundamentos (D24): optional in every study mode. Passing it
+# opens the next level in the Prova mode; it never marks lessons done (D25).
+# Each attempt draws `draw` questions spread over the level's lessons (one
+# per lesson, in a random order, before a second from any). Format:
+# crates/taful-content/src/level_test.rs.
+
+level = "fundamentos"
+version = 1
+pass = 0.8
+draw = 10
+pool = [
+    "hand-rankings-quiz/flush-vs-straight", "hand-rankings-quiz/full-house-vs-flush", "hand-rankings-quiz/kicker", "hand-rankings-quiz/starting-hands",
+    "positions-6max-quiz/first-preflop", "positions-6max-quiz/last-postflop", "positions-6max-quiz/widest-open", "positions-6max-quiz/in-position",
+    "stacks-and-blinds-quiz/bb-count", "stacks-and-blinds-quiz/effective", "stacks-and-blinds-quiz/blinds-pot", "stacks-and-blinds-quiz/srp-pot",
+    "combos-101-quiz/pair", "combos-101-quiz/offsuit", "combos-101-quiz/range", "combos-101-quiz/blocker",
+    "equity-101-quiz/definition", "equity-101-quiz/draw-vs-aces", "equity-101-quiz/gutshot", "equity-101-quiz/vs-range",
+    "outs-101-quiz/flush-draw", "outs-101-quiz/oesd", "outs-101-quiz/gutshot", "outs-101-quiz/dirty",
+    "rule-of-2-and-4-quiz/turn-flush", "rule-of-2-and-4-quiz/flop-oesd", "rule-of-2-and-4-quiz/combo-draw", "rule-of-2-and-4-quiz/when-x4",
+    "pot-odds-101-quiz/half-pot", "pot-odds-101-quiz/pot-bet", "pot-odds-101-quiz/two-thirds", "pot-odds-101-quiz/call-or-fold",
+    "ranges-101-quiz/qq-plus", "ranges-101-quiz/ak", "ranges-101-quiz/ats", "ranges-101-quiz/mixed",
+    "opening-ranges-quiz/widest", "opening-ranges-quiz/utg", "opening-ranges-quiz/why", "opening-ranges-quiz/limp",
+]

@@ -631,6 +631,15 @@ The author liked the level test with a skip option but did not want to limit any
 - A level test is new content per level (a quiz drawn from that level's lessons); it is the only thing that marks a level as passed in Prova mode.
 - In Livre mode the level tests still exist, as a way to see where one stands.
 
+### As built (amended 2026-11-21, #86)
+- Settings keys: `lessons.unlock_mode` (`prova` | `guiado` | `livre`), `lessons.tests_passed` (the levels whose test was passed) and `lessons.start_level` (D25). Done lessons stay in `lesson_progress`; nothing about the mode is stored there, which is why switching never loses progress.
+- **Level tests** are content: `content/tests/<level>.toml` with `level`, `version`, `pass` (default 0.8), `draw` (questions per attempt) and `pool` (`<quiz id>/<question id>` from that level's lessons). Each attempt draws one question per lesson in a random order, then a second round, until `draw`. `content-check` requires a test for every level with lessons and checks the pool. A passed test is stored in settings and the attempt in `quiz_attempts` as `level-test/<level>`; tests never mark lessons done and never feed the review queue.
+- **Prova:** levels up to the starting level are open, each passed test opens the next level, and a level with no lessons yet lets the next one through. A closed level names the test right before it ("Abre com a prova de Iniciante"). When every open lesson is done the lessons screen and Home suggest the test.
+- **Guiado:** within a reached level only the first lesson not done is open. A level is reached when Prova would open it or when every lesson before it is done (or its test was passed).
+- **Livre:** everything open; the reader lists the prerequisites not done yet.
+- The next lesson is the first open one in Jornada order from the user's floor (the starting level, or a lower level they already read; past every passed test), else the first open one anywhere.
+- The gear popover sits under the gear, right-aligned, closes on any click outside it, and is drawn by the shell so it floats over every style. Settings › Estudo has the same three rows.
+
 ---
 
 ## D25 — First run: the user says their level, nothing is forced
@@ -648,6 +657,9 @@ The author found "Você já joga?" crude and wanted the question to ask for a le
 
 ### Implications
 - Progress keeps two separate facts: unlocked levels and done lessons. Home counts and the level badge read only done lessons.
+
+### As built (amended 2026-11-21, #86)
+- `lessons.start_level` holds the level picked on the first run (#88 builds the picker). Until then it is derived from existing progress, so a user from before D24 keeps every lesson they had open: the highest level where a lesson is done or every prerequisite is done. The derived value is stored the first time new progress is recorded (a quiz or a level test), so later progress does not move it.
 
 ---
 

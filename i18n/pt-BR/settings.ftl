@@ -125,3 +125,5 @@ update-mode-notify = Avisar
 update-mode-silent = Silencioso
 update-mode-notify-body = Um cartão no canto da tela avisa quando há uma versão nova e quando ela está pronta.
 update-mode-silent-body = Sem cartão: o que estiver no automático acontece sem avisar. Você vê o estado aqui e no ícone da bandeja.
+settings-study-mode = Como as lições abrem
+settings-study-mode-body = A mesma escolha fica na engrenagem da tela de Lições.

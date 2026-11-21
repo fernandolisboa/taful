@@ -16,6 +16,7 @@ review-session-done = { $count ->
 }
 
 home-due-title = Revisões
+home-lesson-test = Você terminou as lições abertas. Faça a prova de { $level } em Lições para abrir o próximo nível.
 home-lesson-none = Todas as lições concluídas. Mais lições chegam nos próximos marcos.
 home-calc-title = Cálculo mental
 home-calc-recent = { $correct } de { $total } certas nas suas últimas respostas

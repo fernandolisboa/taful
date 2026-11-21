@@ -259,7 +259,7 @@ pub fn home(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                 kit::sans_wraps(14., FontWeight::NORMAL)
                     .mt(px(10.))
                     .text_color(p.text_muted)
-                    .child(i18n.tr("home-lesson-none")),
+                    .child(crate::study::idle_text(&ui, o.home.next_test.as_deref())),
             )
             .child(div().flex_1())
             .child(small_note(total_line)),

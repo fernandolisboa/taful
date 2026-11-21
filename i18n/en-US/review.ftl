@@ -16,6 +16,7 @@ review-session-done = { $count ->
 }
 
 home-due-title = Reviews
+home-lesson-test = You finished the open lessons. Take the { $level } test in Lessons to open the next level.
 home-lesson-none = Every lesson is done. More arrive with the next milestones.
 home-calc-title = Mental math
 home-calc-recent = { $correct } of { $total } right in your last answers

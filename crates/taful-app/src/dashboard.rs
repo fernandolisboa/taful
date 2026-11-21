@@ -623,32 +623,26 @@ impl App {
         view: crate::lessons::ViewBy,
         locale: Locale,
     ) -> Result<LessonsSummary> {
-        let tree = self.journey(locale)?;
+        let journey = self.journey(locale)?;
+        let tree = &journey.groups;
         let lessons = || tree.iter().flat_map(|t| &t.lessons);
-        let next = tree.iter().find_map(|t| {
-            let i = t
-                .lessons
-                .iter()
-                .position(|l| l.state == LessonState::Available)?;
+        let next = journey.next_at().map(|(g, i)| {
+            let t = &tree[g];
             let l = &t.lessons[i];
-            Some(NextLesson {
+            NextLesson {
                 id: l.id.clone(),
                 title: l.title.clone(),
                 level: t.id.clone(),
                 number: i + 1,
                 level_len: t.lessons.len(),
                 minutes: l.minutes,
-            })
+            }
         });
         Ok(LessonsSummary {
             done: lessons().filter(|l| l.state == LessonState::Done).count(),
             total: lessons().count(),
             list: match view {
-                crate::lessons::ViewBy::Journey => crate::lessons::LessonList {
-                    view,
-                    groups: tree.clone(),
-                    next: next.as_ref().map(|n| n.id.clone()),
-                },
+                crate::lessons::ViewBy::Journey => journey.clone(),
                 _ => self.lesson_list(view, locale)?,
             },
             levels: tree.iter().filter(|g| !g.is_soon()).cloned().collect(),

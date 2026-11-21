@@ -6,7 +6,7 @@ use gpui::{
     AnyElement, Context, Div, FontWeight, div, linear_color_stop, linear_gradient, prelude::*, px,
     relative,
 };
-use taful_app::lessons::{GroupKind, LessonCard, LessonGroup, ViewBy};
+use taful_app::lessons::{GroupKind, LessonCard, LessonGroup, TestState, ViewBy};
 use taful_app::model::LessonState;
 
 use super::kit::{self, Btn, GAP, MONO, STRONG, btn, figure, head, icon, label, mono};
@@ -16,6 +16,7 @@ use super::{Go, go};
 use crate::Ui;
 use crate::screen::Screen;
 use crate::shell::Shell;
+use crate::study::{GearLook, on_test_click};
 
 /// The least the next lesson and the progress cells get in a narrow window.
 const NEXT_MIN: f32 = 380.;
@@ -45,7 +46,10 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             .into_any_element();
     };
     let groups = &data.summary.list.groups;
-    let next = data.summary.next.as_ref().map(|n| n.id.as_str());
+    let next = (
+        data.summary.next.as_ref().map(|n| n.id.as_str()),
+        data.summary.list.next_test.as_deref(),
+    );
     let first = groups.iter().position(|g| !g.is_soon());
     // Levels without lessons yet ("em breve") take narrow columns when
     // everything fits on one row; otherwise the groups with lessons wrap
@@ -161,9 +165,42 @@ fn next_lesson(ui: &Ui, pal: &Pal, data: &Lessons, meta: bool, cx: &mut Context<
                     go(this, Go::NextLesson, window, cx);
                 })),
             ),
-        None => div()
-            .text_color(pal.muted)
-            .child(i18n.tr("home-lesson-none")),
+        None => match &data.summary.list.next_test {
+            // Prova with nothing left to read: the test that opens what
+            // follows.
+            Some(level) => div()
+                .child(
+                    div()
+                        .flex_shrink()
+                        .min_w(px(0.))
+                        .child(
+                            label(&i18n.tr("tree-test"), pal)
+                                .text_color(pal.amber)
+                                .whitespace_nowrap(),
+                        )
+                        .child(
+                            div()
+                                .mt(px(3.))
+                                .text_size(px(13.))
+                                .line_height(relative(1.3))
+                                .child(crate::study::next_test_text(ui, level)),
+                        ),
+                )
+                .child(div().flex_1())
+                .child(
+                    btn(
+                        "cockpit_next_test",
+                        i18n.tr("tree-test-take"),
+                        None,
+                        Btn::Amber,
+                        pal,
+                    )
+                    .on_click(on_test_click(level.clone(), cx)),
+                ),
+            None => div()
+                .text_color(pal.muted)
+                .child(i18n.tr("home-lesson-none")),
+        },
     };
     next.flex()
         .flex_1()
@@ -313,7 +350,7 @@ fn column(
     pal: &Pal,
     track: &LessonGroup,
     (k, first): (usize, bool),
-    next: Option<&str>,
+    (next, next_test): (Option<&str>, Option<&str>),
     w: f32,
     cx: &mut Context<Shell>,
 ) -> Div {
@@ -372,14 +409,135 @@ fn column(
                 })),
         );
     }
+    let test = crate::study::test_line(ui, track, next_test);
+    let closed = crate::study::opens_with_text(ui, track);
     for (i, lesson) in track.lessons.iter().enumerate() {
         let is_next = next == Some(lesson.id.as_str());
         col = col.child(
-            row(ui, pal, lesson, (k, i), is_next, cx)
-                .when(i + 1 < total, |d| d.border_b_1().border_color(pal.line)),
+            row(ui, pal, lesson, (k, i), is_next, cx).when(i + 1 < total || test.is_some(), |d| {
+                d.border_b_1().border_color(pal.line)
+            }),
         );
     }
+    if let Some(t) = test {
+        col = col.child(test_row(ui, pal, track, t, closed, k, cx));
+    }
     col
+}
+
+/// A level's test, under its lessons: the button, its check once passed,
+/// or the lock while the level is closed.
+fn test_row(
+    ui: &Ui,
+    pal: &Pal,
+    track: &LessonGroup,
+    t: crate::study::TestLine,
+    closed: Option<gpui::SharedString>,
+    k: usize,
+    cx: &mut Context<Shell>,
+) -> Div {
+    let i18n = &ui.i18n;
+    let side = div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(5.))
+        .font_family(MONO)
+        .text_size(px(11.));
+    let side = match t.state {
+        TestState::Passed => side
+            .text_color(pal.teal)
+            .child(icon("check", 12., pal.teal))
+            .child(
+                btn(
+                    ("cockpit_test", k),
+                    i18n.tr("tree-test-retake"),
+                    None,
+                    Btn::Small,
+                    pal,
+                )
+                .on_click(on_test_click(track.id.clone(), cx)),
+            ),
+        TestState::Locked => side.child(icon("lock", 12., pal.dim)),
+        TestState::Open => side.child(
+            btn(
+                ("cockpit_test", k),
+                i18n.tr("tree-test-take"),
+                None,
+                if t.suggested {
+                    Btn::SmallAmber
+                } else {
+                    Btn::Small
+                },
+                pal,
+            )
+            .on_click(on_test_click(track.id.clone(), cx)),
+        ),
+    };
+    let detail = match (t.state, closed) {
+        (TestState::Locked, Some(c)) => c.to_string(),
+        (TestState::Passed, _) => t.action,
+        _ => t.meta,
+    };
+    let locked = t.state == TestState::Locked;
+    div()
+        .relative()
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(8.))
+        .h(px(ROW_H))
+        .px(px(12.))
+        .bg(pal.panel2)
+        .when(t.suggested, |d| {
+            d.bg(linear_gradient(
+                90.,
+                linear_color_stop(pal.amber_at(0.13), 0.),
+                linear_color_stop(pal.amber_at(0.03), 1.),
+            ))
+            .child(
+                div()
+                    .absolute()
+                    .left_0()
+                    .top_0()
+                    .bottom_0()
+                    .w(px(2.))
+                    .bg(pal.amber),
+            )
+        })
+        .child(
+            div()
+                .flex_none()
+                .w(px(26.))
+                .font_family(MONO)
+                .text_size(px(11.))
+                .text_color(if t.suggested { pal.amber } else { pal.dim })
+                .child("✦"),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(0.))
+                .child(
+                    div()
+                        .text_size(px(12.5))
+                        .font_weight(FontWeight::MEDIUM)
+                        .line_height(relative(1.25))
+                        .truncate()
+                        .when(locked, |d| d.text_color(pal.locked_text))
+                        .child(i18n.tr("tree-test")),
+                )
+                .child(
+                    div()
+                        .mt(px(2.))
+                        .font_family(MONO)
+                        .text_size(px(10.))
+                        .text_color(pal.dim)
+                        .truncate()
+                        .child(detail),
+                ),
+        )
+        .child(side)
 }
 
 fn row(
@@ -499,7 +657,8 @@ fn row(
 /// "Ver por" for the status bar: a label and one small toggle per view.
 pub(super) fn view_switch(shell: &mut Shell, pal: &Pal, cx: &mut Context<Shell>) -> Div {
     let current = shell.view_by();
-    let i18n = &shell.ui.i18n;
+    let ui = shell.ui.clone();
+    let i18n = &ui.i18n;
     let item = |view: ViewBy| {
         let on = view == current;
         div()
@@ -542,6 +701,17 @@ pub(super) fn view_switch(shell: &mut Shell, pal: &Pal, cx: &mut Context<Shell>)
                 .border_color(pal.line2)
                 .children(ViewBy::ALL.into_iter().map(item)),
         )
+        .child(shell.study_gear(
+            GearLook {
+                size: 26.,
+                radius: 4.,
+                icon: pal.muted,
+                icon_on: pal.amber,
+                ring: pal.line2,
+                fill_on: pal.raised,
+            },
+            cx,
+        ))
 }
 
 // The summary's one-row arrangement fits the width it was designed for.

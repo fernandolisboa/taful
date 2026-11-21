@@ -3,7 +3,7 @@
 //! with the button, and locked lessons lie face down.
 
 use gpui::{AnyElement, Context, Div, div, prelude::*};
-use taful_app::lessons::{GroupKind, LessonCard, ViewBy};
+use taful_app::lessons::{GroupKind, LessonCard, TestState, ViewBy};
 use taful_app::model::LessonState;
 
 use super::chrome::{MARGIN, NAV_H, heading};
@@ -12,6 +12,7 @@ use super::paint::{self, Tex};
 use super::{Bx, CANVAS_H, CANVAS_W, Tone, bx, typo, u};
 use crate::screen::Screen;
 use crate::shell::Shell;
+use crate::study::{GearLook, on_test_click};
 use crate::theme::alpha;
 
 const ROW_TOP: f32 = 170.;
@@ -224,7 +225,18 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                             .text_color(bx.on_felt_mut)
                             .child(i18n.tr("tree-view-by")),
                     )
-                    .child(shell.view_switch(cx)),
+                    .child(shell.view_switch(cx))
+                    .child(shell.study_gear(
+                        GearLook {
+                            size: f32::from(u(38.)),
+                            radius: f32::from(u(11.)),
+                            icon: bx.on_felt_mut,
+                            icon_on: bx.on_felt,
+                            ring: alpha(bx.on_felt, 0.28),
+                            fill_on: alpha(bx.on_felt, 0.1),
+                        },
+                        cx,
+                    )),
             )
             .child(
                 div()
@@ -256,8 +268,10 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     // empty level shows a lock instead.
     let mut suit = 0usize;
     let mut first = true;
-    for track in &list.groups {
+    for (g, track) in list.groups.iter().enumerate() {
         let total = track.lessons.len();
+        let test = crate::study::test_line(&shell.ui, track, list.next_test.as_deref());
+        let opens_with = crate::study::opens_with_text(&shell.ui, track);
         let soon = track.is_soon();
         let pip = Pip::TRACKS[suit % Pip::TRACKS.len()];
         if !soon {
@@ -338,6 +352,7 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                 div()
                     .flex()
                     .flex_col()
+                    .flex_1()
                     .min_w_0()
                     .child(
                         typo::disp(20., 800, 25)
@@ -352,7 +367,36 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                             .mt(u(3.))
                             .text_color(bx.on_felt_mut)
                             .child(detail),
-                    ),
+                    )
+                    // Prova: the test that opens a closed level.
+                    .children(opens_with.filter(|_| !open).map(|o| {
+                        typo::text(12.5, 600)
+                            .on(div())
+                            .mt(u(2.))
+                            .text_color(bx.on_felt_mut)
+                            .child(o)
+                    }))
+                    // The level test: a button, or a pill once passed.
+                    .children(test.filter(|t| t.state != TestState::Locked).map(|t| {
+                        let el = if t.state == TestState::Passed {
+                            kit::pill(&bx, format!("✓ {}", t.action)).into_any_element()
+                        } else {
+                            kit::btn(
+                                ("baralho_test", g),
+                                i18n.tr("tree-test-take"),
+                                if t.suggested {
+                                    Fill::Amber
+                                } else {
+                                    Fill::Cream
+                                },
+                                true,
+                                &bx,
+                            )
+                            .on_click(on_test_click(track.id.clone(), cx))
+                            .into_any_element()
+                        };
+                        div().flex().mt(u(8.)).child(el)
+                    })),
             );
         if soon {
             page = page.child(

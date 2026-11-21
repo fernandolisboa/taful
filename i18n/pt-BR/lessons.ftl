@@ -64,10 +64,50 @@ quiz-unlocked = Liberadas: { $lessons }
 
 tree-track-progress = { $done } de { $total }
 tree-start = Começar
+tree-lessons = { $count ->
+    [one] 1 lição
+   *[other] { $count } lições
+}
 tree-track-locked = { $count ->
     [one] 1 lição
    *[other] { $count } lições
-} · libera conforme você conclui as lições que vêm antes. Clique para dar uma olhada.
+} · fechadas por enquanto. Clique para dar uma olhada.
+
+## Modo de estudo (D24): a engrenagem da tela de Lições e Configurações › Estudo
+
+study-mode-title = Modo de estudo
+study-mode-gear = Modo de estudo
+study-mode-prova = Prova
+study-mode-prova-line = O seu nível fica aberto; uma prova curta abre o próximo.
+study-mode-prova-about = Todas as lições do nível em que você está ficam abertas, na ordem que quiser. Quando se sentir pronto, faça a prova do nível para abrir o próximo. Dá para fazer a prova antes, para pular um nível que você já conhece.
+study-mode-guiado = Guiado
+study-mode-guiado-line = Uma lição de cada vez, na ordem da Jornada.
+study-mode-guiado-about = A próxima lição abre quando você passa no quiz da anterior. Bom para quem está começando e prefere não escolher. A prova de nível continua valendo para pular um nível.
+study-mode-livre = Livre
+study-mode-livre-line = Tudo aberto; a lição recomendada fica marcada.
+study-mode-livre-about = Nada fica bloqueado. A próxima lição recomendada fica destacada, e uma lição que depende de outras que você ainda não fez abre com um aviso curto. As provas de nível mostram onde você está.
+study-mode-note = Trocar de modo não apaga nada: lições concluídas e provas aprovadas continuam valendo.
+
+## Provas de nível (D24)
+
+tree-test = Prova do nível
+tree-test-take = Fazer a prova
+tree-test-retake = Refazer
+tree-test-passed = Prova aprovada
+tree-test-meta = { $questions } perguntas · { $pass } para passar
+tree-opens-with = Abre com a prova de { $level }
+tree-next-test = Você terminou as lições abertas. A prova de { $level } abre o próximo nível.
+level-test-title = Prova: { $level }
+level-test-intro = { $questions } perguntas das lições deste nível. Acerte { $need } para passar. Passar abre o próximo nível; as lições não ficam marcadas como concluídas, e as perguntas erradas não vão para as revisões.
+level-test-start = Começar a prova
+level-test-passed = Aprovado com { $score }.
+level-test-opened = Aberto agora: { $levels }.
+level-test-failed = { $score }. Para passar você precisa de { $pass }. Tente de novo quando quiser: as perguntas mudam a cada tentativa.
+lesson-locked-test = Esta lição é de um nível ainda fechado. Ele abre quando você passa na prova de { $level }. Dá para ler, mas o quiz espera.
+lesson-locked-step = No modo Guiado as lições abrem uma de cada vez. Dá para ler esta, mas o quiz espera.
+lesson-locked-step-next = No modo Guiado as lições abrem uma de cada vez; a próxima é { $lesson }. Dá para ler esta, mas o quiz espera.
+lesson-missing = Esta lição usa o que foi visto em { $lessons }. Dá para ler mesmo assim.
+
 
 ## Mão guiada (D26)
 lesson-guided-title = Mão guiada: { $name }
