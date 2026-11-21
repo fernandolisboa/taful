@@ -15,6 +15,9 @@ pub struct LessonView {
     /// Rendered lesson, or the render error.
     pub open: Option<Result<OpenLesson, String>>,
     pub quiz: Option<QuizRun>,
+    /// Lessons the last finished guided hand opened (D26), shown on the
+    /// lesson's guided card.
+    pub guided_unlocked: Vec<String>,
     /// Locked tracks the user expanded in the tree to preview.
     pub expanded: std::collections::HashSet<String>,
 }
@@ -38,6 +41,9 @@ pub struct QuestionState<'a> {
 
 impl Shell {
     pub(crate) fn open_lesson(&mut self, id: &str) {
+        if self.lesson.current.as_deref() != Some(id) {
+            self.lesson.guided_unlocked.clear();
+        }
         self.lesson.current = Some(id.to_owned());
         self.lesson.open = None;
         self.lesson.quiz = None;
@@ -111,6 +117,10 @@ impl Shell {
                 .when(g.finished, |c| {
                     c.child(muted(ui.i18n.tr("lesson-guided-finished"), ui, p))
                 })
+                .when_some(
+                    self.unlocked_line(&self.lesson.guided_unlocked),
+                    |c, line| c.child(muted(line, ui, p)),
+                )
                 .child(div().flex().child(
                     button("lesson_guided", ui.i18n.tr(label), !g.finished, ui, p).on_click(
                         cx.listener(move |this, _, window, cx| {
@@ -120,6 +130,28 @@ impl Shell {
                     ),
                 ))
                 .into_any_element(),
+        )
+    }
+
+    /// "Liberadas: …" for lessons that just opened, if any.
+    fn unlocked_line(&self, ids: &[String]) -> Option<String> {
+        if ids.is_empty() {
+            return None;
+        }
+        let loc = self.ui.i18n.locale();
+        let names: Vec<String> = ids
+            .iter()
+            .filter_map(|id| {
+                self.app
+                    .library()
+                    .lesson(id, loc.tag())
+                    .map(|l| l.meta.title.clone())
+            })
+            .collect();
+        Some(
+            self.ui
+                .i18n
+                .tr_args("quiz-unlocked", &[("lessons", names.join(", ").into())]),
         )
     }
 
@@ -297,23 +329,8 @@ impl Shell {
                     ],
                 )
             }));
-            if !r.unlocked.is_empty() {
-                let names: Vec<String> = r
-                    .unlocked
-                    .iter()
-                    .filter_map(|id| {
-                        self.app
-                            .library()
-                            .lesson(id, loc.tag())
-                            .map(|l| l.meta.title.clone())
-                    })
-                    .collect();
-                c = c.child(muted(
-                    ui.i18n
-                        .tr_args("quiz-unlocked", &[("lessons", names.join(", ").into())]),
-                    ui,
-                    p,
-                ));
+            if let Some(line) = self.unlocked_line(&r.unlocked) {
+                c = c.child(muted(line, ui, p));
             }
             if r.guided_pending.is_some() {
                 c = c.child(muted(ui.i18n.tr("quiz-guided-pending"), ui, p));
@@ -471,7 +488,7 @@ impl Shell {
         match self.quiz_block(cx) {
             Some(q) => col = col.child(q),
             None if open.state != LessonState::Locked => {
-                let label = if open.state == LessonState::Done {
+                let label = if open.state == LessonState::Done || open.quiz_passed {
                     "lesson-retake-quiz"
                 } else {
                     "lesson-take-quiz"

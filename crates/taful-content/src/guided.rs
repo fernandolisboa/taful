@@ -185,6 +185,14 @@ pub enum Step {
     },
 }
 
+impl Step {
+    /// Whether the hand stops here for the user (silent opponent steps
+    /// play on by themselves).
+    pub fn pauses(&self) -> bool {
+        !matches!(self, Step::Bots { say: None, .. })
+    }
+}
+
 /// A guided hand ready to play: positions, cards and actions parsed.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Guide {
@@ -507,14 +515,19 @@ impl Run {
 
     /// The step the run rests on and how many there are (progress).
     pub fn progress(&self) -> (usize, usize) {
-        (self.at.min(self.guide.steps.len()), self.guide.steps.len())
+        let pauses = |steps: &[Step]| steps.iter().filter(|s| s.pauses()).count();
+        let steps = &self.guide.steps;
+        (pauses(&steps[..self.at.min(steps.len())]), pauses(steps))
     }
 
     pub fn pause(&self) -> Pause<'_> {
         match self.guide.steps.get(self.at) {
             None => Pause::Done,
             Some(Step::Say(say)) => Pause::Say(say),
-            Some(Step::Bots { say, .. }) => Pause::Say(say.as_ref().expect("rests on a line")),
+            Some(Step::Bots { say: Some(say), .. }) => Pause::Say(say),
+            // Only after a broken script failed partway through a silent
+            // opponent step; the checks keep shipped scripts from it.
+            Some(Step::Bots { say: None, .. }) => Pause::Done,
             Some(Step::Hero { say, .. }) => Pause::Hero(say),
         }
     }
@@ -902,7 +915,7 @@ say = {won}
         assert_eq!(st.pots[0].winners, vec![run.hero()]);
         run.proceed().unwrap();
         assert!(run.is_done() && run.pause() == Pause::Done);
-        assert_eq!(run.progress(), (12, 12));
+        assert_eq!(run.progress(), (7, 7));
     }
 
     #[test]

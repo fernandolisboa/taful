@@ -171,7 +171,9 @@ impl Store {
         self.conn().execute(
             "INSERT INTO guided_hands (id, created_at, updated_at, hand_id, version)
              VALUES (?1, ?2, ?2, ?3, ?4)
-             ON CONFLICT (hand_id, version) DO UPDATE SET deleted_at = NULL",
+             ON CONFLICT (hand_id, version) DO UPDATE
+             SET deleted_at = NULL, updated_at = excluded.updated_at
+             WHERE guided_hands.deleted_at IS NOT NULL",
             params![new_id(), now, hand_id, version],
         )?;
         Ok(())

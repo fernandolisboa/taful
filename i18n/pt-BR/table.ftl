@@ -145,6 +145,7 @@ table-guided-title = Mão guiada · { $name }
 table-guided-step = passo { $n } de { $of }
 table-guided-continue = Continuar
 table-guided-wrong = Desta vez não é { $action }
+table-guided-playing = Os outros jogadores estão agindo…
 table-guided-done = Mão concluída. Jogue de novo quando quiser.
 table-guided-again = Jogar de novo
 table-guided-back = Voltar à lição

@@ -233,7 +233,10 @@ impl TableScreen {
         cx: &mut Context<Self>,
     ) {
         self.trainers = trainers;
-        self.deal(cx);
+        // A guided hand does not use the library; leave it where it is.
+        if self.mode != Mode::Guided {
+            self.deal(cx);
+        }
         cx.notify();
     }
 
@@ -1045,7 +1048,7 @@ impl TableScreen {
         let run = self.guided_run()?;
         let locale = self.ui.i18n.locale();
         if self.playing() {
-            return Some(self.ui.i18n.tr("table-replay-panel"));
+            return Some(self.ui.i18n.tr("table-guided-playing"));
         }
         Some(match run.pause() {
             Pause::Say(t) | Pause::Hero(t) => guide::text(t, locale).to_owned(),
@@ -1302,7 +1305,7 @@ impl TableScreen {
 
     /// A hand in progress plays on; the next one sits the new table.
     pub(crate) fn table_changed(&mut self, cx: &mut Context<Self>) {
-        if self.hand.as_ref().is_none_or(|h| h.end.is_some()) {
+        if self.mode != Mode::Guided && self.hand.as_ref().is_none_or(|h| h.end.is_some()) {
             self.deal(cx);
         }
         cx.notify();

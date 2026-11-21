@@ -279,11 +279,14 @@ impl Shell {
                 }
             }
             TableEvent::GuidedDone(id) => {
-                if let Err(e) = self.app.finish_guided(id) {
-                    eprintln!("taful: noting a guided hand failed: {e}");
+                match self.app.finish_guided(id) {
+                    Ok(fin) => self.lesson.guided_unlocked = fin.unlocked,
+                    Err(e) => eprintln!("taful: noting a guided hand failed: {e}"),
                 }
-                // The lesson reader shows the new state when it opens again.
+                // The lesson reader shows the new state when it opens again;
+                // a quiz result from before the hand is out of date.
                 self.lesson.open = None;
+                self.lesson.quiz = None;
             }
             TableEvent::BackToLesson(id) => {
                 self.open_lesson(id);

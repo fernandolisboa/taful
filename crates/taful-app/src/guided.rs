@@ -19,6 +19,15 @@ pub fn text(t: &Localized, locale: Locale) -> &str {
         .map_or("", String::as_str)
 }
 
+/// What finishing a guided hand changed.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct GuidedFinish {
+    /// Lessons that are done now.
+    pub done: Vec<String>,
+    /// Lessons that became available because of them.
+    pub unlocked: Vec<String>,
+}
+
 impl App {
     /// The guided hand `id`, at its first pause.
     pub fn guided(&self, id: &str) -> Result<Run> {
@@ -27,14 +36,18 @@ impl App {
             .guided
             .get(id)
             .ok_or_else(|| Error::NotFound(format!("guided hand `{id}`")))?;
+        // The same checks as CI, so a broken script never reaches the table.
+        let errs = taful_content::guided::check_script(script);
+        if !errs.is_empty() {
+            return Err(Error::Content(errs));
+        }
         let guide = Guide::compile(script).map_err(Error::Content)?;
         Run::start(Arc::new(guide)).map_err(|e| Error::Content(vec![e]))
     }
 
     /// Notes that the guided hand `id` was played to the end. Every lesson
-    /// that lists it and whose quiz is already passed is done; returns
-    /// those lessons.
-    pub fn finish_guided(&mut self, id: &str) -> Result<Vec<String>> {
+    /// that lists it and whose quiz is already passed is done.
+    pub fn finish_guided(&mut self, id: &str) -> Result<GuidedFinish> {
         let version = self
             .library
             .guided
@@ -52,6 +65,7 @@ impl App {
                     .then(|| (l.clone(), lesson.meta.version))
             })
             .collect();
+        let before = self.skill_tree_states()?;
         let mut done = Vec::new();
         for (lesson, version) in lessons {
             if self.lesson_state(&lesson)? != LessonState::Done && self.quiz_passed(&lesson)? {
@@ -60,7 +74,12 @@ impl App {
                 done.push(lesson);
             }
         }
-        Ok(done)
+        let unlocked = if done.is_empty() {
+            Vec::new()
+        } else {
+            crate::lessons::newly_unlocked(&before, self.skill_tree_states()?)
+        };
+        Ok(GuidedFinish { done, unlocked })
     }
 
     /// Whether the guided hand `id` was ever played to the end.
@@ -82,6 +101,8 @@ mod tests {
         let mut run = app.guided("first-hand").unwrap();
         let mut steps = 0;
         loop {
+            // The counter moves one pause at a time, silent steps aside.
+            assert_eq!(run.progress().0, steps);
             match run.pause() {
                 Pause::Say(t) => {
                     assert!(!text(t, Locale::PtBr).is_empty());
@@ -100,6 +121,7 @@ mod tests {
             steps += 1;
             assert!(steps < 100);
         }
+        assert_eq!(run.progress(), (steps, steps));
         let st = run.settlement().unwrap();
         assert!(st.showdown);
         assert_eq!(st.pots[0].winners, vec![run.hero()]);
