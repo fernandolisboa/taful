@@ -1035,8 +1035,9 @@ impl Render for Shell {
             .child(frame)
             .child(div().absolute().top_0().left_0().w_full().child(caption))
             .children(popover)
-            .children(level_question)
+            // The question is modal: the update card stays under its scrim.
             .children(update_card)
+            .children(level_question)
             .children(tour)
     }
 }

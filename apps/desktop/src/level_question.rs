@@ -100,6 +100,9 @@ impl Shell {
     /// Opens the question to change the level (the gear, Settings).
     pub(crate) fn change_level(&mut self) {
         self.lesson.gear_open = false;
+        // A tour still open on this screen would sit over the card and lose
+        // its keys to it: leaving it for the question counts as skipping.
+        self.tour_end();
         self.level_question = Some(LevelQuestion { first_run: false });
     }
 
