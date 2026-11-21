@@ -1,0 +1,49 @@
+id = "betting-rounds-quiz"
+version = 1
+lesson = "betting-rounds"
+pass = 0.75
+
+[[questions]]
+id = "flop-cards"
+kind = "choice"
+prompt = { en-US = "How many cards does the flop put on the board?", pt-BR = "Quantas cartas o flop abre na mesa?" }
+choices = [
+    { en-US = "3", pt-BR = "3" },
+    { en-US = "1", pt-BR = "1" },
+    { en-US = "5", pt-BR = "5" },
+]
+answer = 0
+
+[[questions]]
+id = "street-order"
+kind = "choice"
+prompt = { en-US = "What is the order of the betting rounds?", pt-BR = "Qual é a ordem das rodadas de apostas?" }
+choices = [
+    { en-US = "Preflop, flop, turn, river", pt-BR = "Pré-flop, flop, turn, river" },
+    { en-US = "Flop, preflop, turn, river", pt-BR = "Flop, pré-flop, turn, river" },
+    { en-US = "Preflop, turn, flop, river", pt-BR = "Pré-flop, turn, flop, river" },
+]
+answer = 0
+
+[[questions]]
+id = "first-preflop"
+kind = "choice"
+prompt = { en-US = "Who speaks first preflop?", pt-BR = "Quem fala primeiro no pré-flop?" }
+choices = [
+    { en-US = "The player on the big blind's left", pt-BR = "O jogador à esquerda do big blind" },
+    { en-US = "The small blind", pt-BR = "O small blind" },
+    { en-US = "The button", pt-BR = "O botão" },
+]
+answer = 0
+explanation = { en-US = "The blinds already put chips in, so they speak last preflop.", pt-BR = "Os blinds já puseram fichas, então falam por último no pré-flop." }
+
+[[questions]]
+id = "last-postflop"
+kind = "choice"
+prompt = { en-US = "From the flop on, who speaks last?", pt-BR = "Do flop em diante, quem fala por último?" }
+choices = [
+    { en-US = "The button (BTN)", pt-BR = "O botão (BTN)" },
+    { en-US = "The big blind", pt-BR = "O big blind" },
+    { en-US = "Whoever raised preflop", pt-BR = "Quem aumentou no pré-flop" },
+]
+answer = 0

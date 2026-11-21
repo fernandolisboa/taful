@@ -1,0 +1,64 @@
+# Primeiros passos, lesson 6 (showdown): the board plays. Hero, in the big
+# blind with 6♦ 5♥, checks to a river that makes A K Q J T on the board,
+# calls, and splits the pot with the small blind.
+# Amounts in `act`, `hero` and `offer` are chips: 100 = 1 bb.
+
+id = "split-pot"
+version = 1
+title = { en-US = "A split pot", pt-BR = "Um pote dividido" }
+players = 6
+hero = "BB"
+board = "AhKdQsJcTc"
+
+[cards]
+BB = "6d5h"
+SB = "9c2d"
+
+[[steps]]
+say = { en-US = "You are the big blind, with 6♦ 5♥. A weak hand, but you already paid 1 bb.", pt-BR = "Você é o big blind, com 6♦ 5♥. Uma mão fraca, mas você já pagou 1 bb." }
+
+[[steps]]
+act = "UTG:f,HJ:f,CO:f,BTN:f,SB:c"
+say = { en-US = "Everyone folded, and the small blind just completed to 1 bb.", pt-BR = "Todos desistiram, e o small blind só completou para 1 bb." }
+
+[[steps]]
+hero = "x"
+say = { en-US = "Nobody raised: check and see the flop for free.", pt-BR = "Ninguém aumentou: dê check e veja o flop de graça." }
+why = { en-US = "With nothing to match, checking costs nothing.", pt-BR = "Sem nada para igualar, o check não custa nada." }
+
+[[steps]]
+act = "SB:x"
+say = { en-US = "The flop: A♥ K♦ Q♠. The small blind checked.", pt-BR = "O flop: A♥ K♦ Q♠. O small blind deu check." }
+
+[[steps]]
+hero = "x"
+say = { en-US = "You hit nothing. Check.", pt-BR = "Você não acertou nada. Dê check." }
+why = { en-US = "With nothing, checking is free and shows you the next card.", pt-BR = "Sem nada, o check é de graça e mostra a próxima carta." }
+
+[[steps]]
+act = "SB:x"
+say = { en-US = "The turn: J♣. Look: A K Q J on the board. A ten would make a straight, for anyone. The small blind checked.", pt-BR = "O turn: J♣. Repare: A K Q J na mesa. Um dez faria uma sequência, para qualquer um. O small blind deu check." }
+
+[[steps]]
+hero = "x"
+say = { en-US = "Check once more.", pt-BR = "Dê check mais uma vez." }
+why = { en-US = "Your cards still add nothing: checking is free.", pt-BR = "Suas cartas ainda não somam nada: o check é de graça." }
+
+[[steps]]
+act = "SB:b100"
+say = { en-US = "The river: T♣. The board alone makes the highest straight there is: A K Q J T. The small blind bet 1 bb.", pt-BR = "O river: T♣. A mesa sozinha forma a sequência mais alta que existe: A K Q J T. O small blind apostou 1 bb." }
+
+[[steps]]
+hero = "c"
+say = { en-US = "Your cards no longer matter: the board is already your best five-card hand, and no hand can beat it here. Call.", pt-BR = "Suas cartas não importam mais: a mesa já é a sua melhor mão de cinco cartas, e aqui nenhuma mão ganha dela. Pague (call)." }
+why = { en-US = "By calling you are sure to get at least half the pot: nothing beats the straight on the board.", pt-BR = "Pagando, você garante pelo menos metade do pote: nada ganha da sequência da mesa." }
+
+[[steps.wrong]]
+act = "f"
+why = { en-US = "Folding would hand over everything, and here you cannot lose: at worst, you split.", pt-BR = "Desistir entregaria tudo, e aqui você não tem como perder: no pior caso, divide." }
+
+[[steps]]
+say = { en-US = "Showdown. The small blind showed 9♣ 2♦. Their 9 makes K Q J T 9, but that straight is lower: their best five cards are the board's too, A K Q J T. A tie! The 4 bb pot is split, 2 bb each.", pt-BR = "Showdown. O small blind mostrou 9♣ 2♦. O 9 dele forma K Q J T 9, mas essa sequência é menor: a melhor mão de cinco dele também é a da mesa, A K Q J T. Empate! O pote de 4 bb é dividido: 2 bb para cada um." }
+
+[[steps]]
+say = { en-US = "When the best five cards are equal, the pot is split. And remember: when everyone folds there is no showdown, and whoever is left takes it all without showing.", pt-BR = "Quando as melhores cinco cartas são iguais, o pote é dividido. E lembre: quando todos desistem não há showdown, e quem sobrou leva tudo sem mostrar as cartas." }

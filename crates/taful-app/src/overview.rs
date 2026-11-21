@@ -125,7 +125,7 @@ mod tests {
             Some(&next.id),
             o.home.next_lesson.as_ref().map(|(id, _)| id)
         );
-        assert_eq!(next.level, "fundamentos");
+        assert_eq!(next.level, "primeiros-passos");
         // Prova (the default) opens the whole first level.
         assert!(
             next.level_states

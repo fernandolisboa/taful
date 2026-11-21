@@ -13,6 +13,7 @@ mod classic;
 mod cockpit;
 mod felt;
 mod motion;
+mod picture;
 mod salao;
 mod screen;
 mod screens;

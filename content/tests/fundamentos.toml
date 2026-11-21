@@ -9,7 +9,6 @@ version = 1
 pass = 0.8
 draw = 10
 pool = [
-    "hand-rankings-quiz/flush-vs-straight", "hand-rankings-quiz/full-house-vs-flush", "hand-rankings-quiz/kicker", "hand-rankings-quiz/starting-hands",
     "positions-6max-quiz/first-preflop", "positions-6max-quiz/last-postflop", "positions-6max-quiz/widest-open", "positions-6max-quiz/in-position",
     "stacks-and-blinds-quiz/bb-count", "stacks-and-blinds-quiz/effective", "stacks-and-blinds-quiz/blinds-pot", "stacks-and-blinds-quiz/srp-pot",
     "combos-101-quiz/pair", "combos-101-quiz/offsuit", "combos-101-quiz/range", "combos-101-quiz/blocker",

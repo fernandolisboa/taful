@@ -1,5 +1,5 @@
 id = "hand-rankings-quiz"
-version = 1
+version = 2
 lesson = "hand-rankings"
 pass = 0.75
 
@@ -27,6 +27,18 @@ answer = 0
 explanation = { en-US = "A full house ranks just above a flush.", pt-BR = "O full house fica logo acima do flush." }
 
 [[questions]]
+id = "trips-vs-two-pair"
+kind = "choice"
+prompt = { en-US = "Three of a kind against two pair: which wins?", pt-BR = "Trinca contra dois pares: qual ganha?" }
+choices = [
+    { en-US = "Three of a kind", pt-BR = "A trinca" },
+    { en-US = "Two pair", pt-BR = "Os dois pares" },
+    { en-US = "They tie", pt-BR = "Empatam" },
+]
+answer = 0
+explanation = { en-US = "Three of a kind ranks above two pair.", pt-BR = "A trinca fica acima de dois pares." }
+
+[[questions]]
 id = "kicker"
 kind = "choice"
 prompt = { en-US = "Board A♥ 8♣ 6♦ 4♠ 2♣. A♠ K♦ against A♣ Q♥: who wins?", pt-BR = "Mesa A♥ 8♣ 6♦ 4♠ 2♣. A♠ K♦ contra A♣ Q♥: quem ganha?" }
@@ -37,10 +49,3 @@ choices = [
 ]
 answer = 0
 explanation = { en-US = "Both have a pair of aces; the king outkicks the queen.", pt-BR = "Os dois têm par de ases; o rei ganha da dama no kicker." }
-
-[[questions]]
-id = "starting-hands"
-kind = "numeric"
-prompt = { en-US = "How many two-card starting hands are there?", pt-BR = "Quantas mãos iniciais de duas cartas existem?" }
-answer = "{{ calc: choose(n=52, k=2) | int }}"
-tolerance = 0.0

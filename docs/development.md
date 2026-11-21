@@ -178,6 +178,16 @@ A guided hand is a scripted hand played on the real table: fixed seats, cards, b
 - **Checks** (`content-check`): both locales for every line, every action legal and in turn, the right action among the buttons, every `wrong` entry a wrong button, the hand played to its end with every board card dealt, and every player at showdown scripted.
 - **Lessons:** `guided = "<id>"` in a lesson's front matter. The lesson is done once its quiz is passed and the hand finished, in either order (`App::finish_guided`, table `guided_hands`).
 - **Table:** `Mode::Guided` in `screens/table.rs` drives the run (`guided_*` helpers); each style draws the coach line where its evaluation goes. Dev overrides: `TAFUL_GUIDED=<id>` opens a hand, `TAFUL_GUIDED_LESSON=<id>` as if from that lesson, `TAFUL_GUIDED_AT=<n>[w]` moves it `n` pauses on (then a wrong click with `w`); `TAFUL_LESSON=<id>` opens a lesson.
+- **Who wins:** the coach lines say who takes the pot, so `shipped_guided_hands_end_as_the_coach_says` (in `taful-content`) pins hero's net and whether the hand reached a showdown for every shipped hand. A new hand adds a row there.
+
+## Lesson pictures (D26)
+
+A fenced block whose info string is `cards` or `seats` is drawn as a picture instead of shown as code (`crates/taful-content/src/picture.rs`, drawn by `apps/desktop/src/picture.rs` in every style):
+
+- `cards`: one row per line, an optional caption before a colon, `??` for a face-down card, `|` for a wider gap, `~` before a card to dim it (not part of the hand shown). A card shows at most once per row.
+- `seats`: a table seen from above, `key: value` lines: `players` (2–9, default 6), `you` (drawn at the bottom, else the button is), `mark` (highlighted), `out` (faded), `order` (numbered 1, 2, 3…) and `blinds: yes` (the blinds' chips).
+
+Only captions are translated: `content-check` fails when a picture does not parse or when locales draw different cards or seats.
 
 ## Visual styles (D19)
 

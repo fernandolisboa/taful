@@ -45,6 +45,7 @@ lesson-locked-note = This lesson is still locked: finish its prerequisites first
 lesson-glossary = Terms in this lesson
 lesson-take-quiz = Take the quiz
 lesson-retake-quiz = Take the quiz again
+lesson-picture-you = You
 lesson-back-to-tree = ← Back to lessons
 lesson-render-error = This lesson failed to render: { $error }
 

@@ -45,6 +45,7 @@ lesson-locked-note = Esta lição ainda está bloqueada: conclua os pré-requisi
 lesson-glossary = Termos desta lição
 lesson-take-quiz = Fazer o quiz
 lesson-retake-quiz = Fazer o quiz de novo
+lesson-picture-you = Você
 lesson-back-to-tree = ← Voltar às lições
 lesson-render-error = Esta lição não pôde ser exibida: { $error }
 

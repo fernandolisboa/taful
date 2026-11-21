@@ -1,0 +1,49 @@
+id = "seats-at-the-table-quiz"
+version = 1
+lesson = "seats-at-the-table"
+pass = 0.75
+
+[[questions]]
+id = "left-of-bb"
+kind = "choice"
+prompt = { en-US = "What is the seat right on the big blind's left called?", pt-BR = "Como se chama o lugar logo à esquerda do big blind?" }
+choices = [
+    { en-US = "UTG", pt-BR = "UTG" },
+    { en-US = "CO", pt-BR = "CO" },
+    { en-US = "SB", pt-BR = "SB" },
+]
+answer = 0
+
+[[questions]]
+id = "right-of-button"
+kind = "choice"
+prompt = { en-US = "Which seat is right on the button's right?", pt-BR = "Qual lugar fica logo à direita do botão?" }
+choices = [
+    { en-US = "The CO (cutoff)", pt-BR = "O CO (cutoff)" },
+    { en-US = "The HJ (hijack)", pt-BR = "O HJ (hijack)" },
+    { en-US = "The SB", pt-BR = "O SB" },
+]
+answer = 0
+
+[[questions]]
+id = "in-position"
+kind = "choice"
+prompt = { en-US = "What does being in position mean?", pt-BR = "O que quer dizer estar em posição?" }
+choices = [
+    { en-US = "Speaking after your opponent, having seen what they did", pt-BR = "Falar depois do adversário, já sabendo o que ele fez" },
+    { en-US = "Holding the best cards", pt-BR = "Ter as melhores cartas" },
+    { en-US = "Being the big blind", pt-BR = "Ser o big blind" },
+]
+answer = 0
+
+[[questions]]
+id = "next-hand"
+kind = "choice"
+prompt = { en-US = "In the next hand, the player who was the big blind becomes...", pt-BR = "Na mão seguinte, quem era o big blind vira..." }
+choices = [
+    { en-US = "the small blind", pt-BR = "o small blind" },
+    { en-US = "the button", pt-BR = "o botão" },
+    { en-US = "UTG", pt-BR = "o UTG" },
+]
+answer = 0
+explanation = { en-US = "The button moves one seat to the left, so every name moves one seat too.", pt-BR = "O botão anda um lugar para a esquerda, então todos os nomes andam um lugar também." }

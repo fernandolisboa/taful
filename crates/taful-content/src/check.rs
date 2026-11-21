@@ -1,9 +1,10 @@
 //! Content checks (spec §12.3). `content-check` fails the build when:
 //!
-//! 1. any placeholder errors in any locale;
+//! 1. any placeholder or picture errors in any locale;
 //! 2. a rendered value differs from its pinned snapshot (drift); snapshots
 //!    are rewritten with `content-check --bless`;
-//! 3. locales disagree on id, version, front matter or placeholder set;
+//! 3. locales disagree on id, version, front matter, placeholder set or
+//!    pictures (captions aside);
 //! 4. the catalog has a lesson without a known level or theme, a cycle, a
 //!    missing prerequisite, a prerequisite in a higher level or later in the
 //!    Jornada, or a lesson with no unlock;
@@ -188,6 +189,12 @@ pub fn check_library(lib: &Library, content: &Files, i18n: &Files) -> Vec<Findin
                 f.push(Finding::new(
                     &path,
                     format!("placeholder set differs from {SOURCE_LOCALE}"),
+                ));
+            }
+            if l.picture_shapes() != src.picture_shapes() {
+                f.push(Finding::new(
+                    &path,
+                    format!("pictures (cards or seats) differ from {SOURCE_LOCALE}"),
                 ));
             }
         }

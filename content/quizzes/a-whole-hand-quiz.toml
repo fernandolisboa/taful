@@ -1,0 +1,47 @@
+id = "a-whole-hand-quiz"
+version = 1
+lesson = "a-whole-hand"
+pass = 0.75
+
+[[questions]]
+id = "limped-pot"
+kind = "numeric"
+prompt = { en-US = "Everyone folds to the small blind, who completes to 1 bb, and the big blind checks. How many big blinds are in the pot on the flop?", pt-BR = "Todos desistem até o small blind, que completa para 1 bb, e o big blind dá check. Quantos big blinds há no pote no flop?" }
+answer = "{{ calc: add(a=1, b=1) | int }}"
+tolerance = 0.0
+explanation = { en-US = "1 bb from each blind.", pt-BR = "1 bb de cada blind." }
+
+[[questions]]
+id = "no-check"
+kind = "choice"
+prompt = { en-US = "On the river your opponent bets. Which action can you NOT take?", pt-BR = "No river o adversário apostou. Qual ação você NÃO pode fazer?" }
+choices = [
+    { en-US = "Check", pt-BR = "Check" },
+    { en-US = "Call", pt-BR = "Call" },
+    { en-US = "Fold", pt-BR = "Fold" },
+]
+answer = 0
+explanation = { en-US = "With a bet to match, check is gone.", pt-BR = "Com uma aposta para igualar, check não existe." }
+
+[[questions]]
+id = "flop-first"
+kind = "choice"
+prompt = { en-US = "Three players see the flop: the big blind, the HJ and the button. Who speaks first?", pt-BR = "Três jogadores veem o flop: o big blind, o HJ e o botão. Quem fala primeiro?" }
+choices = [
+    { en-US = "The big blind", pt-BR = "O big blind" },
+    { en-US = "The HJ", pt-BR = "O HJ" },
+    { en-US = "The button", pt-BR = "O botão" },
+]
+answer = 0
+explanation = { en-US = "From the flop on, the first player still in on the button's left starts.", pt-BR = "Do flop em diante, começa o primeiro jogador ainda na mão à esquerda do botão." }
+
+[[questions]]
+id = "showdown-hand"
+kind = "choice"
+prompt = { en-US = "At the showdown, which cards make up each player's hand?", pt-BR = "No showdown, que cartas formam a mão de cada jogador?" }
+choices = [
+    { en-US = "The best five out of their two and the five on the board", pt-BR = "As cinco melhores entre as duas dele e as cinco da mesa" },
+    { en-US = "Only their two cards", pt-BR = "Só as duas cartas dele" },
+    { en-US = "All seven cards", pt-BR = "Todas as sete cartas" },
+]
+answer = 0

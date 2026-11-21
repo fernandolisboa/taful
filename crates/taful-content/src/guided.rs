@@ -532,6 +532,11 @@ impl Run {
         }
     }
 
+    /// The index of the step the run rests on (`steps.len()` at the end).
+    pub fn step_at(&self) -> usize {
+        self.at
+    }
+
     pub fn is_done(&self) -> bool {
         self.at >= self.guide.steps.len()
     }

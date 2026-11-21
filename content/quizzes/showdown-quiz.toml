@@ -1,0 +1,46 @@
+id = "showdown-quiz"
+version = 1
+lesson = "showdown"
+pass = 0.75
+
+[[questions]]
+id = "no-showdown"
+kind = "choice"
+prompt = { en-US = "On the turn you bet and everyone folds. What happens?", pt-BR = "No turn você aposta e todos desistem. O que acontece?" }
+choices = [
+    { en-US = "You take the pot, and the river never comes", pt-BR = "Você leva o pote, e o river não sai" },
+    { en-US = "The river comes anyway", pt-BR = "O river sai mesmo assim" },
+    { en-US = "The pot is split", pt-BR = "O pote é dividido" },
+]
+answer = 0
+
+[[questions]]
+id = "flush-vs-trips"
+kind = "choice"
+prompt = { en-US = "Board Q♣ 9♣ 6♦ 3♣ 2♥. You have A♣ 7♣, your opponent Q♦ Q♥. Who wins?", pt-BR = "Mesa Q♣ 9♣ 6♦ 3♣ 2♥. Você tem A♣ 7♣, o adversário Q♦ Q♥. Quem ganha?" }
+choices = [
+    { en-US = "You, with a flush", pt-BR = "Você, com um flush" },
+    { en-US = "Your opponent, with three queens", pt-BR = "O adversário, com trinca de damas" },
+    { en-US = "It is a tie", pt-BR = "Empate" },
+]
+answer = 0
+explanation = { en-US = "Your two clubs with the board's three make a flush, which beats three of a kind.", pt-BR = "Os seus dois paus com os três da mesa formam um flush, que ganha de trinca." }
+
+[[questions]]
+id = "board-plays"
+kind = "choice"
+prompt = { en-US = "Board 8♠ 8♦ 8♣ K♥ K♠. You have A♥ 2♦, your opponent Q♠ J♣. Who wins?", pt-BR = "Mesa 8♠ 8♦ 8♣ K♥ K♠. Você tem A♥ 2♦, o adversário Q♠ J♣. Quem ganha?" }
+choices = [
+    { en-US = "A tie: the pot is split", pt-BR = "Empate: o pote é dividido" },
+    { en-US = "You, with the ace", pt-BR = "Você, pelo ás" },
+    { en-US = "Your opponent", pt-BR = "O adversário" },
+]
+answer = 0
+explanation = { en-US = "The board is a full house, 8 8 8 K K, and nobody can improve it: a full house is five cards, so your ace does not count.", pt-BR = "A mesa já é um full house, 8 8 8 K K, e ninguém melhora: o full house tem cinco cartas, então o seu ás não conta." }
+
+[[questions]]
+id = "split-amount"
+kind = "numeric"
+prompt = { en-US = "A 12 bb pot is split between two players. How much does each take, in bb?", pt-BR = "Um pote de 12 bb é dividido entre dois jogadores. Quanto leva cada um, em bb?" }
+answer = "{{ calc: div(a=12, b=2) | int }}"
+tolerance = 0.0
