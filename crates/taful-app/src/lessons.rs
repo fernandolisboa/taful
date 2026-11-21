@@ -5,7 +5,8 @@
 //! The grouping never changes a lesson's state, and the next lesson is
 //! always the first one open in the Jornada.
 //!
-//! Lock state: a lesson is **done** once its quiz was passed at any version,
+//! Lock state: a lesson is **done** once its quiz was passed at any version
+//! (and, when it lists a guided hand, that hand was played to the end, D26),
 //! **available** when every prerequisite is done, otherwise **locked**.
 //! Progress rows are keyed by `(lesson id, version)` (§12.4), so a content
 //! update that bumps a version shows the lesson as done (from the older
@@ -145,6 +146,19 @@ pub struct OpenLesson {
     pub doc: Document,
     /// Glossary term ids; strings are Fluent `glossary-<id>` / `-def`.
     pub glossary: Vec<String>,
+    /// The guided hand played after the quiz (D26), if the lesson has one.
+    pub guided: Option<GuidedPart>,
+    /// The quiz was passed at least once.
+    pub quiz_passed: bool,
+}
+
+/// A lesson's guided hand (D26).
+#[derive(Debug, Clone, PartialEq)]
+pub struct GuidedPart {
+    pub id: String,
+    pub title: String,
+    /// Played to the end at least once.
+    pub finished: bool,
 }
 
 /// A quiz rendered for one locale.
@@ -164,9 +178,28 @@ pub struct QuizResult {
     pub correct: Vec<bool>,
     /// Lessons this pass made available.
     pub unlocked: Vec<String>,
+    /// Passed, but the lesson's guided hand is still to play (D26): its id.
+    pub guided_pending: Option<String>,
 }
 
 /// Review-item key of a quiz question.
+/// Lessons locked in `before` and available in `after`.
+pub(crate) fn newly_unlocked(
+    before: &[(String, LessonState)],
+    after: Vec<(String, LessonState)>,
+) -> Vec<String> {
+    after
+        .into_iter()
+        .filter(|(id, s)| {
+            *s == LessonState::Available
+                && before
+                    .iter()
+                    .any(|(b, bs)| b == id && *bs == LessonState::Locked)
+        })
+        .map(|(id, _)| id)
+        .collect()
+}
+
 pub fn question_key(quiz_id: &str, question_id: &str) -> String {
     format!("{quiz_id}/{question_id}")
 }
@@ -294,6 +327,14 @@ impl App {
             self.store
                 .record_lesson_progress(id, l.meta.version, LessonState::Available, None)?;
         }
+        let guided = match self.library.guided_for(id) {
+            Some(g) => Some(GuidedPart {
+                id: g.id.clone(),
+                title: crate::guided::text(&g.title, locale).to_owned(),
+                finished: self.guided_finished(&g.id)?,
+            }),
+            None => None,
+        };
         Ok(OpenLesson {
             id: id.to_owned(),
             version: l.meta.version,
@@ -301,6 +342,8 @@ impl App {
             state,
             doc,
             glossary: l.meta.glossary.clone(),
+            guided,
+            quiz_passed: self.quiz_passed(id)?,
         })
     }
 
@@ -384,37 +427,49 @@ impl App {
             .library
             .lesson(lesson_id, taful_content::SOURCE_LOCALE)
             .map_or(1, |l| l.meta.version);
+        // A guided hand still to play keeps the lesson open (D26). A lesson
+        // that is already done stays done.
+        let was_done = self.lesson_state(lesson_id)? == LessonState::Done;
+        let guided_pending = match self.library.guided_for(lesson_id) {
+            Some(g) if passed && !was_done && !self.guided_finished(&g.id)? => Some(g.id.clone()),
+            _ => None,
+        };
         let before = self.catalog_states()?;
         self.store.record_lesson_progress(
             lesson_id,
             version,
-            if passed {
+            if passed && guided_pending.is_none() {
                 LessonState::Done
             } else {
                 LessonState::Available
             },
             Some(score),
         )?;
-        let after = self.catalog_states()?;
-        let unlocked = after
-            .into_iter()
-            .filter(|(id, s)| {
-                *s == LessonState::Available
-                    && before
-                        .iter()
-                        .any(|(b, bs)| b == id && *bs == LessonState::Locked)
-            })
-            .map(|(id, _)| id)
-            .collect();
+        let unlocked = newly_unlocked(&before, self.catalog_states()?);
         Ok(QuizResult {
             score,
             passed,
             correct,
             unlocked,
+            guided_pending,
         })
     }
 
-    fn catalog_states(&self) -> Result<Vec<(String, LessonState)>> {
+    /// Whether the lesson's quiz was passed at any version.
+    pub(crate) fn quiz_passed(&self, lesson_id: &str) -> Result<bool> {
+        let Some(quiz) = self.library.quiz_for(lesson_id) else {
+            return Ok(false);
+        };
+        Ok(self
+            .store
+            .lesson_progress()?
+            .iter()
+            .filter(|p| p.lesson_id == lesson_id)
+            .filter_map(|p| p.best_score)
+            .any(|s| s + 1e-9 >= quiz.pass))
+    }
+
+    pub(crate) fn catalog_states(&self) -> Result<Vec<(String, LessonState)>> {
         let done = self.done_lessons()?;
         Ok(self
             .library
@@ -489,6 +544,75 @@ mod tests {
             app.submit_quiz(&id, &[], 1).is_err(),
             "answer count must match"
         );
+    }
+
+    /// A lesson with a guided hand is done once both its quiz is passed
+    /// and the hand finished, in either order (D26).
+    #[test]
+    fn a_guided_hand_completes_the_lesson_with_the_quiz() {
+        let lesson = "stacks-and-blinds";
+        let ready = |app: &mut App| {
+            for p in app
+                .library
+                .lesson(lesson, "en-US")
+                .unwrap()
+                .meta
+                .prerequisites
+                .clone()
+            {
+                app.store
+                    .record_lesson_progress(&p, 1, LessonState::Done, Some(1.0))
+                    .unwrap();
+            }
+        };
+        // Quiz first, then the hand.
+        let (mut app, _) = app_at(1_000);
+        ready(&mut app);
+        let open = app.open_lesson(lesson, Locale::PtBr).unwrap();
+        let g = open.guided.expect("the lesson lists a guided hand");
+        assert_eq!((g.id.as_str(), g.finished), ("first-hand", false));
+        assert_eq!(g.title, "Sua primeira mão");
+        let view = app.quiz(lesson, Locale::EnUs).unwrap();
+        let res = app.submit_quiz(lesson, &right_answers(&view), 1).unwrap();
+        assert!(res.passed);
+        assert_eq!(res.guided_pending.as_deref(), Some("first-hand"));
+        assert!(res.unlocked.is_empty(), "nothing opens before the hand");
+        assert_eq!(app.lesson_state(lesson).unwrap(), LessonState::Available);
+        let fin = app.finish_guided("first-hand").unwrap();
+        assert_eq!(fin.done, vec![lesson]);
+        assert!(fin.unlocked.iter().any(|l| l == "combos-101"));
+        assert_eq!(app.lesson_state(lesson).unwrap(), LessonState::Done);
+        assert!(
+            app.open_lesson(lesson, Locale::EnUs)
+                .unwrap()
+                .guided
+                .unwrap()
+                .finished
+        );
+        assert_eq!(app.finish_guided("first-hand").unwrap(), Default::default());
+
+        // The hand first, then the quiz.
+        let (mut app, _) = app_at(1_000);
+        ready(&mut app);
+        assert_eq!(app.finish_guided("first-hand").unwrap(), Default::default());
+        assert_eq!(app.lesson_state(lesson).unwrap(), LessonState::Available);
+        let view = app.quiz(lesson, Locale::EnUs).unwrap();
+        let res = app.submit_quiz(lesson, &right_answers(&view), 1).unwrap();
+        assert!(res.passed && res.guided_pending.is_none());
+        assert_eq!(app.lesson_state(lesson).unwrap(), LessonState::Done);
+        assert!(app.finish_guided("nope").is_err());
+
+        // A lesson done before it had a guided hand stays done, and a
+        // retaken quiz does not ask for the hand.
+        let (mut app, _) = app_at(1_000);
+        ready(&mut app);
+        app.store
+            .record_lesson_progress(lesson, 1, LessonState::Done, Some(1.0))
+            .unwrap();
+        let view = app.quiz(lesson, Locale::EnUs).unwrap();
+        let res = app.submit_quiz(lesson, &right_answers(&view), 1).unwrap();
+        assert!(res.passed && res.guided_pending.is_none());
+        assert_eq!(app.lesson_state(lesson).unwrap(), LessonState::Done);
     }
 
     #[test]

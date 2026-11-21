@@ -869,6 +869,73 @@ pub(super) fn panel(
         )
 }
 
+/// The coach of a guided hand (D26), where the evaluation goes: the hand's
+/// name and step, the line to read, and why a wrong click is not the move.
+pub(super) fn coach(screen: &TableScreen, scrolls: bool, pal: &Pal) -> Stateful<Div> {
+    let i18n = &screen.ui.i18n;
+    let (name, step) = screen.guided_title().unwrap_or_default();
+    let mut body = div()
+        .flex()
+        .flex_col()
+        .flex_none()
+        .gap(px(12.))
+        .py(px(16.))
+        .px(px(PAD));
+    if let Some(line) = screen.guided_line() {
+        body = body.child(
+            div()
+                .text_size(px(15.))
+                .line_height(px(22.))
+                .text_color(pal.text)
+                .child(line),
+        );
+    }
+    if let Some((head, why)) = screen.guided_wrong() {
+        body = body.child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(6.))
+                .py(px(10.))
+                .px(px(12.))
+                .rounded(px(4.))
+                .border_1()
+                .border_color(pal.amber)
+                .bg(alpha(pal.amber, 0.1))
+                .child(
+                    tracked(&head.to_uppercase(), 11., 0.08)
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(pal.amber),
+                )
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .line_height(px(19.))
+                        .text_color(pal.text)
+                        .child(why),
+                ),
+        );
+    }
+    div()
+        .id("cockpit_coach")
+        .flex()
+        .flex_col()
+        .map(|d| {
+            if scrolls {
+                d.size_full().overflow_y_scroll()
+            } else {
+                d.w_full().flex_none()
+            }
+        })
+        .child(kit::head(
+            &i18n.tr_args("table-guided-title", &[("name", name.into())]),
+            Some(div().child(step).into_any_element()),
+            true,
+            pal,
+        ))
+        .child(body)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

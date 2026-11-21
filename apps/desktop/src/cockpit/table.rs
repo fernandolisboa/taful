@@ -224,6 +224,8 @@ fn sync(screen: &mut TableScreen, t: &Trainers) {
     st.first_seed.get_or_insert(screen.seed);
     let deal = match screen.mode {
         Mode::Hand => screen.hand.as_ref().map(|h| Deal::Hand(h.seed)),
+        // A guided hand is not graded: no decision points.
+        Mode::Guided => None,
         _ => screen
             .question
             .as_ref()
@@ -235,6 +237,7 @@ fn sync(screen: &mut TableScreen, t: &Trainers) {
         st.after = None;
     }
     match screen.mode {
+        Mode::Guided => {}
         Mode::Hand => {
             if let Some(h) = &screen.hand {
                 while st.insights.len() < h.decisions.len() {
@@ -272,11 +275,15 @@ pub(super) fn crumb(screen: &TableScreen) -> Option<String> {
         .cockpit
         .first_seed
         .map_or(1, |first| screen.seed.wrapping_sub(first) + 1);
+    if let Some((name, step)) = screen.guided_title() {
+        return Some([i18n.tr("table-mode-guided"), name, step].join(" · "));
+    }
     let mut parts = vec![i18n.tr(match screen.mode {
         Mode::Spot => "table-mode-spot",
         Mode::Postflop => "table-mode-postflop",
         Mode::Hand => "table-mode-hand",
         Mode::Drill => "table-mode-drill",
+        Mode::Guided => "table-mode-guided",
     })];
     match (screen.mode, &screen.question) {
         (Mode::Spot, _) => parts.push(i18n.tr(&format!("table-spot-kind-{}", screen.kind.id()))),
@@ -328,6 +335,7 @@ fn open_actions(screen: &TableScreen, t: &Trainers) -> Vec<Action> {
         return Vec::new();
     }
     match screen.mode {
+        Mode::Guided => screen.guided_actions(),
         Mode::Hand => screen
             .hand
             .as_ref()
@@ -348,6 +356,8 @@ fn can_deal(screen: &TableScreen) -> bool {
     }
     match screen.mode {
         Mode::Hand => screen.hand.as_ref().is_some_and(|h| h.end.is_some()),
+        // The coach's own buttons start it again.
+        Mode::Guided => false,
         _ => screen.answer.is_some(),
     }
 }
@@ -361,6 +371,11 @@ pub(super) fn key(screen: &mut TableScreen, key: &str, cx: &mut Context<TableScr
     match key {
         "backspace" if screen.playback.is_some() => screen.replay_again(cx),
         "space" if screen.playing() => screen.skip_replay(cx),
+        "space" if screen.guided_says() => screen.guided_continue(cx),
+        "space" if screen.guided_done() => {
+            screen.deal(cx);
+            cx.notify();
+        }
         "space" if can_deal(screen) => {
             screen.deal(cx);
             cx.notify();
@@ -499,6 +514,9 @@ fn strip(
     if screen.drill.is_some() {
         modes.push(("mode_drill", "table-mode-drill", Mode::Drill));
     }
+    if screen.guided.is_some() {
+        modes.push(("mode_guided", "table-mode-guided", Mode::Guided));
+    }
     let last = modes.len() - 1;
     let segments = div()
         .flex()
@@ -605,7 +623,7 @@ fn strip(
             .drill
             .as_ref()
             .map(|b| (TableScreen::bucket_label(ui, b), Vec::new())),
-        Mode::Hand => None,
+        Mode::Hand | Mode::Guided => None,
     };
     if let Some((value, rows)) = situation {
         let has_rows = !rows.is_empty();
@@ -630,7 +648,7 @@ fn strip(
 
     // The opponent: the reference or a profile; a full hand can also seat
     // one profile per seat.
-    if screen.mode != Mode::Drill {
+    if !matches!(screen.mode, Mode::Drill | Mode::Guided) {
         let name =
             |id: Option<&str>| i18n.tr(&format!("bot-profile-{}", id.unwrap_or("reference")));
         let per_seat = screen.mode == Mode::Hand && screen.seats.is_some();
@@ -912,6 +930,56 @@ fn actbar(
             .on_click(cx.listener(|this, _, _, cx| this.replay_again(cx))),
         );
     }
+    if screen.guided_says() {
+        right = right.child(
+            btn(
+                "guided_next",
+                i18n.tr("table-guided-continue"),
+                Some(&i18n.tr("cockpit-key-space")),
+                Btn::Amber,
+                pal,
+            )
+            .h(px(36.))
+            .px(px(16.))
+            .on_click(cx.listener(|this, _, _, cx| this.guided_continue(cx))),
+        );
+    } else if screen.guided_done() {
+        let lesson = screen.guided_lesson();
+        right = right.child(
+            btn(
+                "guided_again",
+                i18n.tr("table-guided-again"),
+                Some(&i18n.tr("cockpit-key-space")),
+                if lesson.is_some() {
+                    Btn::Plain
+                } else {
+                    Btn::Amber
+                },
+                pal,
+            )
+            .h(px(36.))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.deal(cx);
+                cx.notify();
+            })),
+        );
+        if let Some(id) = lesson {
+            right = right.child(
+                btn(
+                    "guided_lesson",
+                    i18n.tr("table-guided-back"),
+                    None,
+                    Btn::Amber,
+                    pal,
+                )
+                .h(px(36.))
+                .px(px(16.))
+                .on_click(
+                    cx.listener(move |_, _, _, cx| cx.emit(TableEvent::BackToLesson(id.clone()))),
+                ),
+            );
+        }
+    }
     if can_deal(screen) {
         let hand = screen.mode == Mode::Hand;
         if hand
@@ -976,9 +1044,10 @@ fn table_head(screen: &TableScreen, scene: Option<&Scene<'_>>, pal: &Pal) -> Div
     };
     let state = sc.state();
     let street = i18n.tr(&format!("street-{}", street_id(state.street())));
-    let over = screen.mode == Mode::Hand
+    let over = (screen.mode == Mode::Hand
         && !sc.playing
-        && screen.hand.as_ref().is_some_and(|h| h.end.is_some());
+        && screen.hand.as_ref().is_some_and(|h| h.end.is_some()))
+        || screen.guided_wins().is_some();
     let title = if over {
         i18n.tr("cockpit-table-over")
     } else if sc.playing {
@@ -1112,8 +1181,10 @@ pub fn table(
         .as_deref()
         .filter(|_| shows_answer(screen));
     let story = after.or(screen.playback.as_ref().map(|p| &p.story));
+    let guided = screen.guided_run();
     let hero = match (hand, &screen.question) {
         (Some(h), _) => Some(h.hero),
+        _ if screen.mode == Mode::Guided => guided.map(|r| r.hero()),
         (None, Some(q)) if screen.mode != Mode::Hand => Some(q.hero()),
         _ => None,
     };
@@ -1139,7 +1210,8 @@ pub fn table(
                     .collect(),
             };
             let (evs, streets) = word(&ui, story, hero, &grades);
-            let over = hand.is_some_and(|h| h.end.is_some()) && !playing;
+            let guided_wins = screen.guided_wins();
+            let over = (hand.is_some_and(|h| h.end.is_some()) && !playing) || guided_wins.is_some();
             // What each winner took once the hand is settled.
             let mut wins: Vec<(Seat, Chips)> = Vec::new();
             if let (Some(HandEnd::Settled(st)), true) = (hand.and_then(|h| h.end.as_ref()), over) {
@@ -1153,6 +1225,9 @@ pub fn table(
                     }
                 }
                 wins.retain(|(_, c)| *c > 0);
+            }
+            if let Some(w) = guided_wins {
+                wins = w;
             }
             let state = &story.states[at];
             Some(Scene {
@@ -1250,9 +1325,13 @@ pub fn table(
         .child(line::body(screen, scene.as_ref(), left_w - 2., &pal, cx));
     let eval_panel = kit::panel(&pal)
         .child(crate::tour::anchor("table_explanation"))
-        .child(eval::panel(
-            screen, &trainers, decided_on, graded, insight, wide, &pal, &tp,
-        ));
+        .child(if screen.mode == Mode::Guided {
+            eval::coach(screen, wide, &pal)
+        } else {
+            eval::panel(
+                screen, &trainers, decided_on, graded, insight, wide, &pal, &tp,
+            )
+        });
 
     // A click anywhere else closes an open picker.
     let scrim = screen.cockpit.menu.map(|_| {

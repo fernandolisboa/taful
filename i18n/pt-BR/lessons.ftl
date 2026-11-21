@@ -68,3 +68,11 @@ tree-track-locked = { $count ->
     [one] 1 lição
    *[other] { $count } lições
 } · libera conforme você conclui as lições que vêm antes. Clique para dar uma olhada.
+
+## Mão guiada (D26)
+lesson-guided-title = Mão guiada: { $name }
+lesson-guided-body = Jogue uma mão na mesa de verdade, passo a passo. A lição fica concluída quando você passa no quiz e termina a mão.
+lesson-guided-play = Jogar a mão guiada
+lesson-guided-again = Jogar a mão guiada de novo
+lesson-guided-finished = Mão concluída.
+quiz-guided-pending = Falta um passo: jogue a mão guiada para concluir a lição.

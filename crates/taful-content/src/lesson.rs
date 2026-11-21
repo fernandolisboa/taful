@@ -43,6 +43,10 @@ pub struct FrontMatter {
     /// Reading time shown in the skill tree, in minutes.
     #[serde(default)]
     pub minutes: Option<u32>,
+    /// A guided hand (`guided/<id>.toml`, D26) played after the quiz: the
+    /// lesson is done once both are.
+    #[serde(default)]
+    pub guided: Option<String>,
 }
 
 /// One lesson file in one locale.

@@ -15,6 +15,9 @@ pub struct LessonView {
     /// Rendered lesson, or the render error.
     pub open: Option<Result<OpenLesson, String>>,
     pub quiz: Option<QuizRun>,
+    /// Lessons the last finished guided hand opened (D26), shown on the
+    /// lesson's guided card.
+    pub guided_unlocked: Vec<String>,
     /// Lesson groups the user unfolded (or folded) on the lessons screen,
     /// by their title key.
     pub expanded: std::collections::HashSet<String>,
@@ -41,6 +44,9 @@ pub struct QuestionState<'a> {
 
 impl Shell {
     pub(crate) fn open_lesson(&mut self, id: &str) {
+        if self.lesson.current.as_deref() != Some(id) {
+            self.lesson.guided_unlocked.clear();
+        }
         self.lesson.current = Some(id.to_owned());
         self.lesson.open = None;
         self.lesson.quiz = None;
@@ -75,6 +81,81 @@ impl Shell {
             }
             Err(e) => eprintln!("taful: quiz failed to load: {e}"),
         }
+    }
+
+    /// Opens the lesson's guided hand on the table (D26).
+    fn play_guided(&mut self, id: &str, window: &mut gpui::Window, cx: &mut Context<Self>) {
+        match self.app.guided(id) {
+            Ok(run) => {
+                let lesson = self.lesson.current.clone();
+                self.table
+                    .update(cx, |t, cx| t.start_guided(run, lesson, cx));
+                self.select(Screen::Table, window, cx);
+            }
+            Err(e) => eprintln!("taful: guided hand `{id}`: {e}"),
+        }
+    }
+
+    /// The lesson's guided hand: what it is and the button that opens it.
+    fn guided_block(&self, open: &OpenLesson, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let g = open.guided.as_ref()?;
+        if open.state == LessonState::Locked {
+            return None;
+        }
+        let (ui, p) = (&self.ui, &self.palette);
+        let id = g.id.clone();
+        let label = if g.finished {
+            "lesson-guided-again"
+        } else {
+            "lesson-guided-play"
+        };
+        Some(
+            card(ui, p)
+                .child(title(
+                    ui.i18n
+                        .tr_args("lesson-guided-title", &[("name", g.title.clone().into())]),
+                    ui,
+                ))
+                .child(muted(ui.i18n.tr("lesson-guided-body"), ui, p))
+                .when(g.finished, |c| {
+                    c.child(muted(ui.i18n.tr("lesson-guided-finished"), ui, p))
+                })
+                .when_some(
+                    self.unlocked_line(&self.lesson.guided_unlocked),
+                    |c, line| c.child(muted(line, ui, p)),
+                )
+                .child(div().flex().child(
+                    button("lesson_guided", ui.i18n.tr(label), !g.finished, ui, p).on_click(
+                        cx.listener(move |this, _, window, cx| {
+                            this.play_guided(&id, window, cx);
+                            cx.notify();
+                        }),
+                    ),
+                ))
+                .into_any_element(),
+        )
+    }
+
+    /// "Liberadas: …" for lessons that just opened, if any.
+    fn unlocked_line(&self, ids: &[String]) -> Option<String> {
+        if ids.is_empty() {
+            return None;
+        }
+        let loc = self.ui.i18n.locale();
+        let names: Vec<String> = ids
+            .iter()
+            .filter_map(|id| {
+                self.app
+                    .library()
+                    .lesson(id, loc.tag())
+                    .map(|l| l.meta.title.clone())
+            })
+            .collect();
+        Some(
+            self.ui
+                .i18n
+                .tr_args("quiz-unlocked", &[("lessons", names.join(", ").into())]),
+        )
     }
 
     fn quiz_answer(&mut self, a: Answer) {
@@ -251,23 +332,11 @@ impl Shell {
                     ],
                 )
             }));
-            if !r.unlocked.is_empty() {
-                let names: Vec<String> = r
-                    .unlocked
-                    .iter()
-                    .filter_map(|id| {
-                        self.app
-                            .library()
-                            .lesson(id, loc.tag())
-                            .map(|l| l.meta.title.clone())
-                    })
-                    .collect();
-                c = c.child(muted(
-                    ui.i18n
-                        .tr_args("quiz-unlocked", &[("lessons", names.join(", ").into())]),
-                    ui,
-                    p,
-                ));
+            if let Some(line) = self.unlocked_line(&r.unlocked) {
+                c = c.child(muted(line, ui, p));
+            }
+            if r.guided_pending.is_some() {
+                c = c.child(muted(ui.i18n.tr("quiz-guided-pending"), ui, p));
             }
             c = c.child(
                 div()
@@ -422,7 +491,7 @@ impl Shell {
         match self.quiz_block(cx) {
             Some(q) => col = col.child(q),
             None if open.state != LessonState::Locked => {
-                let label = if open.state == LessonState::Done {
+                let label = if open.state == LessonState::Done || open.quiz_passed {
                     "lesson-retake-quiz"
                 } else {
                     "lesson-take-quiz"
@@ -439,6 +508,9 @@ impl Shell {
                 );
             }
             None => {}
+        }
+        if let Some(g) = self.guided_block(&open, cx) {
+            col = col.child(g);
         }
         col.into_any_element()
     }

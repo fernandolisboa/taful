@@ -1,0 +1,77 @@
+# A first hand from the deal to the showdown (D26): everyone folds to the
+# blinds, the small blind completes, and hero, in the big blind, checks,
+# bets the flop, checks the turn and calls the river to win with two pair.
+# Amounts in `act`, `hero` and `offer` are chips: 100 = 1 bb.
+
+id = "first-hand"
+version = 1
+title = { en-US = "Your first hand", pt-BR = "Sua primeira mão" }
+players = 6
+hero = "BB"
+board = "Kd7c2h4s9d"
+
+[cards]
+BB = "Ks9s"
+SB = "Qd7d"
+
+[[steps]]
+say = { en-US = "This is a 6-player table. You are the big blind (BB): before the cards come, you already put 1 bb in the pot. The small blind (SB), on your right, put in 0.5 bb.", pt-BR = "Esta é uma mesa de 6 jogadores. Você é o big blind (BB): antes das cartas, você já colocou 1 bb no pote. O small blind (SB), à sua direita, colocou 0,5 bb." }
+
+[[steps]]
+say = { en-US = "Everyone got two face-down cards. Yours are K♠ 9♠, and only you can see them.", pt-BR = "Cada jogador recebeu duas cartas fechadas. As suas são K♠ 9♠, e só você as vê." }
+
+[[steps]]
+act = "UTG:f,HJ:f,CO:f,BTN:f"
+say = { en-US = "Play goes clockwise, starting left of the big blind. UTG, HJ, CO and the button (BTN) gave up: they folded and threw their cards away.", pt-BR = "A vez passa no sentido horário, começando à esquerda do big blind. UTG, HJ, CO e o botão (BTN) desistiram: deram fold e jogaram as cartas fora." }
+
+[[steps]]
+act = "SB:c"
+say = { en-US = "The small blind put in 0.5 bb more to match your 1 bb. Matching a bet is a call.", pt-BR = "O small blind pôs mais 0,5 bb para igualar o seu 1 bb. Igualar uma aposta se chama call (pagar)." }
+
+[[steps]]
+hero = "x"
+say = { en-US = "Your turn. Nobody raised, so you owe nothing more: you can check and see the next cards for free. Click Check.", pt-BR = "Sua vez. Ninguém aumentou, então você não deve nada: pode dar check (passar) e ver as próximas cartas de graça. Clique em Check." }
+why = { en-US = "You could raise, but with a middling hand it is simpler to check and see the flop without putting in more chips.", pt-BR = "Você poderia aumentar, mas com uma mão média é mais simples dar check e ver o flop sem pôr mais fichas." }
+
+[[steps]]
+say = { en-US = "Here comes the flop: three cards face up in the middle, shared by everyone. With the K♦ on the board and your K♠, you have a pair of kings.", pt-BR = "Saiu o flop: três cartas abertas no meio da mesa, que valem para todos. Com o K♦ da mesa e o seu K♠, você tem um par de reis." }
+
+[[steps]]
+act = "SB:x"
+say = { en-US = "After the flop, the first player still in the hand to the button's left speaks first: the small blind. They checked.", pt-BR = "Depois do flop, fala primeiro quem ainda está na mão à esquerda do botão: o small blind. Ele deu check." }
+
+[[steps]]
+hero = "b100"
+say = { en-US = "A pair of kings is a strong hand here. Bet, so the other player has to pay to stay in: half the pot, 1 bb.", pt-BR = "Um par de reis é uma mão forte aqui. Aposte, para o adversário ter que pagar se quiser continuar: metade do pote, 1 bb." }
+why = { en-US = "Checking gives the other player a free card. With the better hand, betting makes weaker hands pay.", pt-BR = "Dar check dá uma carta de graça ao adversário. Com a mão melhor, apostar faz as mãos piores pagarem." }
+
+[[steps]]
+act = "SB:c"
+say = { en-US = "The small blind called, and the pot is 4 bb. The fourth card, the turn, came out: 4♠. It changes little.", pt-BR = "O small blind pagou, e o pote tem 4 bb. Saiu a quarta carta, o turn: 4♠. Ela muda pouco." }
+
+[[steps]]
+act = "SB:x"
+
+[[steps]]
+hero = "x"
+say = { en-US = "The small blind checked again. Your hand is good but not huge: check to keep the pot small and see the last card.", pt-BR = "O small blind deu check de novo. Sua mão é boa, mas não enorme: dê check para manter o pote pequeno e ver a última carta." }
+why = { en-US = "Betting is possible too, but checking keeps the pot small and gets you to the river cheaply.", pt-BR = "Apostar também é possível, mas dar check mantém o pote pequeno e leva você ao river sem gastar." }
+
+[[steps]]
+act = "SB:b200"
+say = { en-US = "The last card, the river: 9♦. Now you have two pair, kings and nines. The small blind bet 2 bb.", pt-BR = "A última carta, o river: 9♦. Agora você tem dois pares, reis e noves. O small blind apostou 2 bb." }
+
+[[steps]]
+hero = "c"
+say = { en-US = "Two pair is a strong hand. Call to see their cards.", pt-BR = "Dois pares é uma mão forte. Pague (call) para ver as cartas dele." }
+why = { en-US = "Raising puts more chips at risk. By calling you see their cards and win whenever they have less.", pt-BR = "Aumentar põe mais fichas em risco. Pagando, você vê as cartas dele e ganha sempre que ele tiver menos." }
+
+[[steps.wrong]]
+act = "f"
+why = { en-US = "Folding would hand over a 6 bb pot with a strong hand. Fold when your hand is weak against the bet.", pt-BR = "Dar fold entregaria um pote de 6 bb com uma mão forte. Fold é para quando sua mão é fraca contra a aposta." }
+
+[[steps]]
+say = { en-US = "Showdown: the cards are shown. The small blind had Q♦ 7♦, a pair of sevens. Your two pair win the 8 bb pot!", pt-BR = "Showdown: as cartas são mostradas. O small blind tinha Q♦ 7♦, um par de setes. Seus dois pares levam o pote de 8 bb!" }
+
+[[steps]]
+say = { en-US = "That is a whole hand: blinds, preflop, flop, turn, river and showdown. In every round, each player can fold, check, call, bet or raise.", pt-BR = "Essa é uma mão inteira: blinds, pré-flop, flop, turn, river e showdown. Em cada rodada, cada jogador pode dar fold, check, call, apostar ou aumentar." }

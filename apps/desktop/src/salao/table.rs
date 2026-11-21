@@ -175,7 +175,7 @@ fn controls(
             .map(|b| kit::pill("drill_bucket", TableScreen::bucket_label(&ui, b), true, &p))
             .into_iter()
             .collect(),
-        Mode::Hand => Vec::new(),
+        Mode::Hand | Mode::Guided => Vec::new(),
     };
     let mut edit = Some(
         kit::btn("layout_edit", i18n.tr("layout-edit-start"), false, true, &p)
@@ -242,7 +242,8 @@ fn controls(
 /// EV they lost.
 fn strip(screen: &TableScreen) -> Option<Div> {
     let s = &screen.salao.session;
-    if s.count == 0 {
+    // A guided hand is not graded: no session under it.
+    if s.count == 0 || screen.mode == Mode::Guided {
         return None;
     }
     let (p, ui) = (screen.palette, &screen.ui);
@@ -380,14 +381,16 @@ pub fn table(
     felt::set_panel_width(panel_w);
     let parts = match screen.mode {
         Mode::Hand => screen.hand_parts(&trainers, k * felt::H / TABLE_H, cx),
+        Mode::Guided => screen.guided_parts(k * felt::H / TABLE_H, cx),
         _ => screen.question_parts(&trainers, k * felt::H / TABLE_H, cx),
     };
     let dealt = match screen.mode {
         Mode::Hand => screen.hand.is_some(),
+        Mode::Guided => screen.guided_run().is_some(),
         Mode::Postflop if screen.postflop_message(&trainers).is_some() => false,
         _ => screen.question.is_some(),
     };
-    let answered = screen.mode != Mode::Hand && screen.answer.is_some();
+    let answered = !matches!(screen.mode, Mode::Hand | Mode::Guided) && screen.answer.is_some();
     // After the answer the felt shows it played: hero's chips in front,
     // the pot with them. A fold changes no chips: the same table, with
     // hero out.
@@ -531,7 +534,7 @@ fn split(w: f32, h: f32) -> (f32, f32, bool) {
 /// Hero's answer as the story's last line (the spot modes grade one
 /// decision; the story the screen keeps ends before it).
 fn answer_tag(screen: &TableScreen, hero: Seat) -> Option<StoryTag> {
-    if screen.mode == Mode::Hand {
+    if matches!(screen.mode, Mode::Hand | Mode::Guided) {
         return None;
     }
     let (q, d) = (screen.question.as_ref()?, screen.answer.as_ref()?);
