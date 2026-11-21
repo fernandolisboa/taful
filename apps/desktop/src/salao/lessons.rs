@@ -1,8 +1,9 @@
-//! Salão's lessons: the tracks down a timeline, the one in progress open.
+//! Salão's lessons: the levels (or themes) down a timeline, the one in
+//! progress open. Levels without lessons yet sit on the line as "em breve".
 
 use gpui::{AnyElement, Context, Div, FontWeight, SharedString, Stateful, div, prelude::*, px};
 use taful_app::fmt;
-use taful_app::lessons::{LessonCard, TrackView};
+use taful_app::lessons::{GroupKind, LessonCard, LessonGroup};
 use taful_app::model::LessonState;
 
 use super::colors::colors;
@@ -25,9 +26,11 @@ const MEDAL_Y: f32 = 38.;
 /// instead of the mockup's two.
 const TWO_COLUMNS_W: f32 = 800.;
 
-/// Where a track stands.
+/// Where a group stands.
 #[derive(Clone, Copy, PartialEq)]
 enum Stage {
+    /// No lessons yet ("em breve").
+    Soon,
     Done,
     /// Holds the next lesson.
     Current,
@@ -41,27 +44,33 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     let (c, p) = (colors(), shell.palette);
     let ui = shell.ui.clone();
     let i18n = &ui.i18n;
-    let loc = i18n.locale();
-    let tracks: Vec<TrackView> = match shell.app.skill_tree(loc) {
-        Ok(tracks) => tracks
-            .into_iter()
-            .filter(|t| !t.lessons.is_empty())
-            .collect(),
+    let list = match shell.lesson_list() {
+        Ok(list) => list,
         Err(e) => return crate::widgets::muted(e.to_string(), &ui, &p).into_any_element(),
     };
-    let all = || tracks.iter().flat_map(|t| t.lessons.iter());
-    // The first available lesson anywhere is "next".
-    let next = all()
-        .find(|l| l.state == LessonState::Available)
-        .map(|l| l.id.clone());
-    let total = all().count();
-    let done = all().filter(|l| l.state == LessonState::Done).count();
+    let next = list.next.clone();
+    let (total, done) = (list.total(), list.done());
+    let tracks: Vec<LessonGroup> = list.groups;
 
     // ---- the header ------------------------------------------------------------
+    // "Ver por" above the count.
+    let switch = div()
+        .flex()
+        .items_center()
+        .gap(px(10.))
+        .mb(px(14.))
+        .child(kit::label(
+            kit::SANS_S14,
+            12.5,
+            p.text_muted,
+            i18n.tr("tree-view-by"),
+        ))
+        .child(shell.view_switch(cx));
     let overall = div()
         .flex()
         .flex_col()
         .items_end()
+        .child(switch)
         .child(
             div()
                 .flex()
@@ -106,16 +115,16 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     let mut panels = Vec::new();
     // Each track's top and the top of the track in progress, for the line.
     let (mut y, mut current_y, mut last_y) = (0., None, 0.);
+    // The first and last groups with lessons: the gold runs between them.
+    let (mut first_y, mut last_real_y): (Option<f32>, f32) = (None, 0.);
     let mut first_locked = true;
     let mut n = 0usize;
     for (k, track) in tracks.into_iter().enumerate() {
         let count = track.lessons.len();
-        let finished = track
-            .lessons
-            .iter()
-            .filter(|l| l.state == LessonState::Done)
-            .count();
-        let stage = if finished == count {
+        let finished = track.done();
+        let stage = if track.is_soon() {
+            Stage::Soon
+        } else if finished == count {
             Stage::Done
         } else if track.lessons.iter().any(|l| Some(&l.id) == next.as_ref()) {
             Stage::Current
@@ -126,7 +135,8 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
         };
         // Only the track with the next lesson starts open; a click opens
         // or folds the others.
-        let open = stage == Stage::Current || shell.lesson.expanded.contains(&track.id);
+        let open =
+            stage == Stage::Current || (stage != Stage::Soon && shell.group_expanded(&track));
         let rows = if two_columns {
             count.div_ceil(2)
         } else {
@@ -136,8 +146,10 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
 
         let title = kit::TRACK
             .text(24., kit::LEADING)
-            .when(stage == Stage::Locked, |d| d.text_color(c.locked_title))
-            .child(i18n.tr(&format!("track-{}", track.id)));
+            .when(matches!(stage, Stage::Locked | Stage::Soon), |d| {
+                d.text_color(c.locked_title)
+            })
+            .child(i18n.tr(&track.title_key()));
         let tag = |text: String, color, bg: f32, ring: f32| {
             div()
                 .relative()
@@ -149,6 +161,18 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                 .child(kit::label(kit::SANS_S14, 10.5, color, text))
         };
         let note = match stage {
+            Stage::Soon => div()
+                .flex()
+                .items_center()
+                .gap(px(12.))
+                .child(tag(i18n.tr("tree-soon"), c.dim, 0.08, 0.3))
+                .when(track.kind == GroupKind::Level, |d| {
+                    d.child(
+                        kit::sans_text(13., FontWeight::NORMAL)
+                            .text_color(c.dim)
+                            .child(i18n.tr(&format!("{}-about", track.title_key()))),
+                    )
+                }),
             Stage::Done => tag(i18n.tr("tree-state-done"), p.grade_best, 0.1, 0.3),
             Stage::Current => tag(i18n.tr("salao-track-current"), c.gold2, 0.1, 0.35),
             Stage::Open if finished > 0 => tag(i18n.tr("salao-track-current"), c.gold2, 0.1, 0.35),
@@ -185,7 +209,7 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                     .text_color(p.text_muted)
                     .child(i18n.tr_args("salao-of", &[("total", count.into())])),
             );
-        let track_id = track.id.clone();
+        let group = track.clone();
         let head = div()
             .id(("salao_track", k))
             .flex()
@@ -194,14 +218,12 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             .child(title)
             .child(note.ml(px(16.)))
             .child(div().flex_1())
-            .child(tally)
-            // The track in progress stays open.
-            .when(stage != Stage::Current, |d| {
+            .when(stage != Stage::Soon, |d| d.child(tally))
+            // The group in progress stays open; an empty one has nothing to show.
+            .when(!matches!(stage, Stage::Current | Stage::Soon), |d| {
                 d.cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        if !this.lesson.expanded.remove(&track_id) {
-                            this.lesson.expanded.insert(track_id.clone());
-                        }
+                        this.toggle_group(&group);
                         cx.notify();
                     }))
             });
@@ -211,12 +233,14 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             .mb(px(TRACK_GAP))
             .px(px(24.))
             .py(px(16.))
-            .when(k == 0, |d| d.child(crate::tour::anchor("tree_first")))
+            .when(stage != Stage::Soon && first_y.is_none(), |d| {
+                d.child(crate::tour::anchor("tree_first"))
+            })
             .child(medal(k, stage, &p))
             .child(head);
         panel = match stage {
             Stage::Current => panel.border_color(alpha(p.accent, 0.26)),
-            Stage::Locked => panel
+            Stage::Locked | Stage::Soon => panel
                 .bg(kit::vgrad(c.locked_top, c.locked_bottom))
                 .shadow(vec![kit::shadow(alpha(c.black, 0.3), 0., 8., 18., 0.)]),
             Stage::Done | Stage::Open => panel,
@@ -254,6 +278,10 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             panel = panel.children(bar).child(grid);
         }
         n += count;
+        if stage != Stage::Soon {
+            first_y.get_or_insert(y);
+            last_real_y = y;
+        }
         if stage == Stage::Current && current_y.is_none() {
             current_y = Some(y);
         }
@@ -265,7 +293,11 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     // then fading.
     if !panels.is_empty() {
         let (top, bottom) = (MEDAL_Y - 8., last_y + MEDAL_Y + 2.);
-        let gold_to = current_y.map_or(bottom, |y| (y + MEDAL_Y + 64.6).min(bottom));
+        // Empty levels above the first one with lessons are not progress.
+        let gold_from = first_y.map_or(top, |y| (y + MEDAL_Y).max(top));
+        let gold_to = current_y
+            .map_or(last_real_y + MEDAL_Y, |y| y + MEDAL_Y + 64.6)
+            .clamp(gold_from, bottom);
         let fade_to = (gold_to + 67.).min(bottom);
         let piece = |from: f32, to: f32| {
             div()
@@ -276,7 +308,8 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                 .h(px(to - from))
         };
         list = list
-            .child(piece(top, gold_to).bg(p.accent))
+            .child(piece(top, gold_from).bg(alpha(p.accent, 0.12)))
+            .child(piece(gold_from, gold_to).bg(p.accent))
             .child(piece(gold_to, fade_to).bg(kit::vgrad(p.accent, alpha(p.accent, 0.18))))
             .child(
                 piece(fade_to, bottom).bg(kit::vgrad(alpha(p.accent, 0.18), alpha(p.accent, 0.12))),
@@ -304,7 +337,7 @@ fn medal(index: usize, stage: Stage, p: &Palette) -> Div {
     let glow = match stage {
         Stage::Done => Some(kit::shadow(alpha(p.accent, 0.3), 0., 6., 16., 0.)),
         Stage::Current => Some(kit::shadow(alpha(p.accent, 0.35), 0., 0., 22., 0.)),
-        Stage::Open | Stage::Locked => None,
+        Stage::Open | Stage::Locked | Stage::Soon => None,
     };
     let disc = match stage {
         Stage::Done => layer().child(kit::image(kit::IMG_MEDAL_DONE, 56., 56.)),
@@ -312,7 +345,7 @@ fn medal(index: usize, stage: Stage, p: &Palette) -> Div {
             .bg(c.medal_bg)
             .border(px(1.5))
             .border_color(p.accent),
-        Stage::Locked => layer()
+        Stage::Locked | Stage::Soon => layer()
             .bg(c.medal_bg)
             .border(px(1.5))
             .border_color(alpha(p.text, 0.14)),
@@ -320,7 +353,7 @@ fn medal(index: usize, stage: Stage, p: &Palette) -> Div {
     let ink = match stage {
         Stage::Done => p.on_accent,
         Stage::Current | Stage::Open => c.gold2,
-        Stage::Locked => c.dim,
+        Stage::Locked | Stage::Soon => c.dim,
     };
     div()
         .absolute()

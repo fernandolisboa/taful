@@ -1,12 +1,33 @@
-# Strings da trilha, do leitor de lições e do quiz.
+# Strings da tela de lições, do leitor de lições e do quiz.
 
-## Track titles (`track-<id>`, checked by content-check)
+## Catálogo (D23): títulos de níveis e temas, conferidos pelo content-check
 
-track-foundations = Fundamentos
-track-poker-math = Matemática do poker
-track-preflop = Preflop
-track-postflop = Pós-flop
-track-game-plan = Plano de jogo
+level-primeiros-passos = Primeiros passos
+level-primeiros-passos-about = Nunca joguei
+level-fundamentos = Fundamentos
+level-fundamentos-about = Sei as regras
+level-iniciante = Iniciante
+level-iniciante-about = Jogo por diversão
+level-intermediario = Intermediário
+level-intermediario-about = Jogo e estudo
+level-avancado = Avançado
+level-avancado-about = Estudo e ganho
+level-pro = Pró
+level-pro-about = Quero o nível mais alto
+
+theme-basics = O básico
+theme-math = Matemática
+theme-preflop = Preflop
+theme-postflop = Pós-flop
+theme-reading = Leitura do jogo
+theme-mind = Mente e banca
+
+## Seletor "Ver por" da tela de lições
+
+tree-view-by = Ver por
+tree-view-journey = Jornada
+tree-view-themes = Temas
+tree-soon = Em breve
 
 ## Skill tree
 
@@ -46,7 +67,7 @@ tree-start = Começar
 tree-track-locked = { $count ->
     [one] 1 lição
    *[other] { $count } lições
-} · libera quando você terminar a trilha anterior. Clique para dar uma olhada.
+} · libera conforme você conclui as lições que vêm antes. Clique para dar uma olhada.
 
 ## Mão guiada (D26)
 lesson-guided-title = Mão guiada: { $name }

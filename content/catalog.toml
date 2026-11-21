@@ -1,0 +1,62 @@
+# The lesson catalog (D23): every lesson has a level and a theme, and the
+# lessons screen regroups the same lessons by either ("Ver por").
+#
+# `levels` and `themes` are in display order. A level's title is the Fluent
+# message `level-<id>` with a one-line description `level-<id>-about`; a
+# theme's title is `theme-<id>` (i18n/*/lessons.ftl, checked by
+# content-check). A level with no lessons yet shows as "em breve".
+#
+# `lessons` is the Jornada: level by level, in reading order within a level.
+# The Temas view keeps the same order inside each theme. A lesson's
+# prerequisites must come earlier in this list, never in a higher level.
+
+levels = ["primeiros-passos", "fundamentos", "iniciante", "intermediario", "avancado", "pro"]
+themes = ["basics", "math", "preflop", "postflop", "reading", "mind"]
+
+lessons = [
+    # ---- Fundamentos: knows the rules; the table, counting and odds ----
+    { id = "hand-rankings", level = "fundamentos", theme = "basics" },
+    { id = "positions-6max", level = "fundamentos", theme = "basics" },
+    { id = "stacks-and-blinds", level = "fundamentos", theme = "basics" },
+    { id = "combos-101", level = "fundamentos", theme = "reading" },
+    { id = "equity-101", level = "fundamentos", theme = "math" },
+    { id = "outs-101", level = "fundamentos", theme = "math" },
+    { id = "rule-of-2-and-4", level = "fundamentos", theme = "math" },
+    { id = "pot-odds-101", level = "fundamentos", theme = "math" },
+    { id = "ranges-101", level = "fundamentos", theme = "preflop" },
+    { id = "opening-ranges", level = "fundamentos", theme = "preflop" },
+
+    # ---- Iniciante: plays for fun; first decisions before and after the flop ----
+    { id = "facing-an-open", level = "iniciante", theme = "preflop" },
+    { id = "blind-defense", level = "iniciante", theme = "preflop" },
+    { id = "three-bet-101", level = "iniciante", theme = "preflop" },
+    { id = "board-texture", level = "iniciante", theme = "postflop" },
+    { id = "range-advantage", level = "iniciante", theme = "postflop" },
+    { id = "cbet-101", level = "iniciante", theme = "postflop" },
+    { id = "ev-101", level = "iniciante", theme = "math" },
+    { id = "mdf-101", level = "iniciante", theme = "math" },
+    { id = "facing-cbet", level = "iniciante", theme = "postflop" },
+    { id = "implied-odds-101", level = "iniciante", theme = "math" },
+    { id = "alpha-101", level = "iniciante", theme = "math" },
+    { id = "spr-101", level = "iniciante", theme = "math" },
+    { id = "fold-equity-101", level = "iniciante", theme = "math" },
+    { id = "bet-sizing", level = "iniciante", theme = "postflop" },
+
+    # ---- Intermediário: plays and studies; bigger pots, later streets, the plan ----
+    { id = "facing-a-3bet", level = "intermediario", theme = "preflop" },
+    { id = "squeeze-101", level = "intermediario", theme = "preflop" },
+    { id = "small-blind-play", level = "intermediario", theme = "preflop" },
+    { id = "four-bet-pots", level = "intermediario", theme = "preflop" },
+    { id = "check-raise-101", level = "intermediario", theme = "postflop" },
+    { id = "out-of-position", level = "intermediario", theme = "postflop" },
+    { id = "multiway-pots", level = "intermediario", theme = "postflop" },
+    { id = "turn-play", level = "intermediario", theme = "postflop" },
+    { id = "river-value", level = "intermediario", theme = "postflop" },
+    { id = "pot-control", level = "intermediario", theme = "postflop" },
+    { id = "hand-reading", level = "intermediario", theme = "reading" },
+    { id = "river-bluffing", level = "intermediario", theme = "postflop" },
+    { id = "bluff-catching", level = "intermediario", theme = "postflop" },
+    { id = "gto-vs-exploit", level = "intermediario", theme = "reading" },
+    { id = "study-loop", level = "intermediario", theme = "mind" },
+    { id = "bankroll-and-tilt", level = "intermediario", theme = "mind" },
+]

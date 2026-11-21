@@ -1,4 +1,4 @@
-//! The day at a glance: the next lesson with its place in its track, the
+//! The day at a glance: the next lesson with its place in its level, the
 //! reviews due now and tomorrow, the top leaks with their recent grades,
 //! and the mental-math pace. The Baralho style's home (D19) deals these
 //! as four cards.
@@ -7,7 +7,7 @@ use taful_core::calc::ExerciseKind;
 use taful_store::{LessonState, Millis};
 
 use crate::i18n::Locale;
-use crate::lessons::TrackView;
+use crate::lessons::LessonGroup;
 use crate::model::{Grade, Leak};
 use crate::template::{opponent_id, street_id};
 use crate::training::LEAK_WINDOW;
@@ -48,8 +48,9 @@ pub struct CalcPace {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Today {
     pub date: Date,
-    pub tracks: Vec<TrackView>,
-    /// The first available lesson as `(track, lesson)` indexes into `tracks`.
+    /// The Jornada: every level, empty ones included.
+    pub levels: Vec<LessonGroup>,
+    /// The first available lesson as `(level, lesson)` indexes into `levels`.
     pub next_lesson: Option<(usize, usize)>,
     pub due_now: u32,
     /// Reviews that fall due during tomorrow.
@@ -65,7 +66,7 @@ pub struct Today {
 
 impl Today {
     pub fn lessons_done(&self) -> usize {
-        self.tracks
+        self.levels
             .iter()
             .flat_map(|t| &t.lessons)
             .filter(|l| l.state == LessonState::Done)
@@ -73,7 +74,7 @@ impl Today {
     }
 
     pub fn lessons_total(&self) -> usize {
-        self.tracks.iter().map(|t| t.lessons.len()).sum()
+        self.levels.iter().map(|t| t.lessons.len()).sum()
     }
 
     /// Minutes the due reviews take, at least one.
@@ -114,8 +115,8 @@ impl App {
             now,
             now,
         ));
-        let tracks = self.skill_tree(locale)?;
-        let next_lesson = tracks.iter().enumerate().find_map(|(t, track)| {
+        let levels = self.journey(locale)?;
+        let next_lesson = levels.iter().enumerate().find_map(|(t, track)| {
             let l = track
                 .lessons
                 .iter()
@@ -194,7 +195,7 @@ impl App {
 
         Ok(Today {
             date,
-            tracks,
+            levels,
             next_lesson,
             due_now: self.store.count_due(now, kinds)?,
             due_tomorrow,
@@ -215,7 +216,11 @@ mod tests {
     fn a_fresh_profile_has_a_first_lesson_and_nothing_else() {
         let (mut a, _) = app_at(1_800_000_000_000);
         let t = a.today(Locale::SOURCE).unwrap();
-        assert_eq!(t.next_lesson, Some((0, 0)));
+        assert_eq!(
+            t.next_lesson,
+            Some((1, 0)),
+            "level 0 (primeiros passos) has no lessons yet"
+        );
         assert_eq!(t.lessons_done(), 0);
         assert!(t.lessons_total() > 0);
         assert_eq!((t.due_now, t.due_tomorrow), (0, 0));

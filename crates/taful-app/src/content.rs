@@ -1,4 +1,4 @@
-//! Content shipped in the binary (lessons, quizzes, skill tree, themes).
+//! Content shipped in the binary (lessons, quizzes, the catalog, themes).
 
 use taful_content::{Files, Library};
 
@@ -24,7 +24,7 @@ mod tests {
     fn embedded_content_loads_cleanly() {
         let (lib, findings) = library();
         assert!(findings.is_empty(), "{findings:?}");
-        assert!(!lib.tree.tracks.is_empty());
+        assert!(!lib.catalog.lessons.is_empty());
         assert!(lib.lessons.len() >= 10, "{} lessons", lib.lessons.len());
     }
 

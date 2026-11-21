@@ -16,8 +16,8 @@ tour-home-continue-body = A próxima lição para ler. Cada quiz em que você pa
 tour-home-stats-title = Sua rotina do dia
 tour-home-stats-body = As revisões trazem de volta o que você errou, na hora certa. O cálculo mental treina as contas que você usa na mesa.
 
-tour-tree-track-title = Trilhas
-tour-tree-track-body = As lições vêm em trilhas, em ordem. Dá para ler uma lição bloqueada; só o quiz dela espera.
+tour-tree-track-title = Níveis e temas
+tour-tree-track-body = As lições vão do zero ao pró, nível a nível. Em "Ver por" dá para agrupá-las por tema. Dá para ler uma lição bloqueada; só o quiz dela espera.
 tour-tree-next-title = Comece por aqui
 tour-tree-next-body = A lição destacada é a próxima. Passar no quiz dela libera as seguintes.
 

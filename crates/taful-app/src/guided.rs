@@ -65,7 +65,7 @@ impl App {
                     .then(|| (l.clone(), lesson.meta.version))
             })
             .collect();
-        let before = self.skill_tree_states()?;
+        let before = self.catalog_states()?;
         let mut done = Vec::new();
         for (lesson, version) in lessons {
             if self.lesson_state(&lesson)? != LessonState::Done && self.quiz_passed(&lesson)? {
@@ -77,7 +77,7 @@ impl App {
         let unlocked = if done.is_empty() {
             Vec::new()
         } else {
-            crate::lessons::newly_unlocked(&before, self.skill_tree_states()?)
+            crate::lessons::newly_unlocked(&before, self.catalog_states()?)
         };
         Ok(GuidedFinish { done, unlocked })
     }

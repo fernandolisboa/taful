@@ -106,13 +106,13 @@ fn big(card: Big, slot: usize, bx: &Bx, p: &Palette) -> Div {
         .h(u(CARD_H + 7.))
 }
 
-/// A tiny card of the lesson strip: done (a check), current (raised,
-/// amber) or still face down.
-fn mini(state: LessonState, current: bool, bx: &Bx, p: &Palette) -> Div {
+/// A tiny card of the lesson strip, `w` wide: done (a check), current
+/// (raised, amber) or still face down.
+fn mini(state: LessonState, current: bool, w: f32, bx: &Bx, p: &Palette) -> Div {
     let outline = |face: Div| {
         div()
             .flex_none()
-            .w(u(22.))
+            .w(u(w))
             .h(u(30.))
             .rounded(u(5.))
             .bg(bx.deep)
@@ -127,7 +127,7 @@ fn mini(state: LessonState, current: bool, bx: &Bx, p: &Palette) -> Div {
             border: 2.,
             drop: 3.,
         }
-        .sized(22., 30., div())
+        .sized(w, 30., div())
         .relative()
         .top(u(-3.));
     }
@@ -321,7 +321,7 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     // ---- spades: the next lesson -------------------------------------------
     let lesson = match today.next_lesson {
         Some((t, l)) => {
-            let track = &today.tracks[t];
+            let track = &today.levels[t];
             let card = &track.lessons[l];
             let total = track.lessons.len();
             let body = match card.minutes {
@@ -338,15 +338,17 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                     &[("n", (l + 1).into()), ("total", total.into())],
                 ),
             };
-            // A long track keeps to the card with a tighter gap.
+            // A long level keeps to the card with a tighter gap, then
+            // narrower cards.
             let n = total.max(2) as f32;
             let gap = ((CARD_INNER_W - MINI_W * n) / (n - 1.)).clamp(1., 5.);
+            let mini_w = MINI_W.min(((CARD_INNER_W - gap * (n - 1.)) / n).floor());
             let strip = div().flex().gap(u(gap)).children(
                 track
                     .lessons
                     .iter()
                     .enumerate()
-                    .map(|(i, c)| mini(c.state, i == l, &bx, &p)),
+                    .map(|(i, c)| mini(c.state, i == l, mini_w, &bx, &p)),
             );
             let id = card.id.clone();
             Big {
@@ -354,7 +356,7 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                 index: (l + 1).to_string(),
                 eyebrow: i18n.tr_args(
                     "baralho-home-continue",
-                    &[("track", i18n.tr(&format!("track-{}", track.id)).into())],
+                    &[("track", i18n.tr(&track.title_key()).into())],
                 ),
                 title: card.title.clone(),
                 body,
@@ -628,7 +630,7 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                 .child(i18n.tr("baralho-home-all-lessons-link")),
         );
     let shown: Vec<_> = today
-        .tracks
+        .levels
         .iter()
         .filter(|t| !t.lessons.is_empty())
         .collect();
@@ -647,7 +649,7 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             "baralho-track-locked"
         });
         track_tile(
-            i18n.tr(&format!("track-{}", t.id)),
+            i18n.tr(&t.title_key()),
             Pip::TRACKS[k % Pip::TRACKS.len()],
             &states,
             status,

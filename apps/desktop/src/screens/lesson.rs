@@ -18,8 +18,11 @@ pub struct LessonView {
     /// Lessons the last finished guided hand opened (D26), shown on the
     /// lesson's guided card.
     pub guided_unlocked: Vec<String>,
-    /// Locked tracks the user expanded in the tree to preview.
+    /// Lesson groups the user unfolded (or folded) on the lessons screen,
+    /// by their title key.
     pub expanded: std::collections::HashSet<String>,
+    /// "Ver por": read from settings on first use.
+    pub view_by: Option<taful_app::lessons::ViewBy>,
 }
 
 pub struct QuizRun {

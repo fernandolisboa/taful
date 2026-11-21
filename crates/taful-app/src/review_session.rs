@@ -312,7 +312,7 @@ mod tests {
         // A wrong calc answer and a wrong quiz answer.
         let round = app.calc_start(Some(ExerciseKind::Mdf));
         app.calc_submit(&round, Some(-5.0)).unwrap();
-        let lesson = app.library.tree.order()[0].to_owned();
+        let lesson = app.library.catalog.order()[0].to_owned();
         let view = app.quiz(&lesson, Locale::PtBr).unwrap();
         let mut answers: Vec<Answer> = view
             .questions

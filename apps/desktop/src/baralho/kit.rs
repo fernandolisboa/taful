@@ -18,11 +18,20 @@ pub enum Pip {
     Diamond,
     Club,
     Star,
+    /// The sixth group's mark (the deck has five).
+    Crown,
 }
 
 impl Pip {
-    /// The suits in the order tracks take them.
-    pub const TRACKS: [Pip; 5] = [Pip::Spade, Pip::Diamond, Pip::Club, Pip::Heart, Pip::Star];
+    /// The marks in the order lesson groups take them.
+    pub const TRACKS: [Pip; 6] = [
+        Pip::Spade,
+        Pip::Diamond,
+        Pip::Club,
+        Pip::Heart,
+        Pip::Star,
+        Pip::Crown,
+    ];
 
     pub fn of(s: Suit) -> Pip {
         match s {
@@ -40,6 +49,7 @@ impl Pip {
             Pip::Diamond => "baralho/icons/diamond.svg",
             Pip::Club => "baralho/icons/club.svg",
             Pip::Star => "baralho/icons/star.svg",
+            Pip::Crown => "baralho/icons/crown.svg",
         }
     }
 
@@ -50,6 +60,7 @@ impl Pip {
             Pip::Diamond => p.suit_diamonds,
             Pip::Club => p.suit_clubs,
             Pip::Star => bx.joker,
+            Pip::Crown => bx.amber,
         }
     }
 }

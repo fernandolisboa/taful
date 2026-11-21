@@ -1,4 +1,4 @@
-//! Taful content (spec §12): lesson, quiz and skill-tree loader, the
+//! Taful content (spec §12): lesson, quiz and catalog loader, the
 //! placeholder expression language, the Markdown renderer and the content
 //! checks. The checks run in CI through `tools/content-check` and the app
 //! loads the same content embedded in its binary.
@@ -14,7 +14,7 @@ pub mod quiz;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-pub use library::{Files, LOCALES, Library, SOURCE_LOCALE, SkillTree, Track};
+pub use library::{CATALOG, Catalog, Entry, Files, LOCALES, Library, SOURCE_LOCALE};
 
 /// One problem found by a content check.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -142,9 +142,13 @@ mod tests {
         f.into_iter().map(|f| f.to_string()).collect()
     }
 
+    const LEVELS_FTL: &str =
+        "level-l1 = L1\nlevel-l1-about = A\nlevel-l2 = L2\nlevel-l2-about = B\ntheme-t = T\n";
+    const CATALOG_OK: &str = "levels = [\"l1\", \"l2\"]\nthemes = [\"t\"]\nlessons = [\n  { id = \"a\", level = \"l1\", theme = \"t\" },\n  { id = \"b\", level = \"l1\", theme = \"t\" },\n]\n";
+
     const I18N: &[(&str, &str)] = &[
-        ("en-US/lessons.ftl", "track-t = T\n"),
-        ("pt-BR/lessons.ftl", "track-t = T\n"),
+        ("en-US/lessons.ftl", LEVELS_FTL),
+        ("pt-BR/lessons.ftl", LEVELS_FTL),
         (
             "en-US/glossary.ftl",
             "glossary-equity = Equity\nglossary-equity-def = Share\n",
@@ -175,10 +179,7 @@ mod tests {
             "Precisa {{ calc: pot_odds(pot=100, bet=50) | pct(1) }}.",
         );
         vec![
-            (
-                "skill-tree.toml",
-                "[[tracks]]\nid = \"t\"\nlessons = [\"a\", \"b\"]\n".into(),
-            ),
+            ("catalog.toml", CATALOG_OK.into()),
             ("lessons/en-US/a.md", a.clone()),
             ("lessons/pt-BR/a.md", a),
             ("lessons/en-US/b.md", b),
@@ -254,16 +255,58 @@ mod tests {
                 "no unlock",
             ),
             (
-                Box::new(|c| c[0].1 = "[[tracks]]\nid = \"t\"\nlessons = [\"b\", \"a\"]\n".into()),
+                Box::new(|c| {
+                    c[0].1 = CATALOG_OK
+                        .replace("\"a\", level", "\"tmp\", level")
+                        .replace("\"b\", level", "\"a\", level")
+                        .replace("\"tmp\", level", "\"b\", level")
+                }),
                 "comes later",
             ),
             (
-                Box::new(|c| c[0].1 = "[[tracks]]\nid = \"t\"\nlessons = [\"a\"]\n".into()),
-                "not in skill-tree",
+                Box::new(|c| {
+                    c[0].1 =
+                        CATALOG_OK.replace("{ id = \"b\", level = \"l1\", theme = \"t\" },\n", "")
+                }),
+                "not in catalog",
             ),
             (
-                Box::new(|c| c[0].1 = "[[tracks]]\nid = \"x\"\nlessons = [\"a\", \"b\"]\n".into()),
-                "track-x",
+                Box::new(|c| {
+                    c[0].1 = CATALOG_OK.replace(
+                        "{ id = \"a\", level = \"l1\"",
+                        "{ id = \"a\", level = \"l2\"",
+                    )
+                }),
+                "higher level",
+            ),
+            (
+                Box::new(|c| {
+                    c[0].1 = CATALOG_OK.replace("{ id = \"a\", level = \"l1\"", "{ id = \"a\", level = \"l2\"").replace("{ id = \"b\", level = \"l1\"", "{ id = \"b\", level = \"l2\"").replace("{ id = \"b\", level = \"l2\", theme = \"t\" },\n]", "{ id = \"b\", level = \"l2\", theme = \"t\" },\n  { id = \"a2\", level = \"l1\", theme = \"t\" },\n]")
+                }),
+                "level by level",
+            ),
+            (
+                Box::new(|c| {
+                    c[0].1 = CATALOG_OK.replace("theme = \"t\" },\n]", "theme = \"zz\" },\n]")
+                }),
+                "unknown theme",
+            ),
+            (
+                Box::new(|c| {
+                    c[0].1 = CATALOG_OK.replace(
+                        "level = \"l1\", theme = \"t\" },\n]",
+                        "level = \"l9\", theme = \"t\" },\n]",
+                    )
+                }),
+                "unknown level",
+            ),
+            (
+                Box::new(|c| c[0].1 = CATALOG_OK.replace("\"l2\"]", "\"l2\", \"l3\"]")),
+                "level-l3",
+            ),
+            (
+                Box::new(|c| c[0].1 = CATALOG_OK.replace("[\"t\"]", "[\"t\", \"u\"]")),
+                "theme-u",
             ),
             (
                 Box::new(|c| {

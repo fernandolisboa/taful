@@ -13,7 +13,7 @@
 
 ## 1. Skill tree
 
-- 40 lessons in five tracks (`content/skill-tree.toml`): foundations 4, poker math 10, preflop 9, postflop 12, game plan 5. Both locales, same front matter and placeholders.
+- 40 lessons in one catalog (`content/catalog.toml`, D23), shown by level (Fundamentos 10, Iniciante 14, Intermediário 16) or by theme; originally five tracks (foundations 4, poker math 10, preflop 9, postflop 12, game plan 5). Both locales, same front matter and placeholders.
 - Every lesson unlocks with a quiz (`content/quizzes/`); passing marks it done and unlocks the lessons whose prerequisites are all done (M2).
 - Tests: `content-check` (placeholders, snapshots, locale parity, tree order and cycles, unlocks, glossary) runs in CI; `taful-app` lesson tests cover unlocking.
 

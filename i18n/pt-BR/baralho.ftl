@@ -64,15 +64,16 @@ baralho-home-practice-none-title = Mesa de treino
 baralho-home-practice-none-go = Ir pra mesa
 baralho-home-calc = Calcular
 baralho-home-calc-body = Média de { $secs } s por conta, com { $accuracy }% de acerto. O alvo é { $target } s.
-baralho-home-tracks = Suas trilhas · { $done } de { $total } lições
+baralho-home-tracks = Sua jornada · { $done } de { $total } lições
 baralho-home-all-lessons-link = Ver todas as lições →
 baralho-track-done = Concluída
 baralho-track-open = Em andamento
-baralho-track-locked = Libera depois da trilha anterior
+baralho-track-locked = Libera conforme você avança
 
 ## Lições
 
-baralho-lessons-body = Cada trilha é um naipe. Lição concluída vira carta aberta; as fechadas liberam em ordem.
+baralho-lessons-body = Cada nível é um naipe. Lição concluída vira carta aberta; as fechadas liberam conforme você avança.
+baralho-lessons-body-themes = Cada tema é um naipe. Lição concluída vira carta aberta; as fechadas liberam conforme você avança.
 baralho-lessons-total = de { $total } lições
 baralho-lessons-count = { $done } de { $total }
 baralho-lessons-track-done = concluída
