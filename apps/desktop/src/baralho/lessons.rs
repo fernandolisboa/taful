@@ -180,6 +180,94 @@ fn lines(widths: &[f32], room: f32) -> Vec<(usize, f32)> {
     vec![(total, GAP)]
 }
 
+/// How the level question (D25) is dressed: a cream sheet on the felt, and
+/// each level's suit as on this screen (a lock for one with no lessons).
+/// Its type keeps its size in a small window, unlike the canvas.
+pub fn level_look(shell: &Shell) -> crate::level_question::Look {
+    let b = bx(&shell.ui);
+    crate::level_question::Look {
+        scrim: alpha(b.shade, 0.6),
+        card: |s, content| kit::page_sheet(&bx(&s.ui), content.text_color(bx(&s.ui).ink)),
+        pad: 30.,
+        eyebrow: |s, text| {
+            typo::caps(11.5, 800, 120)
+                .on_px(div())
+                .text_color(bx(&s.ui).mut_ink)
+                .child(text.to_uppercase())
+        },
+        title: |_, text| typo::disp(30., 800, 25).lh(1.1).on_px(div()).child(text),
+        text: |s, text| {
+            typo::text(14., 500)
+                .on_px(div())
+                .text_color(bx(&s.ui).ink2)
+                .child(text)
+        },
+        name: |_, text| typo::disp(17., 800, 10).lh(1.2).on_px(div()).child(text),
+        about: |s, text| {
+            typo::text(13., 500)
+                .on_px(div())
+                .text_color(bx(&s.ui).mut_ink)
+                .child(text)
+        },
+        tag: |s, text, strong| {
+            let b = bx(&s.ui);
+            typo::caps(10.5, 800, 80)
+                .on_px(div())
+                .flex_none()
+                .px(gpui::px(9.))
+                .py(gpui::px(2.))
+                .rounded_full()
+                .border(gpui::px(1.5))
+                .border_color(if strong { b.deep } else { alpha(b.ink, 0.25) })
+                .text_color(if strong { b.ink } else { b.mut_ink })
+                .when(strong, |d| d.bg(b.amber))
+                .child(text.to_uppercase())
+        },
+        mark: |s, _, place| {
+            let (b, p) = (bx(&s.ui), s.palette);
+            let (path, tone) = match place {
+                Some(k) => {
+                    let pip = Pip::TRACKS[k % Pip::TRACKS.len()];
+                    (pip.path(), pip.tone(&b, &p))
+                }
+                None => (kit::LOCK, b.on_felt_mut),
+            };
+            div()
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .size(gpui::px(38.))
+                .rounded_full()
+                .border(gpui::px(2.))
+                .border_color(b.deep)
+                .bg(if place.is_some() {
+                    b.cream_hi
+                } else {
+                    b.back_locked
+                })
+                .child(
+                    gpui::svg()
+                        .path(path)
+                        .size(gpui::px(20.))
+                        .flex_none()
+                        .text_color(tone),
+                )
+                .into_any_element()
+        },
+        link: (b.mut_ink, b.ink),
+        row: crate::level_question::RowLook {
+            radius: 12.,
+            ring: alpha(b.ink, 0.12),
+            fill: b.cream2,
+            ring_hot: b.deep,
+            fill_hot: b.cream_hi,
+            ring_on: b.deep,
+            fill_on: alpha(b.amber, 0.35),
+        },
+    }
+}
+
 pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     let (ui, p) = (shell.ui.clone(), shell.palette);
     let bx = bx(&ui);

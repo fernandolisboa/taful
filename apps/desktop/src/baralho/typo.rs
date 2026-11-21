@@ -141,6 +141,16 @@ impl Ty {
         self
     }
 
+    /// Applies the style at its size in window pixels, unscaled: text over
+    /// the canvas (the level question) that must stay readable in a small
+    /// window.
+    pub fn on_px<E: Styled>(self, e: E) -> E {
+        e.font_family(SharedString::new_static(self.family))
+            .font_weight(FontWeight(f32::from(self.weight)))
+            .text_size(gpui::px(self.size))
+            .line_height(gpui::px((self.size * self.lh).round()))
+    }
+
     /// Applies the style to an element.
     pub fn on<E: Styled>(self, e: E) -> E {
         e.font_family(SharedString::new_static(self.family))

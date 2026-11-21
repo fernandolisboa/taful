@@ -64,6 +64,8 @@ pub struct Shell {
     pub(crate) tour: Option<(Screen, usize)>,
     /// Screens whose tour was finished or skipped (`tour.seen`).
     pub(crate) tour_seen: String,
+    /// The level question on screen (D25): first run, or changing it.
+    pub(crate) level_question: Option<crate::level_question::LevelQuestion>,
     /// Set by Settings' "show tours again" until the screen changes.
     pub(crate) tour_reset_done: bool,
     /// Bumped on every screen change so the screen fades in again.
@@ -181,6 +183,7 @@ impl Shell {
             leaks: None,
             tour: None,
             tour_seen: String::new(),
+            level_question: None,
             tour_reset_done: false,
             screen_visit: 0,
             room_w: f32::MAX,
@@ -204,6 +207,8 @@ impl Shell {
             .app
             .string_setting(taful_app::keys::TOUR_SEEN)
             .unwrap_or_default();
+        // The level question comes first; the screen's tour waits for it.
+        shell.maybe_ask_level();
         shell.maybe_start_tour();
         // Dev override (screenshots): TAFUL_LESSON=<id> opens that lesson.
         if let Ok(id) = std::env::var("TAFUL_LESSON") {
@@ -418,6 +423,9 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.level_question_key(ev.keystroke.key.as_str(), cx) {
+            return;
+        }
         if self.tour.is_some() {
             // The tour owns the keyboard: no answer is typed behind it.
             match ev.keystroke.key.as_str() {
@@ -618,7 +626,7 @@ impl Shell {
     /// Opens the current screen's tour on its first visit.
     /// `TAFUL_TOUR=0` (screenshots, CI) never opens one on its own.
     pub(crate) fn maybe_start_tour(&mut self) {
-        if std::env::var("TAFUL_TOUR").as_deref() == Ok("0") {
+        if std::env::var("TAFUL_TOUR").as_deref() == Ok("0") || self.level_question.is_some() {
             return;
         }
         if !crate::tour::is_seen(&self.tour_seen, self.screen) {
@@ -1008,6 +1016,7 @@ impl Render for Shell {
         let frame = by_style!(self.ui.style, frame(self, window, cx));
         let popover = self.study_popover(window, cx);
         let tour = self.tour_overlay(window, cx);
+        let level_question = self.level_question_overlay(window, cx);
         let update_card = self.update_card(window, cx);
         div()
             .relative()
@@ -1026,7 +1035,9 @@ impl Render for Shell {
             .child(frame)
             .child(div().absolute().top_0().left_0().w_full().child(caption))
             .children(popover)
+            // The question is modal: the update card stays under its scrim.
             .children(update_card)
+            .children(level_question)
             .children(tour)
     }
 }

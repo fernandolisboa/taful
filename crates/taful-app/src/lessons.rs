@@ -345,6 +345,15 @@ pub(crate) fn newly_unlocked(
         .collect()
 }
 
+/// One answer of the level question (D25).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LevelChoice {
+    /// The level id (`level-<id>` and `level-<id>-about` in Fluent).
+    pub id: String,
+    /// How many lessons it has; none yet shows as "em breve".
+    pub lessons: usize,
+}
+
 pub fn question_key(quiz_id: &str, question_id: &str) -> String {
     format!("{quiz_id}/{question_id}")
 }
@@ -424,6 +433,48 @@ impl App {
             return Err(Error::NotFound(format!("level `{level}`")));
         }
         self.set_string_setting(keys::LESSONS_START_LEVEL, level)
+    }
+
+    /// Whether the app should ask "Qual é o seu nível no poker?" on launch
+    /// (D25): only when no level is stored and the user has no lesson
+    /// progress yet (nothing read, no quiz, no level test). A data dir with
+    /// progress from before D25 is never asked: the level that progress
+    /// opens is stored here, once, so later progress does not move it.
+    pub fn level_question_due(&self) -> Result<bool> {
+        if self.chosen_start_level()?.is_some() {
+            return Ok(false);
+        }
+        let started = !self.store.lesson_progress()?.is_empty() || !self.tests_passed()?.is_empty();
+        if started {
+            self.pin_start_level()?;
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
+    /// The levels the level question lists, in Jornada order, each with how
+    /// many lessons it has (none yet: "em breve").
+    pub fn level_choices(&self) -> Vec<LevelChoice> {
+        let cat = &self.library.catalog;
+        cat.levels
+            .iter()
+            .map(|id| LevelChoice {
+                id: id.clone(),
+                lessons: cat.lessons.iter().filter(|e| e.level == *id).count(),
+            })
+            .collect()
+    }
+
+    /// "Pular" on the level question: the Jornada starts at its first level.
+    pub fn skip_level_question(&self) -> Result<()> {
+        let first = self
+            .library
+            .catalog
+            .levels
+            .first()
+            .ok_or_else(|| Error::NotFound("levels".into()))?
+            .clone();
+        self.set_start_level(&first)
     }
 
     /// Stores the starting level derived from today's progress, if none is
@@ -1468,6 +1519,106 @@ mod tests {
         // Prova shows nothing below Iniciante as next: Fundamentos is done.
         let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
         assert_eq!(list.next.as_ref(), lessons_of(&app, "iniciante").get(1));
+    }
+
+    #[test]
+    fn a_fresh_data_dir_asks_the_level_until_it_is_answered() {
+        let (app, _) = app_at(1_000);
+        assert!(app.level_question_due().unwrap());
+        assert!(app.level_question_due().unwrap(), "asking stores nothing");
+        // Every level is offered, in Jornada order, with its lesson count.
+        let choices = app.level_choices();
+        assert_eq!(
+            choices.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+            app.library.catalog.levels
+        );
+        let count = |id: &str| choices.iter().find(|c| c.id == id).unwrap().lessons;
+        assert_eq!(count("fundamentos"), lessons_of(&app, "fundamentos").len());
+        assert_eq!(count("pro"), 0, "em breve");
+        app.set_start_level("iniciante").unwrap();
+        assert!(!app.level_question_due().unwrap());
+    }
+
+    #[test]
+    fn each_answer_opens_the_levels_up_to_it_and_marks_nothing() {
+        for (k, level) in app_at(0)
+            .0
+            .library
+            .catalog
+            .levels
+            .clone()
+            .iter()
+            .enumerate()
+        {
+            let (app, _) = app_at(1_000);
+            app.set_start_level(level).unwrap();
+            let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
+            assert_eq!(list.done(), 0, "{level}");
+            assert!(app.tests_passed().unwrap().is_empty(), "{level}");
+            for (i, g) in list.groups.iter().enumerate() {
+                // Up to the answer every level is open; past it, Prova keeps
+                // a level with lessons closed until its test (an empty level
+                // lets the next one through).
+                if i <= k {
+                    assert!(all(g, LessonState::Available), "{level}: {}", g.id);
+                } else if !g.lessons.is_empty() {
+                    let empty_before = list.groups[k..i].iter().all(|b| b.lessons.is_empty());
+                    let want = if empty_before {
+                        LessonState::Available
+                    } else {
+                        LessonState::Locked
+                    };
+                    assert!(all(g, want), "{level}: {}", g.id);
+                }
+            }
+            // The next lesson is the first of the answer's level, or of the
+            // first level with lessons after it, or the first open anywhere.
+            let want = app.library.catalog.levels[k..]
+                .iter()
+                .find_map(|l| lessons_of(&app, l).first().cloned())
+                .or_else(|| app.library.catalog.lessons.first().map(|e| e.id.clone()));
+            assert_eq!(list.next, want, "{level}");
+        }
+    }
+
+    #[test]
+    fn skipping_the_level_question_starts_at_the_first_level() {
+        let (app, _) = app_at(1_000);
+        app.skip_level_question().unwrap();
+        assert!(!app.level_question_due().unwrap());
+        assert_eq!(
+            app.chosen_start_level().unwrap().as_deref(),
+            Some("primeiros-passos")
+        );
+        let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
+        assert_eq!(list.done(), 0);
+        assert_eq!(list.next.as_ref(), lessons_of(&app, "fundamentos").first());
+    }
+
+    #[test]
+    fn progress_from_before_the_question_is_never_asked_and_keeps_its_level() {
+        let (app, _) = app_at(1_000);
+        for id in lessons_of(&app, "fundamentos") {
+            app.store
+                .record_lesson_progress(&id, 1, LessonState::Done, Some(1.0))
+                .unwrap();
+        }
+        assert_eq!(app.chosen_start_level().unwrap(), None);
+        assert!(!app.level_question_due().unwrap());
+        // The level that progress opened is stored once, on that launch.
+        assert_eq!(
+            app.chosen_start_level().unwrap().as_deref(),
+            Some("iniciante")
+        );
+        // Only reading a lesson counts as having started too.
+        let (app, _) = app_at(1_000);
+        let id = lessons_of(&app, "fundamentos")[0].clone();
+        app.open_lesson(&id, Locale::PtBr).unwrap();
+        assert!(!app.level_question_due().unwrap());
+        assert_eq!(
+            app.chosen_start_level().unwrap().as_deref(),
+            Some("primeiros-passos")
+        );
     }
 
     #[test]
