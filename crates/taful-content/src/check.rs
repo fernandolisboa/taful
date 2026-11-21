@@ -14,7 +14,10 @@
 //!    level's lessons, a question twice, or asks more questions than its
 //!    pool holds;
 //! 7. a guided hand does not play through (`guided::check_script`), or a
-//!    lesson names one that does not exist.
+//!    lesson names one that does not exist;
+//! 8. a quiz with three or more choice questions has every right answer in
+//!    the same place (choices are shown in authored order, so always picking
+//!    the same button would pass it).
 //!
 //! Plus the structural checks those rules need: every lesson is in the
 //! catalog once and exists in every locale, every quiz belongs to the lesson
@@ -212,6 +215,23 @@ pub fn check_library(lib: &Library, content: &Files, i18n: &Files) -> Vec<Findin
         }
         if quiz.questions.is_empty() {
             f.push(Finding::new(&path, "no questions"));
+        }
+        let answers: Vec<usize> = quiz
+            .questions
+            .iter()
+            .filter_map(|q| match q.kind {
+                crate::quiz::QuestionKind::Choice { answer, .. } => Some(answer),
+                crate::quiz::QuestionKind::Numeric { .. } => None,
+            })
+            .collect();
+        if answers.len() >= 3 && answers.iter().all(|&a| a == answers[0]) {
+            f.push(Finding::new(
+                &path,
+                format!(
+                    "every choice answer is option {}: vary where the right one sits",
+                    answers[0] + 1
+                ),
+            ));
         }
         for (at, s) in quiz.strings() {
             for loc in LOCALES {

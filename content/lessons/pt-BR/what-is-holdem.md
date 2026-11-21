@@ -12,11 +12,11 @@ guided = "holdem-first-look"
 
 # O que é Texas Hold'em
 
-Texas Hold'em é o poker mais jogado do mundo. De dois a nove jogadores sentam numa mesa (no Taful, quase sempre seis), cada um com as suas [fichas](term:chips). Cada rodada de cartas se chama **mão**, e em cada mão todo mundo disputa o [pote](term:pot): as fichas apostadas no meio da mesa.
+Texas Hold'em é o poker mais jogado do mundo. De dois a nove jogadores sentam numa mesa (no Taful, quase sempre seis), cada um com as suas [fichas](term:chips). Cada distribuição de cartas se chama **mão**, e em cada mão todo mundo disputa o [pote](term:pot): as fichas apostadas no centro.
 
 ## Duas cartas suas, cinco na mesa
 
-Cada jogador recebe duas cartas fechadas, as [cartas da mão](term:hole-cards). Só você vê as suas. Depois, cinco cartas são abertas no meio da mesa, aos poucos. Elas formam a [mesa](term:board) (o board) e valem para todos.
+Cada jogador recebe duas cartas fechadas, as [cartas da mão](term:hole-cards). Só você vê as suas. Depois, cinco cartas são abertas no centro, aos poucos. Elas formam a [mesa](term:board) (o board) e valem para todos.
 
 ```cards
 Suas cartas: Jc 8c

@@ -16,11 +16,11 @@ id = "no-check"
 kind = "choice"
 prompt = { en-US = "On the river your opponent bets. Which action can you NOT take?", pt-BR = "No river o adversário apostou. Qual ação você NÃO pode fazer?" }
 choices = [
-    { en-US = "Check", pt-BR = "Check" },
     { en-US = "Call", pt-BR = "Call" },
+    { en-US = "Check", pt-BR = "Check" },
     { en-US = "Fold", pt-BR = "Fold" },
 ]
-answer = 0
+answer = 1
 explanation = { en-US = "With a bet to match, check is gone.", pt-BR = "Com uma aposta para igualar, check não existe." }
 
 [[questions]]
@@ -28,11 +28,11 @@ id = "flop-first"
 kind = "choice"
 prompt = { en-US = "Three players see the flop: the big blind, the HJ and the button. Who speaks first?", pt-BR = "Três jogadores veem o flop: o big blind, o HJ e o botão. Quem fala primeiro?" }
 choices = [
-    { en-US = "The big blind", pt-BR = "O big blind" },
     { en-US = "The HJ", pt-BR = "O HJ" },
     { en-US = "The button", pt-BR = "O botão" },
+    { en-US = "The big blind", pt-BR = "O big blind" },
 ]
-answer = 0
+answer = 2
 explanation = { en-US = "From the flop on, the first player still in on the button's left starts.", pt-BR = "Do flop em diante, começa o primeiro jogador ainda na mão à esquerda do botão." }
 
 [[questions]]

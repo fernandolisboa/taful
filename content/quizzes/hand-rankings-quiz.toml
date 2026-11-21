@@ -8,11 +8,11 @@ id = "flush-vs-straight"
 kind = "choice"
 prompt = { en-US = "Which hand is stronger?", pt-BR = "Qual mão é mais forte?" }
 choices = [
-    { en-US = "A flush", pt-BR = "Um flush" },
     { en-US = "A straight", pt-BR = "Uma sequência (straight)" },
+    { en-US = "A flush", pt-BR = "Um flush" },
     { en-US = "They tie", pt-BR = "Empatam" },
 ]
-answer = 0
+answer = 1
 explanation = { en-US = "A flush beats a straight.", pt-BR = "Flush ganha de sequência." }
 
 [[questions]]
@@ -43,9 +43,9 @@ id = "kicker"
 kind = "choice"
 prompt = { en-US = "Board A♥ 8♣ 6♦ 4♠ 2♣. A♠ K♦ against A♣ Q♥: who wins?", pt-BR = "Mesa A♥ 8♣ 6♦ 4♠ 2♣. A♠ K♦ contra A♣ Q♥: quem ganha?" }
 choices = [
-    { en-US = "A♠ K♦, with the king kicker", pt-BR = "A♠ K♦, pelo kicker rei" },
     { en-US = "A♣ Q♥", pt-BR = "A♣ Q♥" },
     { en-US = "Split pot", pt-BR = "Pote dividido" },
+    { en-US = "A♠ K♦, with the king kicker", pt-BR = "A♠ K♦, pelo kicker rei" },
 ]
-answer = 0
+answer = 2
 explanation = { en-US = "Both have a pair of aces; the king outkicks the queen.", pt-BR = "Os dois têm par de ases; o rei ganha da dama no kicker." }

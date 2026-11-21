@@ -8,22 +8,22 @@ id = "check-when"
 kind = "choice"
 prompt = { en-US = "When can you check?", pt-BR = "Quando você pode dar check?" }
 choices = [
-    { en-US = "When nobody has bet in this round", pt-BR = "Quando ninguém apostou nesta rodada" },
     { en-US = "Always", pt-BR = "Sempre" },
+    { en-US = "When nobody has bet in this round", pt-BR = "Quando ninguém apostou nesta rodada" },
     { en-US = "Only on the river", pt-BR = "Só no river" },
 ]
-answer = 0
+answer = 1
 
 [[questions]]
 id = "facing-bet"
 kind = "choice"
 prompt = { en-US = "Someone bet 2 bb. What are your options?", pt-BR = "Alguém apostou 2 bb. Quais são as suas opções?" }
 choices = [
-    { en-US = "Fold, call or raise", pt-BR = "Fold, call ou raise" },
     { en-US = "Check or bet", pt-BR = "Check ou bet" },
     { en-US = "Only call", pt-BR = "Só call" },
+    { en-US = "Fold, call or raise", pt-BR = "Fold, call ou raise" },
 ]
-answer = 0
+answer = 2
 explanation = { en-US = "With a bet to match there is no check: you fold, call or raise.", pt-BR = "Com uma aposta para igualar não existe check: você desiste, paga ou aumenta." }
 
 [[questions]]
@@ -43,8 +43,8 @@ id = "all-in"
 kind = "choice"
 prompt = { en-US = "What does going all-in mean?", pt-BR = "O que é ir all-in?" }
 choices = [
-    { en-US = "Betting every chip you have", pt-BR = "Apostar todas as suas fichas" },
     { en-US = "Calling every bet until the river", pt-BR = "Pagar todas as apostas até o river" },
     { en-US = "Showing your cards", pt-BR = "Mostrar as cartas" },
+    { en-US = "Betting every chip you have", pt-BR = "Apostar todas as suas fichas" },
 ]
-answer = 0
+answer = 2

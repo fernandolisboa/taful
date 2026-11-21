@@ -8,22 +8,22 @@ id = "no-showdown"
 kind = "choice"
 prompt = { en-US = "On the turn you bet and everyone folds. What happens?", pt-BR = "No turn você aposta e todos desistem. O que acontece?" }
 choices = [
-    { en-US = "You take the pot, and the river never comes", pt-BR = "Você leva o pote, e o river não sai" },
     { en-US = "The river comes anyway", pt-BR = "O river sai mesmo assim" },
+    { en-US = "You take the pot, and the river never comes", pt-BR = "Você leva o pote, e o river não sai" },
     { en-US = "The pot is split", pt-BR = "O pote é dividido" },
 ]
-answer = 0
+answer = 1
 
 [[questions]]
 id = "flush-vs-trips"
 kind = "choice"
 prompt = { en-US = "Board Q♣ 9♣ 6♦ 3♣ 2♥. You have A♣ 7♣, your opponent Q♦ Q♥. Who wins?", pt-BR = "Mesa Q♣ 9♣ 6♦ 3♣ 2♥. Você tem A♣ 7♣, o adversário Q♦ Q♥. Quem ganha?" }
 choices = [
-    { en-US = "You, with a flush", pt-BR = "Você, com um flush" },
     { en-US = "Your opponent, with three queens", pt-BR = "O adversário, com trinca de damas" },
     { en-US = "It is a tie", pt-BR = "Empate" },
+    { en-US = "You, with a flush", pt-BR = "Você, com um flush" },
 ]
-answer = 0
+answer = 2
 explanation = { en-US = "Your two clubs with the board's three make a flush, which beats three of a kind.", pt-BR = "Os seus dois paus com os três da mesa formam um flush, que ganha de trinca." }
 
 [[questions]]

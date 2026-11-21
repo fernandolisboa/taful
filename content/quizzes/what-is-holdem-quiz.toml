@@ -8,11 +8,11 @@ id = "hole-cards"
 kind = "choice"
 prompt = { en-US = "How many cards does each player get face down?", pt-BR = "Quantas cartas fechadas cada jogador recebe?" }
 choices = [
-    { en-US = "Two", pt-BR = "Duas" },
     { en-US = "Five", pt-BR = "Cinco" },
+    { en-US = "Two", pt-BR = "Duas" },
     { en-US = "Seven", pt-BR = "Sete" },
 ]
-answer = 0
+answer = 1
 explanation = { en-US = "Two hole cards each; the five on the board are shared.", pt-BR = "Duas cartas da mão para cada um; as cinco da mesa são de todos." }
 
 [[questions]]
@@ -20,11 +20,11 @@ id = "best-five"
 kind = "choice"
 prompt = { en-US = "How many cards make up the hand that is compared at the showdown?", pt-BR = "Quantas cartas formam a mão que é comparada no showdown?" }
 choices = [
-    { en-US = "Five, the best out of the seven you can use", pt-BR = "Cinco, as melhores entre as sete que você pode usar" },
     { en-US = "Seven, all of them", pt-BR = "Sete, todas elas" },
     { en-US = "Only your two", pt-BR = "Só as suas duas" },
+    { en-US = "Five, the best out of the seven you can use", pt-BR = "Cinco, as melhores entre as sete que você pode usar" },
 ]
-answer = 0
+answer = 2
 
 [[questions]]
 id = "use-board"
@@ -42,8 +42,8 @@ id = "everyone-folds"
 kind = "choice"
 prompt = { en-US = "Everyone else folds and you are the only one left. What happens?", pt-BR = "Todos os outros desistem e só sobra você. O que acontece?" }
 choices = [
-    { en-US = "You take the pot without showing your cards", pt-BR = "Você leva o pote sem mostrar as cartas" },
     { en-US = "The cards are shown anyway", pt-BR = "As cartas são mostradas mesmo assim" },
     { en-US = "The hand is dealt again", pt-BR = "A mão é dada de novo" },
+    { en-US = "You take the pot without showing your cards", pt-BR = "Você leva o pote sem mostrar as cartas" },
 ]
-answer = 0
+answer = 2

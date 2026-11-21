@@ -14,9 +14,9 @@ guided = "whole-hand"
 
 Hora de juntar tudo. Este é o caminho de uma mão completa:
 
-1. **Blinds**: o [small blind](term:small-blind) põe {{ calc: div(a=1, b=2) | bb(1) }} e o [big blind](term:big-blind) põe 1 bb. O botão marca quem fala por último.
+1. **Blinds**: o [small blind](term:small-blind) põe {{ calc: div(a=1, b=2) | bb(1) }} e o [big blind](term:big-blind) põe 1 bb. O botão marca quem fala por último do flop em diante.
 2. **Cartas**: cada jogador recebe as suas duas [cartas da mão](term:hole-cards), fechadas.
-3. **[Pré-flop](term:preflop)**: começando à esquerda do big blind, cada um desiste, paga ou aumenta.
+3. **[Pré-flop](term:preflop)**: começando à esquerda do big blind, cada um desiste, paga ou aumenta (o big blind pode dar check se ninguém aumentou).
 4. **[Flop](term:flop)**: três cartas na mesa e uma nova rodada, começando à esquerda do botão.
 5. **[Turn](term:turn)**: a quarta carta, e mais uma rodada.
 6. **[River](term:river)**: a quinta carta, e a última rodada.

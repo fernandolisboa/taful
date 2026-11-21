@@ -8,22 +8,22 @@ id = "flop-cards"
 kind = "choice"
 prompt = { en-US = "How many cards does the flop put on the board?", pt-BR = "Quantas cartas o flop abre na mesa?" }
 choices = [
-    { en-US = "3", pt-BR = "3" },
     { en-US = "1", pt-BR = "1" },
+    { en-US = "3", pt-BR = "3" },
     { en-US = "5", pt-BR = "5" },
 ]
-answer = 0
+answer = 1
 
 [[questions]]
 id = "street-order"
 kind = "choice"
 prompt = { en-US = "What is the order of the betting rounds?", pt-BR = "Qual é a ordem das rodadas de apostas?" }
 choices = [
-    { en-US = "Preflop, flop, turn, river", pt-BR = "Pré-flop, flop, turn, river" },
     { en-US = "Flop, preflop, turn, river", pt-BR = "Flop, pré-flop, turn, river" },
     { en-US = "Preflop, turn, flop, river", pt-BR = "Pré-flop, turn, flop, river" },
+    { en-US = "Preflop, flop, turn, river", pt-BR = "Pré-flop, flop, turn, river" },
 ]
-answer = 0
+answer = 2
 
 [[questions]]
 id = "first-preflop"
@@ -42,8 +42,8 @@ id = "last-postflop"
 kind = "choice"
 prompt = { en-US = "From the flop on, who speaks last?", pt-BR = "Do flop em diante, quem fala por último?" }
 choices = [
-    { en-US = "The button (BTN)", pt-BR = "O botão (BTN)" },
     { en-US = "The big blind", pt-BR = "O big blind" },
     { en-US = "Whoever raised preflop", pt-BR = "Quem aumentou no pré-flop" },
+    { en-US = "The button (BTN)", pt-BR = "O botão (BTN)" },
 ]
-answer = 0
+answer = 2

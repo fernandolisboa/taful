@@ -14,9 +14,9 @@ guided = "whole-hand"
 
 Time to put it all together. This is the path of a complete hand:
 
-1. **Blinds**: the [small blind](term:small-blind) puts in {{ calc: div(a=1, b=2) | bb(1) }} and the [big blind](term:big-blind) 1 bb. The button marks who speaks last.
+1. **Blinds**: the [small blind](term:small-blind) puts in {{ calc: div(a=1, b=2) | bb(1) }} and the [big blind](term:big-blind) 1 bb. The button marks who speaks last from the flop on.
 2. **Cards**: every player gets their two [hole cards](term:hole-cards), face down.
-3. **[Preflop](term:preflop)**: starting on the big blind's left, each player folds, calls or raises.
+3. **[Preflop](term:preflop)**: starting on the big blind's left, each player folds, calls or raises (the big blind can check if nobody raised).
 4. **[Flop](term:flop)**: three cards on the board and a new round, starting on the button's left.
 5. **[Turn](term:turn)**: the fourth card, and one more round.
 6. **[River](term:river)**: the fifth card, and the last round.

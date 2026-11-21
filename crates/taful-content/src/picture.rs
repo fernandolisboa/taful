@@ -211,11 +211,15 @@ fn parse_seats(text: &str) -> Result<SeatMap, String> {
         blinds: false,
     };
     let mut lists: Vec<(usize, &str, &str)> = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
     for (n, line) in lines(text) {
         let (key, value) = line
             .split_once(':')
             .ok_or_else(|| format!("seats line {n}: expected `key: value`"))?;
         let (key, value) = (key.trim(), value.trim());
+        if !seen.insert(key) {
+            return Err(format!("seats line {n}: `{key}` twice"));
+        }
         match key {
             "players" => {
                 map.players = value
@@ -335,6 +339,7 @@ mod tests {
         assert!(Picture::parse("seats", "colour: red").is_err());
         assert!(Picture::parse("seats", "blinds: maybe").is_err());
         assert!(Picture::parse("seats", "order: BTN BTN").is_err());
+        assert!(Picture::parse("seats", "mark: CO\nmark: HJ").is_err());
         assert!(Picture::parse("nope", "").is_err());
     }
 }

@@ -12,8 +12,8 @@
 //!
 //! - **Prova** (default): every lesson of an unlocked level is open. The
 //!   levels up to the starting level are unlocked (the one picked on the
-//!   first run, D25), and so is every level up to the highest one with a
-//!   lesson done; passing a level's test unlocks the next one. A level with
+//!   first run, D25), and so is every level with a lesson done (only that
+//!   level); passing a level's test unlocks the next one. A level with
 //!   no lessons yet has nothing to test and lets the next one through.
 //! - **Guiado**: one lesson at a time in Jornada order: within a level the
 //!   first lesson not done is open. A level is reached once it is unlocked
@@ -463,24 +463,22 @@ impl App {
         }
         // A passed test opens the level after it and every level before it,
         // however it was reached (a test passed in Guiado counts in Prova).
-        // A level with a lesson done stays open with every level before it:
-        // new lessons in a lower level (Primeiros passos, #90) or another
-        // mode never close what the user already reads.
-        let done_top = cat
-            .lessons
-            .iter()
-            .filter(|e| done.contains(&e.id))
-            .filter_map(|e| cat.levels.iter().position(|x| *x == e.level))
-            .max()
-            .unwrap_or(0);
         let top = passed
             .iter()
             .filter_map(|l| cat.levels.iter().position(|x| x == l))
             .map(|r| r + 1)
             .max()
             .unwrap_or(0)
-            .max(start)
-            .max(done_top);
+            .max(start);
+        // A level with a lesson done stays open: new lessons in a lower level
+        // (Primeiros passos, #90) never close what the user already reads.
+        // It opens that level only, so the levels below it still wait for
+        // their tests in Prova.
+        let has_done: Vec<bool> = cat
+            .levels
+            .iter()
+            .map(|l| lessons_of(cat, l).any(|e| done.contains(&e.id)))
+            .collect();
         let mut unlocked = Vec::with_capacity(cat.levels.len());
         let mut open = Vec::with_capacity(cat.levels.len());
         for i in 0..cat.levels.len() {
@@ -488,7 +486,7 @@ impl App {
                 let prev = &cat.levels[i - 1];
                 passed.contains(prev) || lessons_of(cat, prev).next().is_none()
             };
-            let u = i <= top || (unlocked[i - 1] && through(i));
+            let u = i <= top || has_done[i] || (unlocked[i - 1] && through(i));
             unlocked.push(u);
             open.push(match mode {
                 UnlockMode::Tests => u,
@@ -1240,6 +1238,26 @@ mod tests {
         );
         assert!(all(group(&list, "iniciante"), LessonState::Locked));
         assert!(app.tests_passed().unwrap().is_empty());
+    }
+
+    /// A lesson done in Livre opens only its own level in Prova: the levels
+    /// below it still wait for their tests.
+    #[test]
+    fn a_lesson_done_in_livre_opens_only_its_level_in_prova() {
+        let (app, _) = app_at(1_000);
+        app.set_start_level("primeiros-passos").unwrap();
+        app.set_unlock_mode(UnlockMode::Free).unwrap();
+        let inter = lessons_of(&app, "intermediario");
+        mark_done(&app, &inter[..1]);
+        app.set_unlock_mode(UnlockMode::Tests).unwrap();
+        let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
+        assert!(all(group(&list, "fundamentos"), LessonState::Locked));
+        assert!(all(group(&list, "iniciante"), LessonState::Locked));
+        assert!(
+            group(&list, "intermediario").lessons[1..]
+                .iter()
+                .all(|l| l.state == LessonState::Available)
+        );
     }
 
     #[test]

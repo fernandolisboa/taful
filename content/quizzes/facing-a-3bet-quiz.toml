@@ -1,5 +1,5 @@
 id = "facing-a-3bet-quiz"
-version = 1
+version = 2
 lesson = "facing-a-3bet"
 pass = 0.75
 
@@ -15,22 +15,22 @@ id = "overfold"
 kind = "choice"
 prompt = { en-US = "If you fold too often to 3-bets…", pt-BR = "Se você folda demais contra 3-bets…" }
 choices = [
-    { en-US = "Opponents profit by 3-betting any two cards", pt-BR = "Os adversários lucram dando 3-bet com quaisquer duas cartas" },
     { en-US = "You lose less", pt-BR = "Você perde menos" },
+    { en-US = "Opponents profit by 3-betting any two cards", pt-BR = "Os adversários lucram dando 3-bet com quaisquer duas cartas" },
     { en-US = "Nothing changes", pt-BR = "Nada muda" },
 ]
-answer = 0
+answer = 1
 
 [[questions]]
 id = "ip"
 kind = "choice"
 prompt = { en-US = "With position, your calling range against a 3-bet can be…", pt-BR = "Com posição, seu range de call contra 3-bet pode ser…" }
 choices = [
-    { en-US = "Wider than out of position", pt-BR = "Mais largo do que fora de posição" },
     { en-US = "Tighter than out of position", pt-BR = "Mais fechado do que fora de posição" },
     { en-US = "Empty", pt-BR = "Vazio" },
+    { en-US = "Wider than out of position", pt-BR = "Mais largo do que fora de posição" },
 ]
-answer = 0
+answer = 2
 
 [[questions]]
 id = "dominated"

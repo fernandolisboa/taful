@@ -423,6 +423,18 @@ mod tests {
             ),
             (
                 Box::new(|c| {
+                    let q = quiz("a-quiz", "a");
+                    let one = &q[q.find("[[questions]]").unwrap()..];
+                    c[5].1 = format!(
+                        "{q}\n{}\n{}",
+                        one.replace("id = \"q\"", "id = \"q2\""),
+                        one.replace("id = \"q\"", "id = \"q3\"")
+                    );
+                }),
+                "every choice answer is option 1",
+            ),
+            (
+                Box::new(|c| {
                     c.retain(|(k, _)| *k != "tests/l1.toml");
                 }),
                 "has lessons but no level test",

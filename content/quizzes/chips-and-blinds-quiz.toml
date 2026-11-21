@@ -8,11 +8,11 @@ id = "sb-amount"
 kind = "choice"
 prompt = { en-US = "How much does the small blind put in before the cards?", pt-BR = "Quanto o small blind põe no pote antes das cartas?" }
 choices = [
-    { en-US = "0.5 bb", pt-BR = "0,5 bb" },
     { en-US = "1 bb", pt-BR = "1 bb" },
+    { en-US = "0.5 bb", pt-BR = "0,5 bb" },
     { en-US = "Nothing", pt-BR = "Nada" },
 ]
-answer = 0
+answer = 1
 
 [[questions]]
 id = "start-pot"
@@ -27,11 +27,11 @@ id = "button-moves"
 kind = "choice"
 prompt = { en-US = "After each hand, the button...", pt-BR = "Depois de cada mão, o botão..." }
 choices = [
-    { en-US = "moves one seat to the left", pt-BR = "anda um lugar para a esquerda" },
     { en-US = "stays in the same seat", pt-BR = "fica no mesmo lugar" },
     { en-US = "goes to whoever won the pot", pt-BR = "vai para quem ganhou o pote" },
+    { en-US = "moves one seat to the left", pt-BR = "anda um lugar para a esquerda" },
 ]
-answer = 0
+answer = 2
 explanation = { en-US = "It moves one seat to the left, and the blinds move with it.", pt-BR = "Ele anda um lugar para a esquerda, e os blinds andam junto." }
 
 [[questions]]
