@@ -664,3 +664,22 @@ The author picked all three: "texto curto + quiz + mão de treino guiada na mesa
 ### Implications
 - New content format: a scripted-hand file (seats, stacks, hole cards, board, opponent actions, and the text shown at each step), checked in CI like the lessons (the script must be a legal hand; every expected user action must be legal at that point).
 - The table screen needs a guided mode: actions other than the expected one are explained instead of played, and the coach line sits where the evaluation panel goes.
+
+---
+
+## D27 — Home shows one next step
+
+**Date:** 2026-11-21 · **Ref:** D23–D26
+
+### Decision
+- The Home's hero shows **one thing to do now**, picked in this order:
+  1. Reviews that are due.
+  2. The lesson in progress (or the next one in the Jornada).
+  3. Practice at the table on the theme of the last lesson done.
+- The other cards stay on the Home as shortcuts; only the hero changes. Nothing is mandatory and nothing is tracked as a daily plan.
+
+### Why
+The author did not understand the app's flow (lessons, drills, table). One button that answers "what do I do now?" ties lessons, reviews and the table together without turning study into a chore.
+
+### Implications
+- `taful_app` computes the next step (a small enum with its target) for every style's Home; each style draws it in its own hero.
