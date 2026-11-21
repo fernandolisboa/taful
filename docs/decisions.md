@@ -603,3 +603,25 @@ The author: "acho que é outra coisa que podemos deixar o usuário escolher". A 
 ### Implications
 - `content/skill-tree.toml` gives way to per-lesson `level` and `theme` (in the front matter or in one catalog file); content checks verify every lesson has both and that prerequisites never point to a higher level.
 - Unlocking can no longer be "the next lesson in the track", since order depends on the view. How locks work is decided separately.
+
+---
+
+## D24 — The user picks how lessons unlock
+
+**Date:** 2026-11-21 · **Ref:** D23
+
+### Decision
+- How lessons unlock is a **user setting** with three modes:
+  - **Prova** (default): every lesson of the user's current level is open. A short level test opens the next level, and it can be taken early to skip a level the user already knows.
+  - **Guiado**: one lesson at a time; passing a lesson's quiz opens the next one in the Jornada order.
+  - **Livre**: nothing is locked. The app marks the recommended next lesson and warns when a lesson's prerequisites are not done, but opens it anyway.
+- The setting lives behind a **gear on the lessons screen**, which opens a small popover with the three modes, a one-line label each and an (i) with a short explanation on hover. The same setting is also in Settings.
+- Changing the mode never loses progress: done lessons stay done, passed level tests stay passed.
+- Lock state is computed from the mode, the lesson's level and its prerequisites, so it is the same in every "Ver por" view (D23).
+
+### Why
+The author liked the level test with a skip option but did not want to limit anyone: "o usuário consegue dizer se prefere prova, guiado, ou sugerido".
+
+### Implications
+- A level test is new content per level (a quiz drawn from that level's lessons); it is the only thing that marks a level as passed in Prova mode.
+- In Livre mode the level tests still exist, as a way to see where one stands.
