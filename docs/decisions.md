@@ -579,3 +579,27 @@ The author asked to hide the blue Windows title bar: it clashed with the dark st
 - `apps/desktop/src/caption.rs` draws the strip; `caption::viewport(window)` is the room the styles draw in. A style asks it, not `window.viewport_size()`.
 - The window title is still set: it names the window in the taskbar and Alt+Tab.
 - `TAFUL_WINDOW=1600x900` sizes the room below the strip, so screenshots of a style at its mockup size are unchanged below the strip.
+
+---
+
+## D23 — Lessons: one catalog, several ways to browse it
+
+**Date:** 2026-11-21 · **Ref:** D5, brief §3 (lesson track)
+
+### Context
+The lessons screen showed 40 lessons in five topic tracks chained one after another, the first of which already assumes the reader knows how a hand is played. The author asked for a path that starts from someone who never played and climbs to pro, with levels.
+
+### Decision
+- Lessons form **one catalog**. Every lesson carries a **level** and a **theme**; the screen has a **"Ver por"** switch (in the spirit of a "view by" picker, drawn for Taful) that regroups the same lessons:
+  - **Jornada** (default): from zero to pro, grouped by level: Primeiros passos, Fundamentos, Iniciante, Intermediário, Avançado, Pró.
+  - **Temas**: math, preflop, postflop, reading the game, mind and bankroll (the current tracks, refined).
+  - Further views may be added (for example by moment of the hand, or lessons tied to the user's own leaks); the format must not assume a fixed list.
+- A lesson's progress and lock state are the same in every view; the view only changes grouping and order.
+- The current 40 lessons are placed in Fundamentos through Intermediário. Primeiros passos, Avançado and Pró are new content.
+
+### Why
+The author: "acho que é outra coisa que podemos deixar o usuário escolher". A beginner reads a journey by level best; someone who already plays wants to jump to a theme. One catalog with views serves both without duplicating lessons.
+
+### Implications
+- `content/skill-tree.toml` gives way to per-lesson `level` and `theme` (in the front matter or in one catalog file); content checks verify every lesson has both and that prerequisites never point to a higher level.
+- Unlocking can no longer be "the next lesson in the track", since order depends on the view. How locks work is decided separately.
