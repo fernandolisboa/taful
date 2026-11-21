@@ -15,6 +15,7 @@ mod felt;
 mod level_question;
 mod motion;
 mod next_step;
+mod picture;
 mod salao;
 mod screen;
 mod screens;

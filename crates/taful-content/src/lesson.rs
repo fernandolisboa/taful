@@ -6,10 +6,11 @@
 //! carry the term id; the UI shows the definition as a tooltip. Any other
 //! link renders as its text (lessons do not link out).
 
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use serde::{Deserialize, Serialize};
 
 use crate::expr::{self, ExprError, Placeholder, SpotProvider};
+use crate::picture::{self, Picture};
 
 /// What completes a lesson and unlocks the next ones.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,7 +96,24 @@ impl Lesson {
                 .map(|(src, e)| format!("`{{{{ {src} }}}}`: {e}"))
                 .collect());
         }
-        Ok(render_markdown(&text))
+        let (doc, errors) = render_blocks(&text);
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+        Ok(doc)
+    }
+
+    /// The pictures in the body, without captions, in order: what every
+    /// locale must draw alike. Placeholders are left as written.
+    pub fn picture_shapes(&self) -> Vec<Picture> {
+        render_markdown(&self.body)
+            .blocks
+            .iter()
+            .filter_map(|b| match b {
+                Block::Picture(p) => Some(p.shape()),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Term ids linked from the body (`term:` links).
@@ -139,6 +157,8 @@ pub enum Block {
     Quote(Vec<Span>),
     Code(String),
     Rule,
+    /// A fenced block of a picture kind ([`picture`]): cards or a table.
+    Picture(Picture),
 }
 
 /// A rendered lesson.
@@ -162,6 +182,7 @@ impl Document {
                     .join("\n"),
                 Block::Code(c) => c.clone(),
                 Block::Rule => String::new(),
+                Block::Picture(p) => p.text(),
             })
             .collect::<Vec<_>>()
             .join("\n\n")
@@ -197,8 +218,15 @@ fn push(spans: &mut Vec<Span>, style: &Style, text: &str, code: bool) {
 }
 
 /// Markdown → blocks. Unsupported constructs (tables, images, HTML) render
-/// as their text.
+/// as their text; a picture block that does not parse renders as code.
 pub fn render_markdown(text: &str) -> Document {
+    render_blocks(text).0
+}
+
+/// [`render_markdown`], plus the errors of picture blocks that do not parse.
+fn render_blocks(text: &str) -> (Document, Vec<String>) {
+    let mut errors = Vec::new();
+    let mut fence: Option<String> = None;
     let mut blocks = Vec::new();
     let mut spans: Vec<Span> = Vec::new();
     let mut style = Style::default();
@@ -255,10 +283,29 @@ pub fn render_markdown(text: &str) -> Document {
                     blocks.push(Block::Quote(std::mem::take(&mut spans)));
                 }
             }
-            Event::Start(Tag::CodeBlock(_)) => code = Some(String::new()),
+            Event::Start(Tag::CodeBlock(kind)) => {
+                fence = match kind {
+                    CodeBlockKind::Fenced(info) => {
+                        let info = info.trim();
+                        picture::KINDS.contains(&info).then(|| info.to_owned())
+                    }
+                    CodeBlockKind::Indented => None,
+                };
+                code = Some(String::new());
+            }
             Event::End(TagEnd::CodeBlock) => {
                 if let Some(c) = code.take() {
-                    blocks.push(Block::Code(c.trim_end().to_owned()));
+                    let block = match fence.take() {
+                        Some(kind) => match Picture::parse(&kind, &c) {
+                            Ok(p) => Block::Picture(p),
+                            Err(e) => {
+                                errors.push(e);
+                                Block::Code(c.trim_end().to_owned())
+                            }
+                        },
+                        None => Block::Code(c.trim_end().to_owned()),
+                    };
+                    blocks.push(block);
                 }
             }
             Event::Start(Tag::Heading { .. }) => {}
@@ -315,7 +362,7 @@ pub fn render_markdown(text: &str) -> Document {
     if !spans.is_empty() {
         blocks.push(Block::Paragraph(spans));
     }
-    Document { blocks }
+    (Document { blocks }, errors)
 }
 
 #[cfg(test)]
@@ -435,5 +482,30 @@ Facing a half-pot bet you need {{ calc: pot_odds(pot=100, bet=50) | pct(1) }} [e
         assert!(matches!(&d.blocks[0], Block::List { ordered: true, items } if items.len() == 2));
         assert_eq!(d.blocks[1], Block::Code("x = 1".into()));
         assert_eq!(d.blocks[2], Block::Rule);
+    }
+
+    #[test]
+    fn pictures() {
+        let l = Lesson::parse(
+            "en-US",
+            "+++\nid = \"x\"\nversion = 1\ntitle = \"t\"\n+++\n```cards\nYou: As Kd\n```\n\n```seats\nyou: BTN\n```\n",
+        )
+        .unwrap();
+        let doc = l.render(None).unwrap();
+        assert!(matches!(&doc.blocks[0], Block::Picture(Picture::Cards(r)) if r.len() == 1));
+        assert!(matches!(&doc.blocks[1], Block::Picture(Picture::Seats(_))));
+        assert_eq!(l.picture_shapes().len(), 2);
+        assert!(doc.plain_text().starts_with("You: A♠ K♦"));
+
+        let bad = Lesson::parse(
+            "en-US",
+            "+++\nid = \"x\"\nversion = 1\ntitle = \"t\"\n+++\n```cards\nYou: Zz\n```\n",
+        )
+        .unwrap();
+        assert_eq!(bad.render(None).unwrap_err().len(), 1);
+        assert!(matches!(
+            &render_markdown("```cards\nZz\n```").blocks[0],
+            Block::Code(_)
+        ));
     }
 }

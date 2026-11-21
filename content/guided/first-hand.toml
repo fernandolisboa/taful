@@ -1,11 +1,12 @@
-# A first hand from the deal to the showdown (D26): everyone folds to the
-# blinds, the small blind completes, and hero, in the big blind, checks,
-# bets the flop, checks the turn and calls the river to win with two pair.
+# Primeiros passos, lesson 4 (betting-rounds): one hand through the four
+# betting rounds (D26). Everyone folds to the blinds, the small blind
+# completes, and hero, in the big blind, checks, bets the flop, checks the
+# turn and calls the river to win with two pair.
 # Amounts in `act`, `hero` and `offer` are chips: 100 = 1 bb.
 
 id = "first-hand"
 version = 1
-title = { en-US = "Your first hand", pt-BR = "Sua primeira mão" }
+title = { en-US = "One hand, four rounds", pt-BR = "Uma mão, quatro rodadas" }
 players = 6
 hero = "BB"
 board = "Kd7c2h4s9d"
@@ -22,7 +23,7 @@ say = { en-US = "Everyone got two face-down cards. Yours are K♠ 9♠, and only
 
 [[steps]]
 act = "UTG:f,HJ:f,CO:f,BTN:f"
-say = { en-US = "Play goes clockwise, starting left of the big blind. UTG, HJ, CO and the button (BTN) gave up: they folded and threw their cards away.", pt-BR = "A vez passa no sentido horário, começando à esquerda do big blind. UTG, HJ, CO e o botão (BTN) desistiram: deram fold e jogaram as cartas fora." }
+say = { en-US = "Round 1 of 4, preflop: play goes clockwise, starting left of the big blind. UTG, HJ, CO and the button (BTN) gave up: they folded and threw their cards away.", pt-BR = "Rodada 1 de 4, o pré-flop: a vez passa no sentido horário, começando à esquerda do big blind. UTG, HJ, CO e o botão (BTN) desistiram: deram fold e jogaram as cartas fora." }
 
 [[steps]]
 act = "SB:c"
@@ -34,7 +35,7 @@ say = { en-US = "Your turn. Nobody raised, so you owe nothing more: you can chec
 why = { en-US = "You could raise, but with a middling hand it is simpler to check and see the flop without putting in more chips.", pt-BR = "Você poderia aumentar, mas com uma mão média é mais simples dar check e ver o flop sem pôr mais fichas." }
 
 [[steps]]
-say = { en-US = "Here comes the flop: three cards face up in the middle, shared by everyone. With the K♦ on the board and your K♠, you have a pair of kings.", pt-BR = "Saiu o flop: três cartas abertas no meio da mesa, que valem para todos. Com o K♦ da mesa e o seu K♠, você tem um par de reis." }
+say = { en-US = "Preflop is over. Round 2 of 4, the flop: three cards face up in the middle, shared by everyone. With the K♦ on the board and your K♠, you have a pair of kings.", pt-BR = "O pré-flop acabou. Rodada 2 de 4, o flop: três cartas abertas no meio da mesa, que valem para todos. Com o K♦ da mesa e o seu K♠, você tem um par de reis." }
 
 [[steps]]
 act = "SB:x"
@@ -47,7 +48,7 @@ why = { en-US = "Checking gives the other player a free card. With the better ha
 
 [[steps]]
 act = "SB:c"
-say = { en-US = "The small blind called, and the pot is 4 bb. The fourth card, the turn, came out: 4♠. It changes little.", pt-BR = "O small blind pagou, e o pote tem 4 bb. Saiu a quarta carta, o turn: 4♠. Ela muda pouco." }
+say = { en-US = "The small blind called, and the pot is 4 bb. Round 3 of 4, the turn: the fourth card, 4♠. It changes little.", pt-BR = "O small blind pagou, e o pote tem 4 bb. Rodada 3 de 4, o turn: a quarta carta, 4♠. Ela muda pouco." }
 
 [[steps]]
 act = "SB:x"
@@ -59,7 +60,7 @@ why = { en-US = "Betting is possible too, but checking keeps the pot small and g
 
 [[steps]]
 act = "SB:b200"
-say = { en-US = "The last card, the river: 9♦. Now you have two pair, kings and nines. The small blind bet 2 bb.", pt-BR = "A última carta, o river: 9♦. Agora você tem dois pares, reis e noves. O small blind apostou 2 bb." }
+say = { en-US = "Round 4 of 4, the river: the last card, 9♦. Now you have two pair, kings and nines. The small blind bet 2 bb.", pt-BR = "Rodada 4 de 4, o river: a última carta, 9♦. Agora você tem dois pares, reis e noves. O small blind apostou 2 bb." }
 
 [[steps]]
 hero = "c"

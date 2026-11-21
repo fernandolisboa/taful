@@ -222,8 +222,8 @@ mod tests {
         let t = a.today(Locale::SOURCE).unwrap();
         assert_eq!(
             t.next_lesson,
-            Some((1, 0)),
-            "level 0 (primeiros passos) has no lessons yet"
+            Some((0, 0)),
+            "the first lesson of level 0 (primeiros passos)"
         );
         assert_eq!(t.lessons_done(), 0);
         assert!(t.lessons_total() > 0);

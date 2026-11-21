@@ -103,6 +103,7 @@ mod tests {
             Some(&step.id),
             o.home.next_lesson.as_ref().map(|(id, _)| id)
         );
+        assert_eq!(step.level, "primeiros-passos");
         assert!(
             step.level_states
                 .iter()

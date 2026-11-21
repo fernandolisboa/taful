@@ -20,8 +20,17 @@ levels = ["primeiros-passos", "fundamentos", "iniciante", "intermediario", "avan
 themes = ["basics", "math", "preflop", "postflop", "reading", "mind"]
 
 lessons = [
+    # ---- Primeiros passos: never played; the rules, one guided hand per lesson (D26) ----
+    { id = "what-is-holdem", level = "primeiros-passos", theme = "basics" },
+    { id = "hand-rankings", level = "primeiros-passos", theme = "basics" },
+    { id = "chips-and-blinds", level = "primeiros-passos", theme = "basics" },
+    { id = "betting-rounds", level = "primeiros-passos", theme = "basics" },
+    { id = "your-actions", level = "primeiros-passos", theme = "basics" },
+    { id = "showdown", level = "primeiros-passos", theme = "basics" },
+    { id = "seats-at-the-table", level = "primeiros-passos", theme = "basics" },
+    { id = "a-whole-hand", level = "primeiros-passos", theme = "basics" },
+
     # ---- Fundamentos: knows the rules; the table, counting and odds ----
-    { id = "hand-rankings", level = "fundamentos", theme = "basics" },
     { id = "positions-6max", level = "fundamentos", theme = "basics" },
     { id = "stacks-and-blinds", level = "fundamentos", theme = "basics" },
     { id = "combos-101", level = "fundamentos", theme = "reading" },

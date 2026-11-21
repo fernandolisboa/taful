@@ -1,0 +1,54 @@
+# Primeiros passos, lesson 3 (chips-and-blinds): the blinds in play. Hero,
+# the small blind, completes, checks a flop that missed and folds to the
+# big blind's bet, losing only what was already in.
+# Amounts in `act`, `hero` and `offer` are chips: 100 = 1 bb.
+
+id = "blinds-hand"
+version = 1
+title = { en-US = "Playing from the small blind", pt-BR = "Jogando no small blind" }
+players = 6
+hero = "SB"
+board = "As8c3d"
+
+[cards]
+SB = "KhJd"
+
+[[steps]]
+say = { en-US = "Look at the button, the disc marked D: it is on your right, at BTN. You are the small blind (SB) and already put 0.5 bb in the pot; the big blind (BB), on your left, put in 1 bb. Nobody has seen any cards yet: these bets are forced.", pt-BR = "Repare no botão, o disco com D: ele está à sua direita, no BTN. Você é o small blind (SB) e já pôs 0,5 bb no pote; o big blind (BB), à sua esquerda, pôs 1 bb. Ninguém viu carta nenhuma ainda: essas apostas são obrigatórias." }
+
+[[steps]]
+say = { en-US = "Your cards: K♥ J♦. The pot already holds 1.5 bb, just from the blinds.", pt-BR = "Suas cartas: K♥ J♦. O pote já tem 1,5 bb, só dos blinds." }
+
+[[steps]]
+act = "UTG:f,HJ:f,CO:f,BTN:f"
+say = { en-US = "Everyone up to the button folded. They had put in nothing, so they lost nothing.", pt-BR = "Todos até o botão desistiram. Eles não tinham posto nada, então não perderam nada." }
+
+[[steps]]
+hero = "c"
+say = { en-US = "Your turn. To stay in, you have to match the big blind's 1 bb: 0.5 bb more. Click Call.", pt-BR = "Sua vez. Para continuar, você precisa igualar o 1 bb do big blind: falta 0,5 bb. Clique em Call (pagar)." }
+why = { en-US = "With a fair hand like K♥ J♦, paying half a big blind more to see the flop is cheap.", pt-BR = "Com uma mão razoável como K♥ J♦, pagar mais meio big blind para ver o flop sai barato." }
+
+[[steps.wrong]]
+act = "f"
+why = { en-US = "Folding leaves your 0.5 bb in the pot for the big blind. With a fair hand like K♥ J♦, paying half a big blind more to see the flop is cheap.", pt-BR = "Desistir deixa o seu 0,5 bb no pote para o big blind. Com uma mão razoável como K♥ J♦, pagar mais meio big blind para ver o flop sai barato." }
+
+[[steps]]
+act = "BB:x"
+say = { en-US = "The big blind had already put in 1 bb, so they could just check. The pot is 2 bb. The flop: A♠ 8♣ 3♦.", pt-BR = "O big blind já tinha posto 1 bb, então pôde só dar check. O pote tem 2 bb. O flop: A♠ 8♣ 3♦." }
+
+[[steps]]
+hero = "x"
+say = { en-US = "After the flop, the small blind speaks first. You hit nothing: check.", pt-BR = "Depois do flop, o small blind fala primeiro. Você não acertou nada: dê check." }
+why = { en-US = "Betting with nothing puts more chips at risk. Checking is free.", pt-BR = "Apostar sem nada põe mais fichas em risco. O check não custa nada." }
+
+[[steps]]
+act = "BB:b100"
+say = { en-US = "The big blind bet 1 bb.", pt-BR = "O big blind apostou 1 bb." }
+
+[[steps]]
+hero = "f"
+say = { en-US = "You have no pair and little chance to improve. Fold: you lose only the 1 bb you already put in.", pt-BR = "Você não tem par e tem pouca chance de melhorar. Desista (fold): você perde só o 1 bb que já pôs." }
+why = { en-US = "Paying 1 bb more with king high, against someone who bet, rarely pays off. Folding here costs nothing more.", pt-BR = "Pagar mais 1 bb com só carta alta, contra quem apostou, raramente compensa. Desistir aqui não custa mais nada." }
+
+[[steps]]
+say = { en-US = "The big blind took the 3 bb pot. Next hand the button moves one seat to the left: you become the button, the big blind becomes the small blind, and the next player pays the big blind. That way everyone pays the blinds in turn.", pt-BR = "O big blind levou o pote de 3 bb. Na próxima mão o botão anda um lugar para a esquerda: você vira o botão, o big blind vira o small blind e o jogador seguinte paga o big blind. Assim todo mundo paga os blinds na sua vez." }

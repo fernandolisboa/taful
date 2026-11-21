@@ -12,9 +12,9 @@
 //!
 //! - **Prova** (default): every lesson of an unlocked level is open. The
 //!   levels up to the starting level are unlocked (the one picked on the
-//!   first run, D25), and passing a level's test unlocks the next one. A
-//!   level with no lessons yet has nothing to test and lets the next one
-//!   through.
+//!   first run, D25), and so is every level with a lesson done (only that
+//!   level); passing a level's test unlocks the next one. A level with
+//!   no lessons yet has nothing to test and lets the next one through.
 //! - **Guiado**: one lesson at a time in Jornada order: within a level the
 //!   first lesson not done is open. A level is reached once it is unlocked
 //!   as above or every lesson before it is done.
@@ -521,6 +521,15 @@ impl App {
             .max()
             .unwrap_or(0)
             .max(start);
+        // A level with a lesson done stays open: new lessons in a lower level
+        // (Primeiros passos, #90) never close what the user already reads.
+        // It opens that level only, so the levels below it still wait for
+        // their tests in Prova.
+        let has_done: Vec<bool> = cat
+            .levels
+            .iter()
+            .map(|l| lessons_of(cat, l).any(|e| done.contains(&e.id)))
+            .collect();
         let mut unlocked = Vec::with_capacity(cat.levels.len());
         let mut open = Vec::with_capacity(cat.levels.len());
         for i in 0..cat.levels.len() {
@@ -528,7 +537,7 @@ impl App {
                 let prev = &cat.levels[i - 1];
                 passed.contains(prev) || lessons_of(cat, prev).next().is_none()
             };
-            let u = i <= top || (unlocked[i - 1] && through(i));
+            let u = i <= top || has_done[i] || (unlocked[i - 1] && through(i));
             unlocked.push(u);
             open.push(match mode {
                 UnlockMode::Tests => u,
@@ -1115,6 +1124,17 @@ mod tests {
         }
     }
 
+    /// Passes a lesson's quiz and plays its guided hand, if it has one.
+    fn complete(app: &mut App, id: &str) -> Vec<String> {
+        let view = app.quiz(id, Locale::PtBr).unwrap();
+        let res = app.submit_quiz(id, &right_answers(&view), 1).unwrap();
+        assert!(res.passed);
+        match res.guided_pending {
+            Some(g) => app.finish_guided(&g).unwrap().unlocked,
+            None => res.unlocked,
+        }
+    }
+
     fn states(app: &App) -> Vec<(String, LessonState)> {
         app.lesson_list(ViewBy::Journey, Locale::PtBr)
             .unwrap()
@@ -1154,22 +1174,21 @@ mod tests {
         assert_eq!(app.unlock_mode(), UnlockMode::Tests);
         let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
         assert_eq!(list.mode, UnlockMode::Tests);
-        // Primeiros passos has no lessons yet, so Fundamentos is open.
+        // A fresh start is Primeiros passos: open, with its test.
+        let first_level = group(&list, "primeiros-passos");
+        assert!(all(first_level, LessonState::Available));
+        assert_eq!(first_level.test.as_ref().unwrap().state, TestState::Open);
+        assert_eq!(first_level.test.as_ref().unwrap().questions, 10);
+        assert_eq!(first_level.opens_with, None);
         let fund = group(&list, "fundamentos");
-        assert!(all(fund, LessonState::Available));
-        assert_eq!(fund.test.as_ref().unwrap().state, TestState::Open);
-        assert_eq!(fund.test.as_ref().unwrap().questions, 10);
-        assert_eq!(fund.opens_with, None);
-        let ini = group(&list, "iniciante");
-        assert!(all(ini, LessonState::Locked));
-        assert_eq!(ini.opens_with.as_deref(), Some("fundamentos"));
-        assert_eq!(ini.test.as_ref().unwrap().state, TestState::Locked);
+        assert!(all(fund, LessonState::Locked));
+        assert_eq!(fund.opens_with.as_deref(), Some("primeiros-passos"));
+        assert_eq!(fund.test.as_ref().unwrap().state, TestState::Locked);
         // Each closed level names the test right before it.
         assert_eq!(
-            group(&list, "intermediario").opens_with.as_deref(),
-            Some("iniciante")
+            group(&list, "iniciante").opens_with.as_deref(),
+            Some("fundamentos")
         );
-        assert!(group(&list, "primeiros-passos").test.is_none());
         let soon = list.groups.last().unwrap();
         assert!(
             soon.is_soon() && soon.opens_with.is_none(),
@@ -1179,52 +1198,59 @@ mod tests {
         assert!(list.is_next(&first.id));
         assert_eq!(list.next_test, None);
 
-        // A quiz marks its lesson done and opens nothing else.
+        // A quiz and the guided hand mark the lesson done and open nothing
+        // else.
         let view = app.quiz(&first.id, Locale::PtBr).unwrap();
         let res = app
             .submit_quiz(&first.id, &right_answers(&view), 30_000)
             .unwrap();
         assert!(res.passed && res.score == 1.0);
         assert!(res.unlocked.is_empty());
+        let fin = app.finish_guided(&res.guided_pending.unwrap()).unwrap();
+        assert!(fin.unlocked.is_empty());
         assert_eq!(app.lesson_state(&first.id).unwrap(), LessonState::Done);
         assert_eq!(app.store.review_totals().unwrap(), (0, 0));
         let home = app.home(Locale::PtBr).unwrap();
         assert_eq!(home.lessons_done, 1);
         assert_eq!(
             home.next_lesson.unwrap().0,
-            lessons_of(&app, "fundamentos")[1]
+            lessons_of(&app, "primeiros-passos")[1]
         );
 
-        // The level test opens Iniciante; nothing is marked done.
-        let res = pass_test(&mut app, "fundamentos");
+        // The level test opens Fundamentos; nothing is marked done.
+        let res = pass_test(&mut app, "primeiros-passos");
         assert!(res.passed);
-        assert_eq!(res.unlocked, vec!["iniciante".to_string()]);
+        assert_eq!(res.unlocked, vec!["fundamentos".to_string()]);
         assert!(res.correct.iter().all(|c| *c));
         let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
         assert_eq!(list.done(), 1);
-        assert!(all(group(&list, "iniciante"), LessonState::Available));
+        assert!(all(group(&list, "fundamentos"), LessonState::Available));
         assert_eq!(
-            group(&list, "fundamentos").test.as_ref().unwrap().state,
+            group(&list, "primeiros-passos")
+                .test
+                .as_ref()
+                .unwrap()
+                .state,
             TestState::Passed
         );
         assert_eq!(
-            group(&list, "iniciante").test.as_ref().unwrap().state,
+            group(&list, "fundamentos").test.as_ref().unwrap().state,
             TestState::Open
         );
         assert_eq!(
-            group(&list, "intermediario").opens_with.as_deref(),
-            Some("iniciante")
+            group(&list, "iniciante").opens_with.as_deref(),
+            Some("fundamentos")
         );
         // A passed test moves the next lesson past its level.
-        assert_eq!(list.next.as_ref(), lessons_of(&app, "iniciante").first());
+        assert_eq!(list.next.as_ref(), lessons_of(&app, "fundamentos").first());
         // No lesson became done and no review item was made.
         assert_eq!(app.home(Locale::PtBr).unwrap().lessons_done, 1);
         assert_eq!(app.store.review_totals().unwrap(), (0, 0));
         // Passing again unlocks nothing new; attempts are kept.
-        assert!(pass_test(&mut app, "fundamentos").unlocked.is_empty());
+        assert!(pass_test(&mut app, "primeiros-passos").unlocked.is_empty());
         assert_eq!(
             app.store
-                .quiz_attempt_count(&level_test_attempt_id("fundamentos"))
+                .quiz_attempt_count(&level_test_attempt_id("primeiros-passos"))
                 .unwrap(),
             2
         );
@@ -1233,17 +1259,56 @@ mod tests {
     #[test]
     fn prova_suggests_the_test_when_the_level_is_done() {
         let (app, _) = app_at(1_000);
-        mark_done(&app, &lessons_of(&app, "fundamentos"));
+        mark_done(&app, &lessons_of(&app, "primeiros-passos"));
         let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
         assert_eq!(list.next, None);
-        assert_eq!(list.next_test.as_deref(), Some("fundamentos"));
+        assert_eq!(list.next_test.as_deref(), Some("primeiros-passos"));
         // Doing every lesson does not pass the level.
-        assert!(all(group(&list, "iniciante"), LessonState::Locked));
+        assert!(all(group(&list, "fundamentos"), LessonState::Locked));
         // Other modes never suggest a test.
         app.set_unlock_mode(UnlockMode::Free).unwrap();
         let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
         assert_eq!(list.next_test, None);
-        assert_eq!(list.next.as_ref(), lessons_of(&app, "iniciante").first());
+        assert_eq!(list.next.as_ref(), lessons_of(&app, "fundamentos").first());
+    }
+
+    /// Lessons added to a level below the user's (Primeiros passos, #90)
+    /// never close a level where the user already did a lesson.
+    #[test]
+    fn a_level_with_a_lesson_done_stays_open() {
+        let (app, _) = app_at(1_000);
+        // Stored when Primeiros passos had no lessons yet.
+        app.set_start_level("primeiros-passos").unwrap();
+        let fund = lessons_of(&app, "fundamentos");
+        mark_done(&app, &fund[..2]);
+        let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
+        assert!(
+            group(&list, "fundamentos").lessons[2..]
+                .iter()
+                .all(|l| l.state == LessonState::Available)
+        );
+        assert!(all(group(&list, "iniciante"), LessonState::Locked));
+        assert!(app.tests_passed().unwrap().is_empty());
+    }
+
+    /// A lesson done in Livre opens only its own level in Prova: the levels
+    /// below it still wait for their tests.
+    #[test]
+    fn a_lesson_done_in_livre_opens_only_its_level_in_prova() {
+        let (app, _) = app_at(1_000);
+        app.set_start_level("primeiros-passos").unwrap();
+        app.set_unlock_mode(UnlockMode::Free).unwrap();
+        let inter = lessons_of(&app, "intermediario");
+        mark_done(&app, &inter[..1]);
+        app.set_unlock_mode(UnlockMode::Tests).unwrap();
+        let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
+        assert!(all(group(&list, "fundamentos"), LessonState::Locked));
+        assert!(all(group(&list, "iniciante"), LessonState::Locked));
+        assert!(
+            group(&list, "intermediario").lessons[1..]
+                .iter()
+                .all(|l| l.state == LessonState::Available)
+        );
     }
 
     #[test]
@@ -1267,13 +1332,17 @@ mod tests {
             "no review items"
         );
         assert!(app.submit_level_test(&t, &[], 1).is_err());
-        assert!(app.level_test("primeiros-passos", Locale::EnUs).is_err());
+        assert!(
+            app.level_test("avancado", Locale::EnUs).is_err(),
+            "no lessons yet"
+        );
     }
 
     #[test]
     fn a_test_draws_one_question_per_lesson_first() {
         let (mut app, _) = app_at(1_000);
         for (level, draw) in [
+            ("primeiros-passos", 10),
             ("fundamentos", 10),
             ("iniciante", 12),
             ("intermediario", 12),
@@ -1314,48 +1383,46 @@ mod tests {
     fn guiado_opens_one_lesson_at_a_time() {
         let (mut app, _) = app_at(1_000);
         app.set_unlock_mode(UnlockMode::Stepwise).unwrap();
-        let fund = lessons_of(&app, "fundamentos");
+        let first = lessons_of(&app, "primeiros-passos");
         let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
         let open: Vec<&LessonCard> = list
             .lessons()
             .filter(|l| l.state == LessonState::Available)
             .collect();
         assert_eq!(open.len(), 1);
-        assert_eq!(open[0].id, fund[0]);
-        // Passing a quiz opens the next one.
-        let view = app.quiz(&fund[0], Locale::PtBr).unwrap();
-        let res = app.submit_quiz(&fund[0], &right_answers(&view), 1).unwrap();
-        assert_eq!(res.unlocked, vec![fund[1].clone()]);
+        assert_eq!(open[0].id, first[0]);
+        // Finishing a lesson opens the next one.
+        assert_eq!(complete(&mut app, &first[0]), vec![first[1].clone()]);
         // A locked lesson says which one is next.
-        let open = app.open_lesson(&fund[3], Locale::PtBr).unwrap();
+        let open = app.open_lesson(&first[3], Locale::PtBr).unwrap();
         assert_eq!(open.state, LessonState::Locked);
         assert_eq!(
             open.locked_by,
             Some(LockReason::OneAtATime {
-                next: Some(fund[1].clone())
+                next: Some(first[1].clone())
             })
         );
         // The level done, the next level's first lesson opens without a test.
-        mark_done(&app, &fund);
+        mark_done(&app, &first);
         let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
-        let ini = group(&list, "iniciante");
-        assert_eq!(ini.lessons[0].state, LessonState::Available);
+        let fund = group(&list, "fundamentos");
+        assert_eq!(fund.lessons[0].state, LessonState::Available);
         assert!(
-            ini.lessons[1..]
+            fund.lessons[1..]
                 .iter()
                 .all(|l| l.state == LessonState::Locked)
         );
-        assert_eq!(ini.opens_with, None, "only Prova waits for a test");
-        assert!(all(group(&list, "intermediario"), LessonState::Locked));
+        assert_eq!(fund.opens_with, None, "only Prova waits for a test");
+        assert!(all(group(&list, "iniciante"), LessonState::Locked));
         // A level test skips a level here too.
-        pass_test(&mut app, "iniciante");
+        pass_test(&mut app, "fundamentos");
         let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
         assert_eq!(
-            group(&list, "intermediario").lessons[0].state,
+            group(&list, "iniciante").lessons[0].state,
             LessonState::Available
         );
         assert_eq!(
-            group(&list, "iniciante").lessons[0].state,
+            group(&list, "fundamentos").lessons[0].state,
             LessonState::Available
         );
     }
@@ -1366,7 +1433,10 @@ mod tests {
         app.set_unlock_mode(UnlockMode::Free).unwrap();
         let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
         assert!(list.lessons().all(|l| l.state == LessonState::Available));
-        assert_eq!(list.next.as_ref(), lessons_of(&app, "fundamentos").first());
+        assert_eq!(
+            list.next.as_ref(),
+            lessons_of(&app, "primeiros-passos").first()
+        );
         // Tests are there to see where one stands.
         assert!(
             list.groups
@@ -1387,7 +1457,7 @@ mod tests {
         let open = app.open_lesson("facing-an-open", Locale::EnUs).unwrap();
         assert_eq!(open.missing, titles(&["pot-odds-101"]));
         assert!(
-            app.open_lesson("hand-rankings", Locale::EnUs)
+            app.open_lesson("what-is-holdem", Locale::EnUs)
                 .unwrap()
                 .missing
                 .is_empty()
@@ -1516,7 +1586,16 @@ mod tests {
             app.chosen_start_level().unwrap().as_deref(),
             Some("iniciante")
         );
-        // Prova shows nothing below Iniciante as next: Fundamentos is done.
+        // Fundamentos is done, so Prova shows nothing there as next. The
+        // hand rankings lesson moved to Primeiros passos (#90): with it
+        // done, that level counts as one the user reads, and its new
+        // lessons come first until its test is passed.
+        let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
+        assert_eq!(
+            list.next.as_ref(),
+            lessons_of(&app, "primeiros-passos").first()
+        );
+        pass_test(&mut app, "primeiros-passos");
         let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
         assert_eq!(list.next.as_ref(), lessons_of(&app, "iniciante").get(1));
     }
@@ -1592,7 +1671,10 @@ mod tests {
         );
         let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
         assert_eq!(list.done(), 0);
-        assert_eq!(list.next.as_ref(), lessons_of(&app, "fundamentos").first());
+        assert_eq!(
+            list.next.as_ref(),
+            lessons_of(&app, "primeiros-passos").first()
+        );
     }
 
     #[test]
@@ -1612,7 +1694,7 @@ mod tests {
         );
         // Only reading a lesson counts as having started too.
         let (app, _) = app_at(1_000);
-        let id = lessons_of(&app, "fundamentos")[0].clone();
+        let id = lessons_of(&app, "primeiros-passos")[0].clone();
         app.open_lesson(&id, Locale::PtBr).unwrap();
         assert!(!app.level_question_due().unwrap());
         assert_eq!(
@@ -1706,7 +1788,7 @@ mod tests {
     /// and the hand finished, in either order (D26).
     #[test]
     fn a_guided_hand_completes_the_lesson_with_the_quiz() {
-        let lesson = "stacks-and-blinds";
+        let lesson = "betting-rounds";
         // Guiado, with every lesson before it done, so the next one opens
         // only when this one is done.
         let ready = |app: &mut App| {
@@ -1731,7 +1813,7 @@ mod tests {
         let open = app.open_lesson(lesson, Locale::PtBr).unwrap();
         let g = open.guided.expect("the lesson lists a guided hand");
         assert_eq!((g.id.as_str(), g.finished), ("first-hand", false));
-        assert_eq!(g.title, "Sua primeira mão");
+        assert_eq!(g.title, "Uma mão, quatro rodadas");
         let view = app.quiz(lesson, Locale::EnUs).unwrap();
         let res = app.submit_quiz(lesson, &right_answers(&view), 1).unwrap();
         assert!(res.passed);
@@ -1740,7 +1822,7 @@ mod tests {
         assert_eq!(app.lesson_state(lesson).unwrap(), LessonState::Available);
         let fin = app.finish_guided("first-hand").unwrap();
         assert_eq!(fin.done, vec![lesson]);
-        assert!(fin.unlocked.iter().any(|l| l == "combos-101"));
+        assert!(fin.unlocked.iter().any(|l| l == "your-actions"));
         assert_eq!(app.lesson_state(lesson).unwrap(), LessonState::Done);
         assert!(
             app.open_lesson(lesson, Locale::EnUs)
@@ -1779,8 +1861,7 @@ mod tests {
     fn both_views_hold_every_lesson_with_the_same_state() {
         let (mut app, _) = app_at(1_000);
         let first = app.library.catalog.order()[0].to_owned();
-        let view = app.quiz(&first, Locale::PtBr).unwrap();
-        app.submit_quiz(&first, &right_answers(&view), 1).unwrap();
+        complete(&mut app, &first);
 
         let journey = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
         let themes = app.lesson_list(ViewBy::Themes, Locale::PtBr).unwrap();
@@ -1798,11 +1879,12 @@ mod tests {
         }
         // Every level shows, the ones without lessons as "em breve".
         assert_eq!(journey.groups.len(), app.library.catalog.levels.len());
-        assert!(
-            journey.groups[0].is_soon(),
-            "primeiros passos has no lessons yet"
-        );
+        assert!(!journey.groups[0].is_soon());
         assert_eq!(journey.groups[0].title_key(), "level-primeiros-passos");
+        assert!(
+            journey.groups.last().unwrap().is_soon(),
+            "pró has no lessons yet"
+        );
         assert!(themes.groups.iter().all(|g| g.kind == GroupKind::Theme));
         // Within a theme, Jornada order.
         let order = app.library.catalog.order();

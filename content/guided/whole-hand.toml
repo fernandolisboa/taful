@@ -1,0 +1,105 @@
+# Primeiros passos, lesson 8 (a-whole-hand): a long hand that puts it all
+# together. Hero, on the button with J♥ T♥, calls the hijack's raise, calls
+# a flop bet three-handed with a straight and flush draw, makes the
+# straight on the turn and bets the turn and the river; the hijack's pair
+# of queens pays and loses.
+# Amounts in `act`, `hero` and `offer` are chips: 100 = 1 bb.
+
+id = "whole-hand"
+version = 1
+title = { en-US = "A hand from start to finish", pt-BR = "Uma mão do começo ao fim" }
+players = 6
+hero = "BTN"
+board = "Qh9h4c8s2d"
+
+[cards]
+BTN = "JhTh"
+HJ = "AcQc"
+
+[[steps]]
+say = { en-US = "A whole hand, putting it all together. You are on the button (BTN): after the flop, you speak last. The blinds are already in the pot: 0.5 bb from the SB and 1 bb from the BB.", pt-BR = "Uma mão inteira, juntando tudo. Você está no botão (BTN): depois do flop, você fala por último. Os blinds já estão no pote: 0,5 bb do SB e 1 bb do BB." }
+
+[[steps]]
+say = { en-US = "Your cards: J♥ T♥. Two cards in a row and of the same suit: they can turn into a straight or a flush.", pt-BR = "Suas cartas: J♥ T♥. Duas cartas seguidas e do mesmo naipe: podem virar uma sequência ou um flush." }
+
+[[steps]]
+act = "UTG:f,HJ:r250,CO:f"
+say = { en-US = "Preflop. UTG folded, the HJ raised to 2.5 bb and the CO folded.", pt-BR = "Pré-flop. O UTG desistiu, o HJ aumentou para 2,5 bb e o CO desistiu." }
+
+[[steps]]
+hero = "c"
+say = { en-US = "Your turn. Call the 2.5 bb to see the flop, speaking after the HJ in every later round.", pt-BR = "Sua vez. Pague os 2,5 bb (call) para ver o flop, falando depois do HJ em todas as rodadas seguintes." }
+why = { en-US = "J♥ T♥ plays well to see a flop, and on the button you speak last in the later rounds.", pt-BR = "J♥ T♥ joga bem para ver o flop, e no botão você fala por último nas rodadas seguintes." }
+
+[[steps.wrong]]
+act = "f"
+why = { en-US = "Folding is possible, but J♥ T♥ on the button is too good to throw away against a small raise.", pt-BR = "Desistir é possível, mas J♥ T♥ no botão é boa demais para jogar fora diante de um aumento pequeno." }
+
+[[steps.wrong]]
+act = "r"
+why = { en-US = "Raising again is possible too; in this hand we call and see the flop.", pt-BR = "Aumentar de novo também é possível; nesta mão vamos pagar e ver o flop." }
+
+[[steps]]
+act = "SB:f,BB:c"
+say = { en-US = "The small blind folded and the big blind called. Three players see the flop, with 8 bb in the pot. The flop: Q♥ 9♥ 4♣.", pt-BR = "O small blind desistiu e o big blind pagou. Três jogadores no flop, com 8 bb no pote. O flop: Q♥ 9♥ 4♣." }
+
+[[steps]]
+act = "BB:x,HJ:b400"
+say = { en-US = "The BB checked, and the HJ bet 4 bb, half the pot.", pt-BR = "O BB deu check, e o HJ apostou 4 bb, metade do pote." }
+
+[[steps]]
+hero = "c"
+say = { en-US = "No pair yet, but plenty of chances: any king or eight makes a straight, and any heart makes a flush. Call.", pt-BR = "Ainda sem par, mas com muitas chances: qualquer rei ou oito faz sequência, e qualquer copa faz flush. Pague (call)." }
+why = { en-US = "Many cards improve your hand a lot, and 4 bb to see the turn is a fair price.", pt-BR = "Muitas cartas melhoram muito a sua mão, e 4 bb para ver o turn é um preço justo." }
+
+[[steps.wrong]]
+act = "f"
+why = { en-US = "Folding would throw away a straight draw and a flush draw: many cards in the deck make your hand very strong.", pt-BR = "Desistir jogaria fora a chance de sequência e de flush: muitas cartas do baralho deixam sua mão muito forte." }
+
+[[steps.wrong]]
+act = "r"
+why = { en-US = "Raising with a draw exists too, but in this hand we call and see the turn.", pt-BR = "Aumentar com uma mão que ainda pode melhorar também existe, mas nesta mão vamos pagar e ver o turn." }
+
+[[steps]]
+act = "BB:f"
+say = { en-US = "The big blind folded. It is you and the HJ, and the pot is 16 bb. The turn: 8♠. You made a straight: Q J T 9 8!", pt-BR = "O big blind desistiu. Sobraram você e o HJ, e o pote tem 16 bb. O turn: 8♠. Você fez uma sequência: Q J T 9 8!" }
+
+[[steps]]
+act = "HJ:x"
+say = { en-US = "The HJ checked.", pt-BR = "O HJ deu check." }
+
+[[steps]]
+hero = "b800"
+say = { en-US = "You have a very strong hand. Bet half the pot: 8 bb.", pt-BR = "Você tem uma mão muito forte. Aposte metade do pote: 8 bb (bet)." }
+why = { en-US = "With the straight, you want them to put more chips in the pot. Checking would give them a free card.", pt-BR = "Com a sequência, você quer que ele ponha mais fichas no pote. Dar check daria uma carta de graça a ele." }
+
+[[steps.wrong]]
+act = "x"
+why = { en-US = "Checking would give them a free card and win you nothing more with the best hand.", pt-BR = "Dar check daria uma carta de graça a ele e não ganharia nada a mais com a melhor mão." }
+
+[[steps]]
+act = "HJ:c"
+say = { en-US = "They called. The pot is 32 bb. The river: 2♦, a card that changes nothing.", pt-BR = "Ele pagou. O pote tem 32 bb. O river: 2♦, uma carta que não muda nada." }
+
+[[steps]]
+act = "HJ:x"
+say = { en-US = "The HJ checked again.", pt-BR = "O HJ deu check de novo." }
+
+[[steps]]
+hero = "b1600"
+say = { en-US = "The last round. Bet again: 16 bb, half the pot.", pt-BR = "Última rodada. Aposte de novo: 16 bb, metade do pote." }
+why = { en-US = "They called on the turn, so they have something. Betting now is your last chance to win more chips with your straight.", pt-BR = "Ele pagou no turn, então tem alguma mão. Apostar agora é a última chance de ganhar mais fichas com a sua sequência." }
+
+[[steps.wrong]]
+act = "x"
+why = { en-US = "Checking goes to the showdown without winning anything more with the best hand.", pt-BR = "Dar check leva ao showdown sem ganhar nada a mais com a melhor mão." }
+
+[[steps]]
+act = "HJ:c"
+say = { en-US = "They called. Showdown!", pt-BR = "Ele pagou. Showdown!" }
+
+[[steps]]
+say = { en-US = "The HJ showed A♣ Q♣: a pair of queens with an ace. Your straight wins, and the 64 bb pot is yours.", pt-BR = "O HJ mostrou A♣ Q♣: par de damas com ás. Sua sequência ganha, e o pote de 64 bb é seu." }
+
+[[steps]]
+say = { en-US = "You played a whole hand: blinds, preflop, flop, turn, river and showdown, calling, betting and watching others fold. That is Texas Hold'em. Welcome to the table!", pt-BR = "Você jogou uma mão inteira: blinds, pré-flop, flop, turn, river e showdown, pagando, apostando e vendo os outros desistirem. Isso é Texas Hold'em. Bem-vindo à mesa!" }

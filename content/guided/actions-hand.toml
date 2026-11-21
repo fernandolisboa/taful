@@ -1,0 +1,85 @@
+# Primeiros passos, lesson 5 (your-actions): every action but all-in in
+# one hand. Hero, on the button with A♥ K♣, raises, bets the flop, checks
+# the turn and calls the river; the small blind's pair of sevens loses.
+# Amounts in `act`, `hero` and `offer` are chips: 100 = 1 bb.
+
+id = "actions-hand"
+version = 1
+title = { en-US = "Your actions at the table", pt-BR = "Suas ações na mesa" }
+players = 6
+hero = "BTN"
+board = "Ad7s3c9h2d"
+
+[cards]
+BTN = "AhKc"
+SB = "Kd7d"
+
+[[steps]]
+say = { en-US = "You are on the button (BTN) with A♥ K♣, one of the best hands to start with.", pt-BR = "Você está no botão (BTN) com A♥ K♣, uma das melhores mãos para começar." }
+
+[[steps]]
+act = "UTG:f,HJ:f,CO:f"
+say = { en-US = "UTG, HJ and CO folded.", pt-BR = "UTG, HJ e CO desistiram (fold)." }
+
+[[steps]]
+hero = "r250"
+say = { en-US = "Your turn. The big blind's 1 bb already counts as a bet, so putting in more is a raise. Raise to 2.5 bb.", pt-BR = "Sua vez. O 1 bb do big blind já conta como aposta, então pôr mais é aumentar (raise). Aumente para 2,5 bb." }
+why = { en-US = "With a strong hand, raising makes the others pay to stay in, and often they fold and leave you the blinds.", pt-BR = "Com uma mão forte, aumentar faz os outros pagarem para continuar, e muitas vezes eles desistem e deixam os blinds para você." }
+
+[[steps.wrong]]
+act = "c"
+why = { en-US = "Calling just the 1 bb is allowed too, but with A♥ K♣ raising is better: the others have to pay more to see the flop.", pt-BR = "Pagar só o 1 bb (call) também é permitido, mas com A♥ K♣ aumentar é melhor: os outros têm que pagar mais para ver o flop." }
+
+[[steps.wrong]]
+act = "f"
+why = { en-US = "Folding A♥ K♣ would throw away one of the best starting hands.", pt-BR = "Desistir com A♥ K♣ jogaria fora uma das melhores mãos para começar." }
+
+[[steps]]
+act = "SB:c,BB:f"
+say = { en-US = "The small blind called your 2.5 bb. The big blind folded and left their 1 bb in the pot. The pot is 6 bb. The flop: A♦ 7♠ 3♣. You made a pair of aces.", pt-BR = "O small blind pagou (call) os seus 2,5 bb. O big blind desistiu e deixou o 1 bb dele no pote. O pote tem 6 bb. O flop: A♦ 7♠ 3♣. Você fez um par de ases." }
+
+[[steps]]
+act = "SB:x"
+say = { en-US = "The small blind speaks first after the flop, and checked. Nobody has bet in this round yet.", pt-BR = "O small blind fala primeiro depois do flop, e deu check. Ninguém apostou nesta rodada ainda." }
+
+[[steps]]
+hero = "b300"
+say = { en-US = "Since nobody has bet, putting in chips now is a bet. Bet 3 bb, half the pot.", pt-BR = "Como ninguém apostou, pôr fichas agora é apostar (bet). Aposte 3 bb, metade do pote." }
+why = { en-US = "A pair of aces with a king is a strong hand: betting makes worse hands pay to see more cards.", pt-BR = "Par de ases com rei é uma mão forte: apostar faz as mãos piores pagarem para ver mais cartas." }
+
+[[steps.wrong]]
+act = "x"
+why = { en-US = "Checking is allowed too, but with a strong hand you want your opponent to pay to see the next card.", pt-BR = "Passar (check) também é permitido, mas com uma mão forte você quer que o adversário pague para ver a próxima carta." }
+
+[[steps]]
+act = "SB:c"
+say = { en-US = "They called. The pot is 12 bb. The turn: 9♥.", pt-BR = "Ele pagou. O pote tem 12 bb. O turn: 9♥." }
+
+[[steps]]
+act = "SB:x"
+say = { en-US = "They checked again.", pt-BR = "Ele deu check de novo." }
+
+[[steps]]
+hero = "x"
+say = { en-US = "This time, check: you see the river for free and keep the pot at 12 bb.", pt-BR = "Desta vez, dê check: você vê o river de graça e o pote fica em 12 bb." }
+why = { en-US = "Betting again is possible too. Checking keeps the pot smaller, so you lose less in case your opponent has something better.", pt-BR = "Apostar de novo também é possível. O check mantém o pote menor, e você perde menos caso o adversário tenha algo melhor." }
+
+[[steps]]
+act = "SB:b600"
+say = { en-US = "The river: 2♦. The small blind bet 6 bb, half the pot.", pt-BR = "O river: 2♦. O small blind apostou 6 bb, metade do pote." }
+
+[[steps]]
+hero = "c"
+say = { en-US = "Facing a bet you have three choices: fold, call or raise. Check is gone, because there are chips to match. Call.", pt-BR = "Diante de uma aposta você tem três opções: desistir (fold), pagar (call) ou aumentar (raise). Check não existe mais, porque há fichas para igualar. Pague: clique em Call." }
+why = { en-US = "Your pair of aces with a king beats many hands that bet here. Calling settles the hand without risking more.", pt-BR = "Seu par de ases com rei ganha de muitas mãos que apostariam aqui. Pagar resolve a mão sem arriscar mais." }
+
+[[steps.wrong]]
+act = "f"
+why = { en-US = "Folding would hand over an 18 bb pot with a pair of aces.", pt-BR = "Desistir entregaria um pote de 18 bb com par de ases." }
+
+[[steps.wrong]]
+act = "r"
+why = { en-US = "Raising puts even more chips in. With one pair, calling is enough.", pt-BR = "Aumentar põe ainda mais fichas. Com um par, pagar é suficiente." }
+
+[[steps]]
+say = { en-US = "Showdown: they had K♦ 7♦, a pair of sevens. Your pair of aces takes the 24 bb pot. In this hand you raised, bet, checked and called. All-in, betting every chip you have, is for another day.", pt-BR = "Showdown: ele tinha K♦ 7♦, par de setes. Seu par de ases leva o pote de 24 bb. Nesta mão você aumentou, apostou, deu check e pagou. O all-in, apostar todas as suas fichas, fica para outro dia." }

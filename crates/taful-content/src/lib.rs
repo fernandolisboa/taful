@@ -10,6 +10,7 @@ pub mod guided;
 pub mod lesson;
 pub mod level_test;
 pub mod library;
+pub mod picture;
 pub mod quiz;
 
 use std::fmt;
@@ -109,6 +110,55 @@ mod tests {
                 .map(ToString::to_string)
                 .collect::<Vec<_>>()
                 .join("\n")
+        );
+    }
+
+    /// The coach lines of the shipped guided hands say who wins; this pins
+    /// it: hero's net, in chips, when each hand is played as scripted.
+    #[test]
+    fn shipped_guided_hands_end_as_the_coach_says() {
+        use std::sync::Arc;
+
+        use guided::{Guide, Pause, Run};
+
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content");
+        let (lib, _) = Library::load(&Files::from_dir(&root).unwrap());
+        // (hand, hero's net, went to showdown)
+        let expected: &[(&str, i64, bool)] = &[
+            ("holdem-first-look", 100, true),
+            ("rankings-showdown", 200, true),
+            ("blinds-hand", -100, false),
+            ("first-hand", 400, true),
+            ("actions-hand", 1250, true),
+            ("split-pot", 0, true),
+            ("seats-hand", 700, true),
+            ("whole-hand", 3350, true),
+        ];
+        for &(id, net, showdown) in expected {
+            let guide = Arc::new(Guide::compile(&lib.guided[id]).unwrap());
+            let hero = guide.hero;
+            let mut run = Run::start(guide.clone()).unwrap();
+            loop {
+                match run.pause() {
+                    Pause::Done => break,
+                    Pause::Say(_) => run.proceed().unwrap(),
+                    Pause::Hero(_) => {
+                        let Some(guided::Step::Hero { expected, .. }) =
+                            guide.steps.get(run.step_at())
+                        else {
+                            unreachable!()
+                        };
+                        run.act(*expected).unwrap();
+                    }
+                }
+            }
+            let s = run.settlement().expect("the hand ends");
+            assert_eq!((s.net[hero], s.showdown), (net, showdown), "{id}");
+        }
+        assert_eq!(
+            expected.len(),
+            lib.guided.len(),
+            "every shipped guided hand is pinned here"
         );
     }
 
@@ -379,6 +429,18 @@ mod tests {
             (
                 Box::new(|c| c[5].1 = c[5].1.replace(", pt-BR = \"?\"", "")),
                 "missing `pt-BR`",
+            ),
+            (
+                Box::new(|c| {
+                    let q = quiz("a-quiz", "a");
+                    let one = &q[q.find("[[questions]]").unwrap()..];
+                    c[5].1 = format!(
+                        "{q}\n{}\n{}",
+                        one.replace("id = \"q\"", "id = \"q2\""),
+                        one.replace("id = \"q\"", "id = \"q3\"")
+                    );
+                }),
+                "every choice answer is option 1",
             ),
             (
                 Box::new(|c| {

@@ -2,6 +2,7 @@
 //! `taful-app` alone (spec §4 dependency rule).
 
 pub use taful_content::lesson::{Block, Document, Span};
+pub use taful_content::picture::{CardRow, CardSlot, Picture, SeatMap};
 pub use taful_content::quiz::{Answer, RenderedQuestion};
 pub use taful_core::calc::{CalcSettings, Exercise, ExerciseKind, Prompt, Unit};
 pub use taful_core::grading::Thresholds;

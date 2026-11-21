@@ -426,7 +426,7 @@ Facing a half-pot bet you need {{ calc: pot_odds(pot=100, bet=50) | pct(1) }} eq
 ### 12.2 Expression language
 
 - Syntax: `{{ calc: fn(arg=value, …) | formatter(args) }}`, plus `{{ spot: <id>.freq("BTN", "bet33") }}` for reference-strategy citations.
-- Only whitelisted pure functions from `taful-core` (calc, equity, combinatorics, chart lookups). M2 list: `pot_odds`, `mdf`, `alpha`, `spr`, `call_ev`, `hit_probability`, `rule_of_2_and_4`, `outs`, `equity_vs_hand`, `equity_vs_range`, `combos`, `choose`, `cards`, and the arithmetic helpers `mul`, `div`, `min`. `{{ spot: … }}` is a render error until the postflop library exists (M4). No variables, loops or user code. Parsed with a small hand-written parser; unknown function or bad argument = render error.
+- Only whitelisted pure functions from `taful-core` (calc, equity, combinatorics, chart lookups). M2 list: `pot_odds`, `mdf`, `alpha`, `spr`, `call_ev`, `hit_probability`, `rule_of_2_and_4`, `outs`, `equity_vs_hand`, `equity_vs_range`, `combos`, `choose`, `cards`, and the arithmetic helpers `add`, `mul`, `div`, `min`. `{{ spot: … }}` is a render error until the postflop library exists (M4). No variables, loops or user code. Parsed with a small hand-written parser; unknown function or bad argument = render error.
 - Formatters: `pct(d)`, `bb(d)`, `ratio`, `int`, `cards`. Localized number formatting (pt-BR uses comma decimals).
 
 ### 12.3 Checks (CI and app)
