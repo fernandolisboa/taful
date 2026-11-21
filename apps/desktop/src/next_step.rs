@@ -66,7 +66,7 @@ pub fn practice_phrase(ui: &Ui, practice: Practice) -> String {
 pub fn words(ui: &Ui, step: &NextStep) -> Words {
     let i18n = &ui.i18n;
     match step {
-        NextStep::Review { due, minutes } => {
+        NextStep::Review { due, minutes, .. } => {
             let body = i18n.tr_args("next-step-review-body", &[("minutes", (*minutes).into())]);
             Words {
                 about: i18n.tr("next-step-review"),

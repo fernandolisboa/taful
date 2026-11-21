@@ -25,9 +25,6 @@ salao-month-12 = dezembro
 
 ## Home
 
-salao-home-lesson-place = Lição { $n } de { $total }
-salao-home-lesson-read = { $minutes } min de leitura e um quiz
-salao-home-continue-lesson = Continuar lição
 salao-home-lessons-total = { $done } de { $total } lições no total
 salao-home-due-today = para hoje · cerca de { $minutes } min
 salao-home-due-none = nada para hoje

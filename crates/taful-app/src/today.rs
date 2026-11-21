@@ -200,7 +200,7 @@ impl App {
             levels,
             next_lesson,
             next_test,
-            due_now: self.store.count_due(now, kinds)?,
+            due_now: self.due_count_loaded()?,
             due_tomorrow,
             next_due: self.store.next_due_after(now)?,
             leaks,

@@ -687,10 +687,14 @@ fn tracks(ui: &Ui, pal: &Pal, lessons: &Lessons, w: f32, cx: &mut Context<Shell>
                 go(this, Go::NextStep, window, cx);
             })),
         );
-    // The rows mark the lesson the strip points at.
+    // The rows mark the lesson the step leads to (after the reviews, when
+    // some are due).
     let marked = match &s.step {
-        NextStep::Lesson(l) => Some(l.id.as_str()),
-        _ => s.next.as_ref().map(|n| n.id.as_str()),
+        NextStep::Lesson(l)
+        | NextStep::Review {
+            lesson: Some(l), ..
+        } => Some(l.id.as_str()),
+        _ => None,
     };
     let levels = &lessons.summary.levels;
     let last = levels.len().saturating_sub(1);

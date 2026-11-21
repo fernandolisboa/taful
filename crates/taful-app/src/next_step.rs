@@ -90,6 +90,9 @@ pub enum NextStep {
         due: u32,
         /// About how long they take, at least one minute.
         minutes: u32,
+        /// The lesson that comes after them, for a screen that still shows
+        /// one beside the reviews.
+        lesson: Option<StepLesson>,
     },
     /// Read (or finish) a lesson.
     Lesson(StepLesson),
@@ -111,18 +114,7 @@ impl App {
 
     /// [`App::next_step`] from the Jornada already read.
     pub(crate) fn next_step_from(&self, journey: &LessonList) -> Result<NextStep> {
-        let due = self
-            .store
-            .count_due(self.store.now(), crate::review_session::PRESENTABLE)?;
-        if due > 0 {
-            return Ok(NextStep::Review {
-                due,
-                minutes: (due * REVIEW_SECS).div_ceil(60).max(1),
-            });
-        }
-
         let progress = self.store.lesson_progress()?;
-        let guided = self.store.guided_done()?;
         // When each lesson last moved, by state, at any version.
         let last = |id: &str, state: LessonState| -> Option<Millis> {
             progress
@@ -131,16 +123,72 @@ impl App {
                 .map(|p| p.updated_at)
                 .max()
         };
+        let lesson = self.lesson_step(journey, &progress)?;
+        // Only what the review screen can show: postflop items wait while
+        // no postflop library is installed.
+        let due = self.due_count_loaded()?;
+        if due > 0 {
+            return Ok(NextStep::Review {
+                due,
+                minutes: (due * REVIEW_SECS).div_ceil(60).max(1),
+                lesson,
+            });
+        }
+        if let Some(l) = lesson {
+            return Ok(NextStep::Lesson(l));
+        }
+
+        // The last lesson done, and what its catalog entry practices.
+        let catalog = &self.library.catalog;
+        let done = catalog
+            .lessons
+            .iter()
+            .filter_map(|e| Some((last(&e.id, LessonState::Done)?, e)))
+            .max_by_key(|(when, _)| *when)
+            .map(|(_, e)| e);
+        let practice = done.map_or(Practice::Hand, |e| {
+            e.practice
+                .as_deref()
+                .and_then(Practice::from_id)
+                .unwrap_or_else(|| Practice::for_theme(&e.theme))
+        });
+        let after = done.and_then(|e| {
+            journey
+                .lessons()
+                .find(|c| c.id == e.id)
+                .map(|c| c.title.clone())
+        });
+        Ok(NextStep::Table {
+            practice,
+            after,
+            test: journey.next_test.clone(),
+        })
+    }
+
+    /// The lesson in progress, else the Jornada's next one.
+    fn lesson_step(
+        &self,
+        journey: &LessonList,
+        progress: &[taful_store::LessonProgress],
+    ) -> Result<Option<StepLesson>> {
+        let guided = self.store.guided_done()?;
         // A lesson begun and still open: a quiz tried (its row stays
-        // `available`), or a guided hand played before the quiz. The latest
-        // first; a guided hand alone has no time and comes last.
+        // `available` with a score; reading it alone stores no score), or
+        // a guided hand played before the quiz. The latest first; a guided
+        // hand alone has no time and comes last.
         let begun = |id: &str| -> Option<Millis> {
-            last(id, LessonState::Available).or_else(|| {
-                self.library
-                    .guided_for(id)
-                    .filter(|g| guided.contains(&g.id))
-                    .map(|_| Millis::MIN)
-            })
+            progress
+                .iter()
+                .filter(|p| p.lesson_id == id)
+                .filter(|p| p.state == LessonState::Available && p.best_score.is_some())
+                .map(|p| p.updated_at)
+                .max()
+                .or_else(|| {
+                    self.library
+                        .guided_for(id)
+                        .filter(|g| guided.contains(&g.id))
+                        .map(|_| Millis::MIN)
+                })
         };
         let at = |g: usize, l: usize| {
             let group = &journey.groups[g];
@@ -170,40 +218,12 @@ impl App {
             .filter_map(|(g, l, c)| Some((begun(&c.id)?, g, l)))
             // The first of equals: Jornada order breaks a tie.
             .min_by_key(|(when, g, l)| (std::cmp::Reverse(*when), *g, *l));
-        if let Some((_, g, l)) = in_progress {
-            return Ok(NextStep::Lesson(StepLesson {
+        Ok(match in_progress {
+            Some((_, g, l)) => Some(StepLesson {
                 started: true,
                 ..at(g, l)
-            }));
-        }
-        if let Some((g, l)) = journey.next_at() {
-            return Ok(NextStep::Lesson(at(g, l)));
-        }
-
-        // The last lesson done, and what its catalog entry practices.
-        let catalog = &self.library.catalog;
-        let done = catalog
-            .lessons
-            .iter()
-            .filter_map(|e| Some((last(&e.id, LessonState::Done)?, e)))
-            .max_by_key(|(when, _)| *when)
-            .map(|(_, e)| e);
-        let practice = done.map_or(Practice::Hand, |e| {
-            e.practice
-                .as_deref()
-                .and_then(Practice::from_id)
-                .unwrap_or_else(|| Practice::for_theme(&e.theme))
-        });
-        let after = done.and_then(|e| {
-            journey
-                .lessons()
-                .find(|c| c.id == e.id)
-                .map(|c| c.title.clone())
-        });
-        Ok(NextStep::Table {
-            practice,
-            after,
-            test: journey.next_test.clone(),
+            }),
+            None => journey.next_at().map(|(g, l)| at(g, l)),
         })
     }
 }
@@ -253,6 +273,22 @@ mod tests {
             .unwrap();
     }
 
+    /// The quiz's answers, right or all wrong.
+    fn answers(app: &App, id: &str, right: bool) -> Vec<Answer> {
+        app.quiz(id, Locale::PtBr)
+            .unwrap()
+            .questions
+            .iter()
+            .map(|q| match (q.answer_index, &q.numeric, right) {
+                (Some(i), _, true) => Answer::Choice(i),
+                (Some(i), _, false) => Answer::Choice((i + 1) % q.choices.len()),
+                (_, Some((v, _)), true) => Answer::Numeric(*v),
+                (_, Some((v, _)), false) => Answer::Numeric(v + 1_000.),
+                _ => unreachable!(),
+            })
+            .collect()
+    }
+
     #[test]
     fn a_fresh_profile_starts_with_the_first_lesson() {
         let (app, _) = app_at(START);
@@ -273,13 +309,17 @@ mod tests {
         app.calc_submit(&round, Some(round.exercise.answer + 50.))
             .unwrap();
         // Not due yet: the lesson still leads.
-        lesson(app.next_step(Locale::PtBr).unwrap());
         let due = app.today(Locale::PtBr).unwrap().next_due.unwrap();
+        let first = lesson(app.next_step(Locale::PtBr).unwrap());
         clock.store(due, Ordering::SeqCst);
-        assert_eq!(
-            app.next_step(Locale::PtBr).unwrap(),
-            NextStep::Review { due: 1, minutes: 1 }
-        );
+        match app.next_step(Locale::PtBr).unwrap() {
+            NextStep::Review {
+                due: 1,
+                minutes: 1,
+                lesson: Some(after),
+            } => assert_eq!(after.id, first.id, "the lesson waits behind them"),
+            other => panic!("expected the reviews, got {other:?}"),
+        }
     }
 
     #[test]
@@ -288,17 +328,11 @@ mod tests {
         app.set_unlock_mode(UnlockMode::Free).unwrap();
         let (_, ids) = first_level(&app);
         let third = &ids[2];
+        // Reading a lesson does not begin it.
+        app.open_lesson(&ids[4], Locale::PtBr).unwrap();
+        assert_eq!(lesson(app.next_step(Locale::PtBr).unwrap()).id, ids[0]);
         // A failed quiz leaves the lesson begun and open.
-        let view = app.quiz(third, Locale::PtBr).unwrap();
-        let wrong: Vec<Answer> = view
-            .questions
-            .iter()
-            .map(|q| match (q.answer_index, &q.numeric) {
-                (Some(i), _) => Answer::Choice((i + 1) % q.choices.len()),
-                (_, Some((v, _))) => Answer::Numeric(v + 1_000.),
-                _ => unreachable!(),
-            })
-            .collect();
+        let wrong = answers(&app, third, false);
         clock.fetch_add(1_000, Ordering::SeqCst);
         let res = app.submit_quiz(third, &wrong, 1_000).unwrap();
         assert!(!res.passed);
@@ -307,11 +341,51 @@ mod tests {
         // The latest one begun wins.
         let second = &ids[1];
         clock.fetch_add(1_000, Ordering::SeqCst);
-        app.submit_quiz(second, &wrong, 1_000).unwrap();
+        let wrong2 = answers(&app, second, false);
+        app.submit_quiz(second, &wrong2, 1_000).unwrap();
         assert_eq!(&lesson(app.next_step(Locale::PtBr).unwrap()).id, second);
         // Done, it gives way to the other one.
         mark_done(&app, &clock, second);
         assert_eq!(&lesson(app.next_step(Locale::PtBr).unwrap()).id, third);
+    }
+
+    #[test]
+    fn a_guided_hand_begins_its_lesson_either_way_round() {
+        let (mut app, clock) = app_at(START);
+        app.set_unlock_mode(UnlockMode::Free).unwrap();
+        let with_hand: Vec<String> = first_level(&app)
+            .1
+            .into_iter()
+            .filter(|id| app.library.guided_for(id).is_some())
+            .collect();
+        assert!(with_hand.len() >= 3, "{with_hand:?}");
+        // The hand played first: begun, though no quiz was tried.
+        let hand = app.library.guided_for(&with_hand[2]).unwrap().id.clone();
+        app.finish_guided(&hand).unwrap();
+        let step = lesson(app.next_step(Locale::PtBr).unwrap());
+        assert_eq!((&step.id, step.started), (&with_hand[2], true));
+        // The quiz passed first, the hand still to play: begun, and newer.
+        clock.fetch_add(1_000, Ordering::SeqCst);
+        let right = answers(&app, &with_hand[1], true);
+        let res = app.submit_quiz(&with_hand[1], &right, 1_000).unwrap();
+        assert!(res.passed && res.guided_pending.is_some());
+        let step = lesson(app.next_step(Locale::PtBr).unwrap());
+        assert_eq!((&step.id, step.started), (&with_hand[1], true));
+    }
+
+    #[test]
+    fn a_lesson_begun_and_now_locked_gives_way() {
+        let (mut app, clock) = app_at(START);
+        app.set_unlock_mode(UnlockMode::Free).unwrap();
+        let (_, ids) = first_level(&app);
+        clock.fetch_add(1_000, Ordering::SeqCst);
+        let wrong = answers(&app, &ids[3], false);
+        app.submit_quiz(&ids[3], &wrong, 1_000).unwrap();
+        assert_eq!(lesson(app.next_step(Locale::PtBr).unwrap()).id, ids[3]);
+        // Guiado opens one lesson at a time: the fourth is locked again.
+        app.set_unlock_mode(UnlockMode::Stepwise).unwrap();
+        let step = lesson(app.next_step(Locale::PtBr).unwrap());
+        assert_eq!((&step.id, step.started), (&ids[0], false));
     }
 
     #[test]

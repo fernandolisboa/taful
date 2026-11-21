@@ -377,9 +377,9 @@ impl App {
             .map(|c| (c.id.clone(), c.title.clone()));
         let (items, reviews) = self.store.review_totals()?;
         Ok(Home {
-            due_now: self
-                .store
-                .count_due(now, crate::review_session::PRESENTABLE)?,
+            // What the review screen can show (postflop items wait without
+            // a library), as the next step counts them.
+            due_now: self.due_count_loaded()?,
             next_due: self.store.next_due_after(now)?,
             next_lesson,
             next_test: tree.next_test.clone(),

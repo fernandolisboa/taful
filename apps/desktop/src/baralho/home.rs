@@ -383,8 +383,10 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                 "home_lesson",
                 if hero {
                     words.button.clone()
-                } else {
+                } else if l.started {
                     i18n.tr("baralho-home-lesson-go")
+                } else {
+                    i18n.tr("next-step-lesson-go")
                 },
                 if hero { Fill::Amber } else { Fill::Ink },
                 false,
@@ -411,21 +413,8 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                 .on_click(crate::next_step::on_click(step.clone(), cx)),
         },
         // Reviews lead; the lesson stays at hand.
-        NextStep::Review { .. } => match today.next_lesson {
-            Some((g, l)) => {
-                let level = &today.levels[g];
-                let card = &level.lessons[l];
-                let next = StepLesson {
-                    id: card.id.clone(),
-                    title: card.title.clone(),
-                    level: level.id.clone(),
-                    number: l + 1,
-                    minutes: card.minutes,
-                    level_states: level.lessons.iter().map(|c| c.state).collect(),
-                    started: false,
-                };
-                lesson_card(&next, false, cx)
-            }
+        NextStep::Review { lesson, .. } => match lesson {
+            Some(next) => lesson_card(next, false, cx),
             None => Big {
                 pip: Pip::Spade,
                 index: today.lessons_done().to_string(),

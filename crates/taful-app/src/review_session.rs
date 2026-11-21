@@ -102,6 +102,21 @@ impl App {
         self.trainers().is_ok_and(|t| t.post().is_some())
     }
 
+    /// Items due now that this build can present, judged from the trainers
+    /// already loaded (none loaded yet: postflop items wait). For reads that
+    /// cannot load them, like the Home's next step (D27).
+    pub(crate) fn due_count_loaded(&self) -> Result<u32> {
+        let has_postflop = self.trainers.as_ref().is_some_and(|t| t.post().is_some());
+        let hold = (!has_postflop).then_some(Hold {
+            kind: SPOT_TEMPLATE,
+            key_glob: KEY_GLOB,
+            unless_glob: PREFLOP_KEY_GLOB,
+        });
+        Ok(self
+            .store
+            .count_due_held(self.now(), PRESENTABLE, hold.as_ref())?)
+    }
+
     /// Postflop spot items wait while no library is installed.
     pub(crate) fn postflop_hold(&mut self) -> Option<Hold<'static>> {
         (!self.has_postflop()).then_some(Hold {
