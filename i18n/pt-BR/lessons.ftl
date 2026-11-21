@@ -100,6 +100,7 @@ tree-next-test = Você terminou as lições abertas. A prova de { $level } abre 
 level-test-title = Prova: { $level }
 level-test-intro = { $questions } perguntas das lições deste nível. Acerte { $need } para passar. Passar abre o próximo nível; as lições não ficam marcadas como concluídas, e as perguntas erradas não vão para as revisões.
 level-test-start = Começar a prova
+level-test-error = Algo deu errado: { $error }. Tente de novo daqui a pouco.
 level-test-passed = Aprovado com { $score }.
 level-test-opened = Aberto agora: { $levels }.
 level-test-failed = { $score }. Para passar você precisa de { $pass }. Tente de novo quando quiser: as perguntas mudam a cada tentativa.

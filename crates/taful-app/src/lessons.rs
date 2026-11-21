@@ -375,9 +375,14 @@ impl App {
     }
 
     /// The level the user picked to start from (D25), if any was stored.
-    pub fn chosen_start_level(&self) -> Option<String> {
-        self.string_setting(keys::LESSONS_START_LEVEL)
-            .filter(|l| self.library.catalog.levels.contains(l))
+    /// A store error is an error, so a write never replaces a choice it
+    /// could not read.
+    pub fn chosen_start_level(&self) -> Result<Option<String>> {
+        Ok(self
+            .store
+            .setting(keys::LESSONS_START_LEVEL)?
+            .and_then(|v| v.as_str().map(str::to_owned))
+            .filter(|l| self.library.catalog.levels.contains(l)))
     }
 
     /// Where the Jornada starts: every level up to this one is unlocked.
@@ -385,7 +390,7 @@ impl App {
     /// level that had a lesson open (done, or every prerequisite done) so
     /// nothing open before is locked now; else the first level.
     pub fn start_level(&self) -> Result<String> {
-        if let Some(l) = self.chosen_start_level() {
+        if let Some(l) = self.chosen_start_level()? {
             return Ok(l);
         }
         let levels = &self.library.catalog.levels;
@@ -424,30 +429,30 @@ impl App {
     /// Stores the starting level derived from today's progress, if none is
     /// stored, before new progress changes what it would derive.
     fn pin_start_level(&self) -> Result<()> {
-        if self.chosen_start_level().is_none() {
+        if self.chosen_start_level()?.is_none() {
             let level = self.start_level()?;
             self.set_start_level(&level)?;
         }
         Ok(())
     }
 
-    /// Levels whose test was passed.
-    pub fn tests_passed(&self) -> BTreeSet<String> {
-        self.store
-            .setting(keys::LESSONS_TESTS_PASSED)
-            .ok()
-            .flatten()
+    /// Levels whose test was passed. A store error is an error, so a pass
+    /// is never written over a list that could not be read.
+    pub fn tests_passed(&self) -> Result<BTreeSet<String>> {
+        Ok(self
+            .store
+            .setting(keys::LESSONS_TESTS_PASSED)?
             .and_then(|v| serde_json::from_value::<Vec<String>>(v).ok())
             .unwrap_or_default()
             .into_iter()
-            .collect()
+            .collect())
     }
 
     fn progress(&self) -> Result<Progress> {
         let cat = &self.library.catalog;
         let mode = self.unlock_mode();
         let done = self.done_lessons()?;
-        let passed = self.tests_passed();
+        let passed = self.tests_passed()?;
         let start = self.start_level()?;
         let start = cat.levels.iter().position(|l| *l == start).unwrap_or(0);
         fn lessons_of<'a>(
@@ -456,6 +461,15 @@ impl App {
         ) -> impl Iterator<Item = &'a taful_content::Entry> + 'a {
             cat.lessons.iter().filter(move |e| e.level == level)
         }
+        // A passed test opens the level after it and every level before it,
+        // however it was reached (a test passed in Guiado counts in Prova).
+        let top = passed
+            .iter()
+            .filter_map(|l| cat.levels.iter().position(|x| x == l))
+            .map(|r| r + 1)
+            .max()
+            .unwrap_or(0)
+            .max(start);
         let mut unlocked = Vec::with_capacity(cat.levels.len());
         let mut open = Vec::with_capacity(cat.levels.len());
         for i in 0..cat.levels.len() {
@@ -463,7 +477,7 @@ impl App {
                 let prev = &cat.levels[i - 1];
                 passed.contains(prev) || lessons_of(cat, prev).next().is_none()
             };
-            let u = i <= start || (unlocked[i - 1] && through(i));
+            let u = i <= top || (unlocked[i - 1] && through(i));
             unlocked.push(u);
             open.push(match mode {
                 UnlockMode::Tests => u,
@@ -600,12 +614,10 @@ impl App {
         let available = |(e, c): &&(&taful_content::Entry, LessonCard)| {
             c.state == LessonState::Available && rank(&e.level).is_some()
         };
-        let next = cards
+        let ahead = cards
             .iter()
             .filter(available)
-            .find(|(e, _)| rank(&e.level).is_some_and(|r| r >= prog.floor))
-            .or_else(|| cards.iter().find(available))
-            .map(|(_, c)| c.id.clone());
+            .find(|(e, _)| rank(&e.level).is_some_and(|r| r >= prog.floor));
         let test_card = |level: usize| {
             let id = &catalog.levels[level];
             let t = self.library.test_for(id)?;
@@ -621,8 +633,10 @@ impl App {
                 pass: t.pass,
             })
         };
-        // With nothing to read in Prova, the test that opens what follows.
-        let next_test = match (prog.mode, &next) {
+        // With nothing left to read from where the user stands in Prova,
+        // the test that opens what follows comes before lessons left behind
+        // in lower levels.
+        let next_test = match (prog.mode, ahead) {
             (UnlockMode::Tests, None) => (0..catalog.levels.len())
                 .find(|&i| {
                     prog.unlocked[i]
@@ -633,6 +647,14 @@ impl App {
                 .map(|i| catalog.levels[i].clone()),
             _ => None,
         };
+        let next = ahead
+            .or_else(|| {
+                next_test
+                    .is_none()
+                    .then(|| cards.iter().find(available))
+                    .flatten()
+            })
+            .map(|(_, c)| c.id.clone());
         let group = |kind: GroupKind, id: &String| {
             let level = (kind == GroupKind::Level).then(|| rank(id)).flatten();
             LessonGroup {
@@ -703,9 +725,27 @@ impl App {
                 .level_index(id)
                 .and_then(|level| self.opening_test(level, &prog))
                 .map(|level| LockReason::Test { level }),
-            (LessonState::Locked, UnlockMode::Stepwise) => Some(LockReason::OneAtATime {
-                next: self.journey(locale)?.next,
-            }),
+            (LessonState::Locked, UnlockMode::Stepwise) => {
+                // The lesson open in its level, else (level not reached yet)
+                // the next lesson overall.
+                let in_level = self
+                    .level_index(id)
+                    .filter(|&i| prog.open[i])
+                    .and_then(|i| {
+                        let level = &self.library.catalog.levels[i];
+                        self.library
+                            .catalog
+                            .lessons
+                            .iter()
+                            .find(|e| e.level == *level && !prog.done.contains(&e.id))
+                            .map(|e| e.id.clone())
+                    });
+                let next = match in_level {
+                    Some(n) => Some(n),
+                    None => self.journey(locale)?.next,
+                };
+                Some(LockReason::OneAtATime { next })
+            }
             _ => None,
         };
         let missing = if state == LessonState::Available {
@@ -953,7 +993,7 @@ impl App {
             duration_ms,
         })?;
         let mut unlocked = Vec::new();
-        let mut set = self.tests_passed();
+        let mut set = self.tests_passed()?;
         if passed && !set.contains(&test.level) {
             self.pin_start_level()?;
             let before = self.progress()?.open;
@@ -1169,7 +1209,7 @@ mod tests {
         let res = app.submit_level_test(&t, &answers, 1).unwrap();
         assert!(!res.passed);
         assert!(res.unlocked.is_empty());
-        assert!(app.tests_passed().is_empty());
+        assert!(app.tests_passed().unwrap().is_empty());
         assert_eq!(
             app.store.review_totals().unwrap(),
             (0, 0),
@@ -1332,7 +1372,7 @@ mod tests {
                     .done(),
                 3
             );
-            assert!(app.tests_passed().contains("fundamentos"));
+            assert!(app.tests_passed().unwrap().contains("fundamentos"));
         }
         app.set_unlock_mode(UnlockMode::Tests).unwrap();
         assert_eq!(states(&app), prova, "back to Prova, the same states");
@@ -1345,7 +1385,7 @@ mod tests {
     #[test]
     fn the_starting_level_unlocks_without_marking_anything_done() {
         let (app, _) = app_at(1_000);
-        assert_eq!(app.chosen_start_level(), None);
+        assert_eq!(app.chosen_start_level().unwrap(), None);
         assert_eq!(app.start_level().unwrap(), "primeiros-passos");
         app.set_start_level("intermediario").unwrap();
         assert!(app.set_start_level("nope").is_err());
@@ -1354,7 +1394,7 @@ mod tests {
             assert!(all(group(&list, level), LessonState::Available), "{level}");
         }
         assert_eq!(list.done(), 0);
-        assert!(app.tests_passed().is_empty());
+        assert!(app.tests_passed().unwrap().is_empty());
         // The next lesson starts at the chosen level...
         assert_eq!(
             list.next.as_ref(),
@@ -1408,7 +1448,11 @@ mod tests {
         old_progress(&done[5..]);
         // Now ev-101, mdf-101, facing-an-open… (Iniciante) had.
         assert_eq!(app.start_level().unwrap(), "iniciante");
-        assert_eq!(app.chosen_start_level(), None, "derived, not stored");
+        assert_eq!(
+            app.chosen_start_level().unwrap(),
+            None,
+            "derived, not stored"
+        );
         assert_eq!(
             app.lesson_state("facing-an-open").unwrap(),
             LessonState::Available
@@ -1417,7 +1461,10 @@ mod tests {
         let id = lessons_of(&app, "iniciante")[0].clone();
         let view = app.quiz(&id, Locale::PtBr).unwrap();
         app.submit_quiz(&id, &right_answers(&view), 1).unwrap();
-        assert_eq!(app.chosen_start_level().as_deref(), Some("iniciante"));
+        assert_eq!(
+            app.chosen_start_level().unwrap().as_deref(),
+            Some("iniciante")
+        );
         // Prova shows nothing below Iniciante as next: Fundamentos is done.
         let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
         assert_eq!(list.next.as_ref(), lessons_of(&app, "iniciante").get(1));
@@ -1436,6 +1483,51 @@ mod tests {
             })
         );
         assert!(open.missing.is_empty());
+    }
+
+    #[test]
+    fn a_skipped_level_does_not_hide_the_next_test() {
+        // Fundamentos skipped with its test, Iniciante read to the end: the
+        // Iniciante test comes before the unread Fundamentos lessons.
+        let (mut app, _) = app_at(1_000);
+        assert!(pass_test(&mut app, "fundamentos").passed);
+        mark_done(&app, &lessons_of(&app, "iniciante"));
+        let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
+        assert_eq!(list.next_test.as_deref(), Some("iniciante"));
+        assert_eq!(list.next, None);
+        // In Livre the unread lessons are still the next step.
+        app.set_unlock_mode(UnlockMode::Free).unwrap();
+        let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
+        assert_eq!(list.next_test, None);
+        assert!(list.next.is_some());
+    }
+
+    #[test]
+    fn a_test_passed_in_guiado_still_opens_levels_in_prova() {
+        let (mut app, _) = app_at(1_000);
+        app.set_unlock_mode(UnlockMode::Stepwise).unwrap();
+        mark_done(&app, &lessons_of(&app, "fundamentos"));
+        assert!(pass_test(&mut app, "iniciante").passed);
+        app.set_unlock_mode(UnlockMode::Tests).unwrap();
+        let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
+        assert!(all(group(&list, "iniciante"), LessonState::Available));
+        assert!(all(group(&list, "intermediario"), LessonState::Available));
+        assert_eq!(group(&list, "intermediario").opens_with, None);
+    }
+
+    #[test]
+    fn a_guiado_note_names_the_lesson_open_in_that_level() {
+        let (app, _) = app_at(1_000);
+        app.set_unlock_mode(UnlockMode::Stepwise).unwrap();
+        app.set_start_level("intermediario").unwrap();
+        let fund = lessons_of(&app, "fundamentos");
+        let open = app.open_lesson(&fund[2], Locale::PtBr).unwrap();
+        assert_eq!(
+            open.locked_by,
+            Some(LockReason::OneAtATime {
+                next: Some(fund[0].clone())
+            })
+        );
     }
 
     #[test]

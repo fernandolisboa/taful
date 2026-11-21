@@ -521,7 +521,7 @@ pub fn check_library(lib: &Library, content: &Files, i18n: &Files) -> Vec<Findin
         }
     }
 
-    // ---- 6. guided hands (D26) ---------------------------------------------------------------
+    // ---- 7. guided hands (D26) ---------------------------------------------------------------
     for (id, script) in &lib.guided {
         for e in crate::guided::check_script(script) {
             f.push(Finding::new(&format!("guided/{id}.toml"), e));

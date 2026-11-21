@@ -26,6 +26,8 @@ pub struct LessonView {
     pub view_by: Option<taful_app::lessons::ViewBy>,
     /// The study-mode popover is open (D24).
     pub gear_open: bool,
+    /// Frames the open popover waited for the gear to paint.
+    pub gear_waits: u8,
     /// A level test being taken, in place of a lesson (D24).
     pub test: Option<TestRun>,
 }
@@ -40,6 +42,8 @@ pub struct TestRun {
     pub feedback: Option<bool>,
     pub started: i64,
     pub result: Option<LevelTestResult>,
+    /// Why the test could not load or its result could not be saved.
+    pub error: Option<String>,
 }
 
 impl TestRun {
@@ -52,6 +56,7 @@ impl TestRun {
             feedback: None,
             started: 0,
             result: None,
+            error: None,
         }
     }
 }
@@ -591,7 +596,12 @@ impl Shell {
                 self.lesson.test = Some(run);
                 self.input.clear();
             }
-            Err(e) => eprintln!("taful: level test failed to load: {e}"),
+            Err(e) => {
+                eprintln!("taful: level test failed to load: {e}");
+                if let Some(run) = self.lesson.test.as_mut() {
+                    run.error = Some(e.to_string());
+                }
+            }
         }
     }
 
@@ -630,9 +640,23 @@ impl Shell {
                 Ok(r) => {
                     if let Some(run) = self.lesson.test.as_mut() {
                         run.result = Some(r);
+                        run.error = None;
                     }
                 }
-                Err(e) => eprintln!("taful: level test submit failed: {e}"),
+                Err(e) => {
+                    eprintln!("taful: level test submit failed: {e}");
+                    // Back on the last question with its feedback, so
+                    // "Concluir" can try again.
+                    if let Some(run) = self.lesson.test.as_mut() {
+                        run.index -= 1;
+                        run.feedback = run
+                            .answers
+                            .last()
+                            .zip(view.questions.last())
+                            .map(|(a, q)| q.is_correct(*a));
+                        run.error = Some(e.to_string());
+                    }
+                }
             }
         }
     }
@@ -686,6 +710,14 @@ impl Shell {
                 .tr_args("level-test-title", &[("level", level_name.into())]),
             &ui,
         ));
+        if let Some(e) = &run.error {
+            c = c.child(muted(
+                ui.i18n
+                    .tr_args("level-test-error", &[("error", e.clone().into())]),
+                &ui,
+                &p,
+            ));
+        }
         match (&run.view, &run.result) {
             (None, _) => {
                 let test = self.app.library().test_for(&level);
@@ -777,7 +809,7 @@ impl Shell {
             }
             (Some(view), None) => {
                 let Some(q) = view.questions.get(run.index) else {
-                    return div().into_any_element();
+                    return div().child(back).into_any_element();
                 };
                 let last = run.index + 1 == view.questions.len();
                 c = c

@@ -100,6 +100,7 @@ tree-next-test = You finished the open lessons. The { $level } test opens the ne
 level-test-title = Level test: { $level }
 level-test-intro = { $questions } questions from this level's lessons. Get { $need } right to pass. Passing opens the next level; it does not mark lessons as done, and wrong answers do not go to your reviews.
 level-test-start = Start the test
+level-test-error = Something went wrong: { $error }. Try again in a moment.
 level-test-passed = Passed with { $score }.
 level-test-opened = Open now: { $levels }.
 level-test-failed = { $score }. You need { $pass } to pass. Try again whenever you like: the questions change every time.

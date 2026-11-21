@@ -92,6 +92,7 @@ impl Shell {
             )
             .on_click(cx.listener(|this, _, _, cx| {
                 this.lesson.gear_open = !this.lesson.gear_open;
+                this.lesson.gear_waits = 0;
                 cx.notify();
             }))
     }
@@ -210,10 +211,18 @@ impl Shell {
             return None;
         }
         let Some(gear) = crate::tour::anchor_bounds(ANCHOR) else {
-            // The gear paints this frame; place the popover on the next.
-            window.request_animation_frame();
+            // The gear may paint this frame; place the popover on the next.
+            // If it still does not (the list failed to load), close rather
+            // than redraw every frame.
+            if self.lesson.gear_waits < 2 {
+                self.lesson.gear_waits += 1;
+                window.request_animation_frame();
+            } else {
+                self.lesson.gear_open = false;
+            }
             return None;
         };
+        self.lesson.gear_waits = 0;
         let (ui, p) = (self.ui.clone(), self.palette);
         let t = &ui.theme;
         let vp = window.viewport_size();
@@ -306,9 +315,10 @@ impl Shell {
 /// label (or the passed tag) and the line under it.
 pub struct TestLine {
     pub state: TestState,
-    /// "Fazer a prova", "Refazer" or "Prova aprovada".
+    /// The button label (`tree-test-take`) or the passed tag
+    /// (`tree-test-passed`).
     pub action: String,
-    /// "10 perguntas · 80% para passar".
+    /// Questions and pass mark (`tree-test-meta`).
     pub meta: String,
     /// The test is the next thing to do (nothing left to read in Prova).
     pub suggested: bool,
@@ -333,7 +343,7 @@ pub fn test_line(ui: &Ui, group: &LessonGroup, next_test: Option<&str>) -> Optio
     })
 }
 
-/// "Abre com a prova de Fundamentos" for a level Prova keeps closed.
+/// The test that opens a level Prova keeps closed (`tree-opens-with`).
 pub fn opens_with_text(ui: &Ui, group: &LessonGroup) -> Option<SharedString> {
     let level = group.opens_with.as_ref()?;
     let name = ui.i18n.tr(&format!("level-{level}"));
@@ -344,8 +354,8 @@ pub fn opens_with_text(ui: &Ui, group: &LessonGroup) -> Option<SharedString> {
     )
 }
 
-/// "A prova de Fundamentos abre o próximo nível" when Prova has nothing
-/// left to read.
+/// The test to take when Prova has nothing left to read
+/// (`tree-next-test`).
 pub fn next_test_text(ui: &Ui, level: &str) -> String {
     let name = ui.i18n.tr(&format!("level-{level}"));
     ui.i18n.tr_args("tree-next-test", &[("level", name.into())])
