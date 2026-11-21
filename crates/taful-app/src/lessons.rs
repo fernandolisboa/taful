@@ -1671,7 +1671,10 @@ mod tests {
         );
         let list = app.lesson_list(ViewBy::Journey, Locale::PtBr).unwrap();
         assert_eq!(list.done(), 0);
-        assert_eq!(list.next.as_ref(), lessons_of(&app, "fundamentos").first());
+        assert_eq!(
+            list.next.as_ref(),
+            lessons_of(&app, "primeiros-passos").first()
+        );
     }
 
     #[test]
@@ -1691,7 +1694,7 @@ mod tests {
         );
         // Only reading a lesson counts as having started too.
         let (app, _) = app_at(1_000);
-        let id = lessons_of(&app, "fundamentos")[0].clone();
+        let id = lessons_of(&app, "primeiros-passos")[0].clone();
         app.open_lesson(&id, Locale::PtBr).unwrap();
         assert!(!app.level_question_due().unwrap());
         assert_eq!(
