@@ -1,4 +1,4 @@
-//! Taful content (spec §12): lesson, quiz and catalog loader, the
+//! Taful content (spec §12): lesson, quiz, level test and catalog loader, the
 //! placeholder expression language, the Markdown renderer and the content
 //! checks. The checks run in CI through `tools/content-check` and the app
 //! loads the same content embedded in its binary.
@@ -8,6 +8,7 @@ pub mod expr;
 pub mod format;
 pub mod guided;
 pub mod lesson;
+pub mod level_test;
 pub mod library;
 pub mod quiz;
 
@@ -186,8 +187,12 @@ mod tests {
             ("lessons/pt-BR/b.md", b_pt),
             ("quizzes/a-quiz.toml", quiz("a-quiz", "a")),
             ("quizzes/b-quiz.toml", quiz("b-quiz", "b")),
+            ("tests/l1.toml", TEST_OK.into()),
         ]
     }
+
+    const TEST_OK: &str =
+        "level = \"l1\"\nversion = 1\ndraw = 2\npool = [\"a-quiz/q\", \"b-quiz/q\"]\n";
 
     fn with_snapshots(mut c: Vec<(&'static str, String)>) -> Vec<(&'static str, String)> {
         let files = Files(c.iter().map(|(k, v)| (k.to_string(), v.clone())).collect());
@@ -216,6 +221,14 @@ mod tests {
         }
         let f = run(&c, I18N);
         assert!(f.iter().any(|m| m.contains("drifted")), "{f:?}");
+    }
+
+    fn set(c: &mut [(&'static str, String)], path: &str, text: &str) {
+        let at = c
+            .iter()
+            .position(|(k, _)| *k == path)
+            .expect("file in fixture");
+        c[at].1 = text.to_owned();
     }
 
     #[test]
@@ -357,6 +370,67 @@ mod tests {
             (
                 Box::new(|c| c[5].1 = c[5].1.replace(", pt-BR = \"?\"", "")),
                 "missing `pt-BR`",
+            ),
+            (
+                Box::new(|c| {
+                    c.retain(|(k, _)| *k != "tests/l1.toml");
+                }),
+                "has lessons but no level test",
+            ),
+            (
+                Box::new(|c| c.push(("tests/l2.toml", TEST_OK.replace("l1", "l2")))),
+                "has no lessons to test",
+            ),
+            (
+                Box::new(|c| c.push(("tests/l9.toml", TEST_OK.replace("l1", "l9")))),
+                "unknown level `l9`",
+            ),
+            (
+                Box::new(|c| c.push(("tests/l2.toml", TEST_OK.to_owned()))),
+                "does not match the file name",
+            ),
+            (
+                Box::new(|c| set(c, "tests/l1.toml", &TEST_OK.replace("draw = 2", "draw = 3"))),
+                "draws 3 questions from a pool of 2",
+            ),
+            (
+                Box::new(|c| set(c, "tests/l1.toml", &TEST_OK.replace("b-quiz/q", "a-quiz/q"))),
+                "listed twice",
+            ),
+            (
+                Box::new(|c| set(c, "tests/l1.toml", &TEST_OK.replace("b-quiz/q", "b-quiz"))),
+                "is not `<quiz id>/<question id>`",
+            ),
+            (
+                Box::new(|c| set(c, "tests/l1.toml", &TEST_OK.replace("b-quiz/q", "z-quiz/q"))),
+                "no quiz `z-quiz`",
+            ),
+            (
+                Box::new(|c| {
+                    set(
+                        c,
+                        "tests/l1.toml",
+                        &TEST_OK.replace("b-quiz/q", "b-quiz/zz"),
+                    )
+                }),
+                "has no question `zz`",
+            ),
+            (
+                Box::new(|c| {
+                    c[0].1 = CATALOG_OK.replace(
+                        "{ id = \"b\", level = \"l1\"",
+                        "{ id = \"b\", level = \"l2\"",
+                    );
+                    c.push((
+                        "tests/l2.toml",
+                        TEST_OK
+                            .replace("l1", "l2")
+                            .replace(", \"b-quiz/q\"", "")
+                            .replace("a-quiz", "b-quiz")
+                            .replace("draw = 2", "draw = 1"),
+                    ));
+                }),
+                "lesson `b` is not in level `l1`",
             ),
         ];
         for (mutate, expect) in cases {

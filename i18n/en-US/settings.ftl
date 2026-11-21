@@ -125,3 +125,5 @@ update-mode-notify = Notify
 update-mode-silent = Silent
 update-mode-notify-body = A card in the corner tells you when a new version shows up and when it is ready.
 update-mode-silent-body = No card: whatever is automatic happens without a word. You see the state here and on the tray icon.
+settings-study-mode = How lessons open
+settings-study-mode-body = The same choice sits behind the gear on the lessons screen.

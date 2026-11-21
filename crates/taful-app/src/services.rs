@@ -41,6 +41,14 @@ pub mod keys {
     /// How the lessons screen groups the catalog (D23): a
     /// [`crate::lessons::ViewBy`] id; unset means the Jornada.
     pub const LESSONS_VIEW: &str = "lessons.view";
+    /// How lessons unlock (D24): a [`crate::lessons::UnlockMode`] id
+    /// (`prova`, `guiado`, `livre`); unset means Prova.
+    pub const LESSONS_UNLOCK_MODE: &str = "lessons.unlock_mode";
+    /// Where the Jornada starts (D25): a catalog level id. Every level up
+    /// to it is unlocked. Unset until the user picks one or makes progress.
+    pub const LESSONS_START_LEVEL: &str = "lessons.start_level";
+    /// Levels whose test was passed (D24): JSON array of level ids.
+    pub const LESSONS_TESTS_PASSED: &str = "lessons.tests_passed";
     /// Visual style (D19): a [`crate::style::Style`] id; unset means the
     /// default style (D21).
     pub const UI_STYLE: &str = "ui.style";
@@ -114,8 +122,11 @@ pub struct App {
 pub struct Home {
     pub due_now: u32,
     pub next_due: Option<Millis>,
-    /// First available lesson not done yet, in Jornada order: `(id, title)`.
+    /// The next lesson ([`crate::lessons::LessonList::next`]): `(id, title)`.
     pub next_lesson: Option<(String, String)>,
+    /// With no lesson to take in Prova, the level whose test opens the
+    /// next one (D24).
+    pub next_test: Option<String>,
     pub lessons_done: usize,
     pub lessons_total: usize,
     /// Calc answers right / answered, over the last 50.
@@ -353,14 +364,14 @@ impl App {
     /// [`HOME_CALC_WINDOW`] calc answers already read.
     pub(crate) fn home_from(
         &self,
-        tree: &[crate::lessons::LessonGroup],
+        tree: &crate::lessons::LessonList,
         recent: &[taful_store::CalcAttempt],
     ) -> Result<Home> {
         let now = self.store.now();
-        let cards: Vec<_> = tree.iter().flat_map(|t| &t.lessons).collect();
-        let next_lesson = cards
-            .iter()
-            .find(|c| c.state == taful_store::LessonState::Available)
+        let cards: Vec<_> = tree.lessons().collect();
+        let next_lesson = tree
+            .next_at()
+            .map(|(g, l)| &tree.groups[g].lessons[l])
             .map(|c| (c.id.clone(), c.title.clone()));
         let (items, reviews) = self.store.review_totals()?;
         Ok(Home {
@@ -369,6 +380,7 @@ impl App {
                 .count_due(now, crate::review_session::PRESENTABLE)?,
             next_due: self.store.next_due_after(now)?,
             next_lesson,
+            next_test: tree.next_test.clone(),
             lessons_done: cards
                 .iter()
                 .filter(|c| c.state == taful_store::LessonState::Done)

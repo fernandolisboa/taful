@@ -12,19 +12,19 @@ tour-reset-title = Guided tours
 tour-home-nav-title = Everything starts here
 tour-home-nav-body = Learn has the lessons, Practice has the table, mental math and your reviews, Analyze has the hands you played.
 tour-home-continue-title = Your next step
-tour-home-continue-body = The next lesson to read. Each quiz you pass unlocks the next lessons.
+tour-home-continue-body = The next lesson to read. Each quiz you pass marks a lesson done.
 tour-home-stats-title = Your daily routine
 tour-home-stats-body = Reviews bring back what you got wrong, at the right time. Mental math trains the numbers you need at the table.
 
 tour-tree-track-title = Levels and themes
 tour-tree-track-body = Lessons go from zero to pro, level by level. "View by" regroups them by theme. Locked lessons can still be read; only their quiz waits.
 tour-tree-next-title = Start here
-tour-tree-next-body = The highlighted lesson is the next one. Passing its quiz unlocks the following lessons.
+tour-tree-next-body = The highlighted lesson is the next one. The gear at the top sets how lessons open: by level with a short test, one at a time, or all open.
 
 tour-lesson-doc-title = Read with the glossary
 tour-lesson-doc-body = Underlined words are poker terms: hover over them to see what they mean.
 tour-lesson-quiz-title = The quiz
-tour-lesson-quiz-body = Pass it to unlock the next lessons. Wrong answers come back in your reviews.
+tour-lesson-quiz-body = Pass it to finish the lesson. Wrong answers come back in your reviews.
 
 tour-table-controls-title = What to practice
 tour-table-controls-body = Spot mode gives you one decision at a time. Full hand plays to the river. Pick the situation and the kind of opponent here.

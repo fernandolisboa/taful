@@ -17,6 +17,7 @@ mod salao;
 mod screen;
 mod screens;
 mod shell;
+mod study;
 mod style;
 mod theme;
 mod tour;

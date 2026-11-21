@@ -1006,6 +1006,7 @@ impl Render for Shell {
         crate::tour::begin_frame();
         let caption = crate::caption::bar(self, window);
         let frame = by_style!(self.ui.style, frame(self, window, cx));
+        let popover = self.study_popover(window, cx);
         let tour = self.tour_overlay(window, cx);
         let update_card = self.update_card(window, cx);
         div()
@@ -1024,6 +1025,7 @@ impl Render for Shell {
             .pt(px(crate::caption::HEIGHT))
             .child(frame)
             .child(div().absolute().top_0().left_0().w_full().child(caption))
+            .children(popover)
             .children(update_card)
             .children(tour)
     }

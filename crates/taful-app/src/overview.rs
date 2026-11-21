@@ -74,20 +74,17 @@ impl App {
             .store
             .recent_calc_attempts(crate::services::HOME_CALC_WINDOW)?;
         let home = self.home_from(&tree, &recent)?;
-        let next = tree.iter().find_map(|t| {
-            let at = t
-                .lessons
-                .iter()
-                .position(|l| l.state == LessonState::Available)?;
+        let next = tree.next_at().map(|(g, at)| {
+            let t = &tree.groups[g];
             let l = &t.lessons[at];
-            Some(NextLesson {
+            NextLesson {
                 id: l.id.clone(),
                 title: l.title.clone(),
                 level: t.id.clone(),
                 number: at + 1,
                 minutes: l.minutes,
                 level_states: t.lessons.iter().map(|l| l.state).collect(),
-            })
+            }
         });
         let calc_mean_ms = (!recent.is_empty()).then(|| {
             recent.iter().map(|a| a.duration_ms as f64).sum::<f64>() / recent.len() as f64
@@ -129,11 +126,11 @@ mod tests {
             o.home.next_lesson.as_ref().map(|(id, _)| id)
         );
         assert_eq!(next.level, "fundamentos");
-        assert_eq!(next.level_states[0], LessonState::Available);
+        // Prova (the default) opens the whole first level.
         assert!(
-            next.level_states[1..]
+            next.level_states
                 .iter()
-                .all(|s| *s == LessonState::Locked)
+                .all(|s| *s == LessonState::Available)
         );
     }
 

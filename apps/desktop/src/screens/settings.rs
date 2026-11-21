@@ -989,8 +989,19 @@ impl Shell {
                 column.child(appearance).children(theme_editor)
             }
             Tab::Study => {
+                // How lessons open (D24): the same rows as the lessons
+                // screen's gear.
+                let study_mode = card(&ui, &p)
+                    .child(title(ui.i18n.tr("settings-study-mode"), &ui))
+                    .child(muted(ui.i18n.tr("settings-study-mode-body"), &ui, &p))
+                    .child(self.study_mode_rows("settings_mode", cx).max_w(px(560.)))
+                    .child(muted(ui.i18n.tr("study-mode-note"), &ui, &p));
                 let optimizer = self.optimizer_card(cx);
-                column.child(retention_card).child(optimizer).child(grading)
+                column
+                    .child(study_mode)
+                    .child(retention_card)
+                    .child(optimizer)
+                    .child(grading)
             }
             Tab::Data => {
                 let library = self.library_card(cx);

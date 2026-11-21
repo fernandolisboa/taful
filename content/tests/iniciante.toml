@@ -1,0 +1,26 @@
+# Level test of Iniciante (D24): optional in every study mode. Passing it
+# opens the next level in the Prova mode; it never marks lessons done (D25).
+# Each attempt draws `draw` questions spread over the level's lessons (one
+# per lesson, in a random order, before a second from any). Format:
+# crates/taful-content/src/level_test.rs.
+
+level = "iniciante"
+version = 1
+pass = 0.8
+draw = 12
+pool = [
+    "facing-an-open-quiz/sb", "facing-an-open-quiz/most-calls", "facing-an-open-quiz/respect", "facing-an-open-quiz/oop-size",
+    "blind-defense-quiz/price", "blind-defense-quiz/vs-utg", "blind-defense-quiz/suited", "blind-defense-quiz/vs-sb",
+    "three-bet-101-quiz/a5s", "three-bet-101-quiz/polar", "three-bet-101-quiz/ip-size", "three-bet-101-quiz/linear-when",
+    "board-texture-quiz/low", "board-texture-quiz/mono", "board-texture-quiz/dry-size", "board-texture-quiz/paired",
+    "range-advantage-quiz/akx", "range-advantage-quiz/765", "range-advantage-quiz/nuts", "range-advantage-quiz/range-only",
+    "cbet-101-quiz/k72", "cbet-101-quiz/765", "cbet-101-quiz/oop", "cbet-101-quiz/medium",
+    "ev-101-quiz/call-ev", "ev-101-quiz/fold-ev", "ev-101-quiz/result", "ev-101-quiz/negative",
+    "mdf-101-quiz/half-pot", "mdf-101-quiz/pot", "mdf-101-quiz/overbet", "mdf-101-quiz/exploit",
+    "facing-cbet-quiz/mdf-half", "facing-cbet-quiz/raise-what", "facing-cbet-quiz/small", "facing-cbet-quiz/mdf-guide",
+    "implied-odds-101-quiz/what", "implied-odds-101-quiz/deep", "implied-odds-101-quiz/nut", "implied-odds-101-quiz/reverse",
+    "alpha-101-quiz/pot-bluff", "alpha-101-quiz/third", "alpha-101-quiz/sum", "alpha-101-quiz/semi-bluff",
+    "spr-101-quiz/srp", "spr-101-quiz/three-bet", "spr-101-quiz/low-spr", "spr-101-quiz/high-spr",
+    "fold-equity-101-quiz/alpha-half", "fold-equity-101-quiz/semi", "fold-equity-101-quiz/fewer", "fold-equity-101-quiz/low",
+    "bet-sizing-quiz/third", "bet-sizing-quiz/alpha-pot", "bet-sizing-quiz/big", "bet-sizing-quiz/medium",
+]

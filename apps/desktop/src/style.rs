@@ -78,12 +78,14 @@ pub fn window_size(style: Style) -> Option<(f32, f32)> {
     by_style!(style, WINDOW)
 }
 
-/// Every style's embedded files, and the title bar's, as `(path, bytes)`.
+/// Every style's embedded files, and the shared ones (title bar, study
+/// mode), as `(path, bytes)`.
 pub fn assets() -> impl Iterator<Item = &'static (&'static str, &'static [u8])> {
     Style::ALL
         .into_iter()
         .flat_map(|s| by_style!(s, ASSETS).iter())
         .chain(crate::caption::ASSETS)
+        .chain(crate::study::ASSETS)
 }
 
 /// Every style's fonts, added to the text system at startup.

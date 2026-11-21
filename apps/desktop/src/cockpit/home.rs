@@ -682,7 +682,10 @@ fn tracks(ui: &Ui, pal: &Pal, lessons: &Lessons, w: f32, cx: &mut Context<Shell>
             .flex()
             .items_center()
             .text_color(pal.muted)
-            .child(i18n.tr("home-lesson-none")),
+            .child(crate::study::idle_text(
+                ui,
+                lessons.summary.list.next_test.as_deref(),
+            )),
     };
     let levels = &lessons.summary.levels;
     let last = levels.len().saturating_sub(1);

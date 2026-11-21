@@ -64,7 +64,7 @@ salao-track-current = Em andamento
 salao-track-locked = { $count ->
     [1] 1 lição
    *[other] { $count } lições
-} · libera conforme você conclui as lições que vêm antes.
+} · fechadas por enquanto.
 salao-lesson-next = próxima
 salao-lesson-continue = Continuar
 salao-lesson-quiz = quiz { $score }

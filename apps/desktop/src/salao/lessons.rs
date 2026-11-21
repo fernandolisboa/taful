@@ -3,7 +3,7 @@
 
 use gpui::{AnyElement, Context, Div, FontWeight, SharedString, Stateful, div, prelude::*, px};
 use taful_app::fmt;
-use taful_app::lessons::{GroupKind, LessonCard, LessonGroup};
+use taful_app::lessons::{GroupKind, LessonCard, LessonGroup, TestState};
 use taful_app::model::LessonState;
 
 use super::colors::colors;
@@ -11,6 +11,7 @@ use super::frame::page_title;
 use super::kit::{self, Face};
 use crate::screen::Screen;
 use crate::shell::Shell;
+use crate::study::{GearLook, on_test_click};
 use crate::theme::{Palette, alpha};
 
 /// A track's panel with its lessons folded: border, padding, the title row.
@@ -49,6 +50,7 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
         Err(e) => return crate::widgets::muted(e.to_string(), &ui, &p).into_any_element(),
     };
     let next = list.next.clone();
+    let next_test = list.next_test.clone();
     let (total, done) = (list.total(), list.done());
     let tracks: Vec<LessonGroup> = list.groups;
 
@@ -65,7 +67,18 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             p.text_muted,
             i18n.tr("tree-view-by"),
         ))
-        .child(shell.view_switch(cx));
+        .child(shell.view_switch(cx))
+        .child(shell.study_gear(
+            GearLook {
+                size: 32.,
+                radius: 8.,
+                icon: p.text_muted,
+                icon_on: c.gold2,
+                ring: alpha(p.text, 0.14),
+                fill_on: alpha(p.text, 0.05),
+            },
+            cx,
+        ));
     let overall = div()
         .flex()
         .flex_col()
@@ -110,6 +123,32 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
         .child(overall.flex_none());
     let two_columns = shell.salao.column >= TWO_COLUMNS_W;
 
+    // Prova with nothing left to read: the test that opens what follows.
+    let banner = match (&next, &next_test) {
+        (None, Some(level)) => Some(
+            kit::panel(&p)
+                .mt(px(22.))
+                .ml(px(76.))
+                .flex()
+                .items_center()
+                .gap(px(16.))
+                .px(px(24.))
+                .py(px(16.))
+                .border_color(alpha(p.accent, 0.26))
+                .child(
+                    kit::sans_text(14.5, FontWeight::NORMAL)
+                        .flex_1()
+                        .min_w_0()
+                        .child(crate::study::next_test_text(&shell.ui, level)),
+                )
+                .child(
+                    kit::btn("salao_next_test", i18n.tr("tree-test-take"), true, true, &p)
+                        .on_click(on_test_click(level.clone(), cx)),
+                ),
+        ),
+        _ => None,
+    };
+
     // ---- the tracks ------------------------------------------------------------
     let mut list = div().relative().mt(px(22.)).pl(px(76.)).flex().flex_col();
     let mut panels = Vec::new();
@@ -122,6 +161,8 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     for (k, track) in tracks.into_iter().enumerate() {
         let count = track.lessons.len();
         let finished = track.done();
+        let test = crate::study::test_line(&shell.ui, &track, next_test.as_deref());
+        let opens_with = crate::study::opens_with_text(&shell.ui, &track);
         let stage = if track.is_soon() {
             Stage::Soon
         } else if finished == count {
@@ -186,9 +227,16 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                     "salao-track-locked"
                 };
                 first_locked = false;
+                let text = match &opens_with {
+                    Some(o) => format!(
+                        "{} · {o}",
+                        i18n.tr_args("tree-lessons", &[("count", count.into())])
+                    ),
+                    None => i18n.tr_args(key, &[("count", count.into())]),
+                };
                 kit::sans_text(13., FontWeight::NORMAL)
                     .text_color(c.dim)
-                    .child(i18n.tr_args(key, &[("count", count.into())]))
+                    .child(text)
             }
         };
         let tally = div()
@@ -209,6 +257,25 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                     .text_color(p.text_muted)
                     .child(i18n.tr_args("salao-of", &[("total", count.into())])),
             );
+        // The level test, before the count: a button, or a tag once passed.
+        let test_el = test.filter(|t| t.state != TestState::Locked).map(|t| {
+            if t.state == TestState::Passed {
+                tag(format!("✓ {}", t.action), p.grade_best, 0.1, 0.3)
+                    .mr(px(16.))
+                    .into_any_element()
+            } else {
+                kit::btn(
+                    ("salao_test", k),
+                    i18n.tr("tree-test-take"),
+                    t.suggested,
+                    true,
+                    &p,
+                )
+                .mr(px(16.))
+                .on_click(on_test_click(track.id.clone(), cx))
+                .into_any_element()
+            }
+        });
         let group = track.clone();
         let head = div()
             .id(("salao_track", k))
@@ -218,6 +285,7 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             .child(title)
             .child(note.ml(px(16.)))
             .child(div().flex_1())
+            .children(test_el)
             .when(stage != Stage::Soon, |d| d.child(tally))
             // The group in progress stays open; an empty one has nothing to show.
             .when(!matches!(stage, Stage::Current | Stage::Soon), |d| {
@@ -319,6 +387,7 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
         .flex()
         .flex_col()
         .child(header)
+        .children(banner)
         .child(list.children(panels))
         .into_any_element()
 }

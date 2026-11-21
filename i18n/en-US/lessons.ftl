@@ -64,10 +64,51 @@ quiz-unlocked = Unlocked: { $lessons }
 
 tree-track-progress = { $done } of { $total }
 tree-start = Start
+tree-lessons = { $count ->
+    [one] 1 lesson
+   *[other] { $count } lessons
+}
 tree-track-locked = { $count ->
     [one] 1 lesson
    *[other] { $count } lessons
-} · unlocks as you finish the lessons it builds on. Click to preview.
+} · locked for now. Click to preview.
+
+## Study mode (D24): the gear on the lessons screen and Settings › Study
+
+study-mode-title = Study mode
+study-mode-gear = Study mode
+study-mode-prova = Test
+study-mode-prova-line = Your level is open; a short test opens the next.
+study-mode-prova-about = Every lesson of the level you are in is open, in any order. When you feel ready, take the level test to open the next level. You can take it early to skip a level you already know.
+study-mode-guiado = Guided
+study-mode-guiado-line = One lesson at a time, in Journey order.
+study-mode-guiado-about = The next lesson opens when you pass the quiz of the one before. Good if you are starting out and would rather not choose. The level test still lets you skip a level.
+study-mode-livre = Free
+study-mode-livre-line = Everything open; the recommended lesson is marked.
+study-mode-livre-about = Nothing is locked. The recommended next lesson stays highlighted, and a lesson that builds on others you have not done opens with a short note. Level tests show you where you stand.
+study-mode-note = Switching modes keeps everything: finished lessons and passed tests stay.
+
+## Level tests (D24)
+
+tree-test = Level test
+tree-test-take = Take the test
+tree-test-retake = Take it again
+tree-test-passed = Test passed
+tree-test-meta = { $questions } questions · { $pass } to pass
+tree-opens-with = Opens with the { $level } test
+tree-next-test = You finished the open lessons. The { $level } test opens the next level.
+level-test-title = Level test: { $level }
+level-test-intro = { $questions } questions from this level's lessons. Get { $need } right to pass. Passing opens the next level; it does not mark lessons as done, and wrong answers do not go to your reviews.
+level-test-start = Start the test
+level-test-error = Something went wrong: { $error }. Try again in a moment.
+level-test-passed = Passed with { $score }.
+level-test-opened = Open now: { $levels }.
+level-test-failed = { $score }. You need { $pass } to pass. Try again whenever you like: the questions change every time.
+lesson-locked-test = This lesson is in a level that is still closed. It opens when you pass the { $level } test. You can read it, but the quiz waits.
+lesson-locked-step = In Guided mode lessons open one at a time. You can read this one, but the quiz waits.
+lesson-locked-step-next = In Guided mode lessons open one at a time; the next one is { $lesson }. You can read this one, but the quiz waits.
+lesson-missing = This lesson builds on { $lessons }. You can read it anyway.
+
 
 ## Guided hand (D26)
 lesson-guided-title = Guided hand: { $name }

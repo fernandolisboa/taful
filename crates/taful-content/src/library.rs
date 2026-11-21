@@ -1,4 +1,5 @@
-//! Loading the content tree: the lesson catalog, lessons per locale, quizzes.
+//! Loading the content tree: the lesson catalog, lessons per locale,
+//! quizzes and level tests.
 //!
 //! The loader works over [`Files`], an in-memory map of relative paths to
 //! text, so the app can load content embedded in the binary and the checks
@@ -15,6 +16,7 @@ use taful_core::profile::Profile;
 use crate::Finding;
 use crate::guided::Script;
 use crate::lesson::Lesson;
+use crate::level_test::{self, LevelTest};
 use crate::quiz::Quiz;
 
 /// Locales content is written in; the first is the source.
@@ -166,6 +168,8 @@ pub struct Library {
     pub quizzes: BTreeMap<String, Quiz>,
     /// Bot profile id → profile (`bots/<id>.toml`, spec §9).
     pub profiles: BTreeMap<String, Profile>,
+    /// Level id → its level test (`tests/<level>.toml`, D24).
+    pub tests: BTreeMap<String, LevelTest>,
     /// Guided hand id → script (`guided/<id>.toml`, D26).
     pub guided: BTreeMap<String, Script>,
 }
@@ -218,6 +222,21 @@ impl Library {
                 Err(e) => findings.push(Finding::new(&path, e)),
             }
         }
+        for (stem, text) in files.in_dir(level_test::DIR, ".toml") {
+            let path = level_test::path(stem);
+            match LevelTest::parse(text) {
+                Ok(t) => {
+                    if t.level != stem {
+                        findings.push(Finding::new(
+                            &path,
+                            format!("level `{}` does not match the file name", t.level),
+                        ));
+                    }
+                    lib.tests.insert(stem.to_owned(), t);
+                }
+                Err(e) => findings.push(Finding::new(&path, e)),
+            }
+        }
         for (stem, text) in files.in_dir("guided", ".toml") {
             let path = format!("guided/{stem}.toml");
             match Script::parse(text) {
@@ -245,6 +264,11 @@ impl Library {
         by_locale
             .get(locale)
             .or_else(|| by_locale.get(SOURCE_LOCALE))
+    }
+
+    /// A level's test (D24), if it has one.
+    pub fn test_for(&self, level: &str) -> Option<&LevelTest> {
+        self.tests.get(level)
     }
 
     /// The guided hand a lesson lists, if any.

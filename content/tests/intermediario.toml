@@ -1,0 +1,28 @@
+# Level test of Intermediário (D24): optional in every study mode. Passing it
+# opens the next level in the Prova mode; it never marks lessons done (D25).
+# Each attempt draws `draw` questions spread over the level's lessons (one
+# per lesson, in a random order, before a second from any). Format:
+# crates/taful-content/src/level_test.rs.
+
+level = "intermediario"
+version = 1
+pass = 0.8
+draw = 12
+pool = [
+    "facing-a-3bet-quiz/price", "facing-a-3bet-quiz/overfold", "facing-a-3bet-quiz/ip", "facing-a-3bet-quiz/dominated",
+    "squeeze-101-quiz/what", "squeeze-101-quiz/size", "squeeze-101-quiz/caller",
+    "small-blind-play-quiz/why-not-call", "small-blind-play-quiz/folded-to", "small-blind-play-quiz/long-run",
+    "four-bet-pots-quiz/spr", "four-bet-pots-quiz/tp", "four-bet-pots-quiz/bluff", "four-bet-pots-quiz/vs4",
+    "check-raise-101-quiz/where", "check-raise-101-quiz/medium", "check-raise-101-quiz/semi",
+    "out-of-position-quiz/checks", "out-of-position-quiz/donk", "out-of-position-quiz/realize",
+    "multiway-pots-quiz/cbet", "multiway-pots-quiz/gains", "multiway-pots-quiz/fe",
+    "turn-play-quiz/stronger", "turn-play-quiz/good-card", "turn-play-quiz/delayed", "turn-play-quiz/give-up",
+    "river-value-quiz/test", "river-value-quiz/thin", "river-value-quiz/check",
+    "pot-control-quiz/goal", "pot-control-quiz/spr", "pot-control-quiz/balance",
+    "hand-reading-quiz/sets", "hand-reading-quiz/aq", "hand-reading-quiz/checkback",
+    "river-bluffing-quiz/ratio", "river-bluffing-quiz/missed", "river-bluffing-quiz/blocker", "river-bluffing-quiz/calling-station",
+    "bluff-catching-quiz/price", "bluff-catching-quiz/what", "bluff-catching-quiz/pick",
+    "gto-vs-exploit-quiz/floor", "gto-vs-exploit-quiz/exploit", "gto-vs-exploit-quiz/grade",
+    "study-loop-quiz/progress", "study-loop-quiz/leaks", "study-loop-quiz/reviews",
+    "bankroll-and-tilt-quiz/variance", "bankroll-and-tilt-quiz/tilt", "bankroll-and-tilt-quiz/judge",
+]

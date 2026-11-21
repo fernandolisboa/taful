@@ -8,7 +8,11 @@
 //!    missing prerequisite, a prerequisite in a higher level or later in the
 //!    Jornada, or a lesson with no unlock;
 //! 5. a glossary term is undefined in `i18n/*/glossary.ftl`;
-//! 6. a guided hand does not play through (`guided::check_script`), or a
+//! 6. a level with lessons has no level test, or a level test names an
+//!    unknown level, a question that does not exist or one from another
+//!    level's lessons, a question twice, or asks more questions than its
+//!    pool holds;
+//! 7. a guided hand does not play through (`guided::check_script`), or a
 //!    lesson names one that does not exist.
 //!
 //! Plus the structural checks those rules need: every lesson is in the
@@ -427,6 +431,67 @@ pub fn check_library(lib: &Library, content: &Files, i18n: &Files) -> Vec<Findin
         }
     }
 
+    // ---- 6. level tests (D24) -----------------------------------------------------------
+    for level in &cat.levels {
+        let has_lessons = cat.lessons.iter().any(|e| e.level == *level);
+        match (has_lessons, lib.tests.contains_key(level)) {
+            (true, false) => f.push(Finding::new(
+                &crate::level_test::path(level),
+                format!("level `{level}` has lessons but no level test"),
+            )),
+            (false, true) => f.push(Finding::new(
+                &crate::level_test::path(level),
+                format!("level `{level}` has no lessons to test"),
+            )),
+            _ => {}
+        }
+    }
+    for (stem, t) in &lib.tests {
+        let path = crate::level_test::path(stem);
+        if !cat.levels.contains(&t.level) {
+            f.push(Finding::new(&path, format!("unknown level `{}`", t.level)));
+        }
+        if t.draw > t.pool.len() {
+            f.push(Finding::new(
+                &path,
+                format!("draws {} questions from a pool of {}", t.draw, t.pool.len()),
+            ));
+        }
+        let mut seen = BTreeSet::new();
+        for (raw, r) in t.refs() {
+            if !seen.insert(raw) {
+                f.push(Finding::new(&path, format!("`{raw}` listed twice")));
+            }
+            let Some((quiz_id, question)) = r else {
+                f.push(Finding::new(
+                    &path,
+                    format!("`{raw}` is not `<quiz id>/<question id>`"),
+                ));
+                continue;
+            };
+            let Some(quiz) = lib.quizzes.get(quiz_id) else {
+                f.push(Finding::new(&path, format!("`{raw}`: no quiz `{quiz_id}`")));
+                continue;
+            };
+            if quiz.question(question).is_none() {
+                f.push(Finding::new(
+                    &path,
+                    format!("`{raw}`: quiz `{quiz_id}` has no question `{question}`"),
+                ));
+            }
+            let level = cat.entry(&quiz.lesson).map(|e| e.level.as_str());
+            if level != Some(t.level.as_str()) {
+                f.push(Finding::new(
+                    &path,
+                    format!(
+                        "`{raw}`: lesson `{}` is not in level `{}`",
+                        quiz.lesson, t.level
+                    ),
+                ));
+            }
+        }
+    }
+
     // ---- 5. glossary -------------------------------------------------------------------------
     for (id, by_locale) in &lib.lessons {
         for (loc, l) in by_locale {
@@ -456,7 +521,7 @@ pub fn check_library(lib: &Library, content: &Files, i18n: &Files) -> Vec<Findin
         }
     }
 
-    // ---- 6. guided hands (D26) ---------------------------------------------------------------
+    // ---- 7. guided hands (D26) ---------------------------------------------------------------
     for (id, script) in &lib.guided {
         for e in crate::guided::check_script(script) {
             f.push(Finding::new(&format!("guided/{id}.toml"), e));

@@ -52,6 +52,9 @@ pub struct Today {
     pub levels: Vec<LessonGroup>,
     /// The first available lesson as `(level, lesson)` indexes into `levels`.
     pub next_lesson: Option<(usize, usize)>,
+    /// With no lesson to take in Prova, the level whose test opens the
+    /// next one (D24).
+    pub next_test: Option<String>,
     pub due_now: u32,
     /// Reviews that fall due during tomorrow.
     pub due_tomorrow: u32,
@@ -115,14 +118,10 @@ impl App {
             now,
             now,
         ));
-        let levels = self.journey(locale)?;
-        let next_lesson = levels.iter().enumerate().find_map(|(t, track)| {
-            let l = track
-                .lessons
-                .iter()
-                .position(|l| l.state == LessonState::Available)?;
-            Some((t, l))
-        });
+        let journey = self.journey(locale)?;
+        let next_lesson = journey.next_at();
+        let next_test = journey.next_test;
+        let levels = journey.groups;
         let kinds = crate::review_session::PRESENTABLE;
         let due_at = |t: Millis| self.store.count_due(t, kinds);
         let due_tomorrow = due_at(day_after)?.saturating_sub(due_at(tomorrow)?);
@@ -197,6 +196,7 @@ impl App {
             date,
             levels,
             next_lesson,
+            next_test,
             due_now: self.store.count_due(now, kinds)?,
             due_tomorrow,
             next_due: self.store.next_due_after(now)?,

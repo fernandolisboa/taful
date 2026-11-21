@@ -12,19 +12,19 @@ tour-reset-title = Tours guiados
 tour-home-nav-title = Tudo começa aqui
 tour-home-nav-body = Em Aprender ficam as lições; em Praticar, a mesa, o cálculo mental e as suas revisões; em Analisar, as mãos que você jogou.
 tour-home-continue-title = Seu próximo passo
-tour-home-continue-body = A próxima lição para ler. Cada quiz em que você passa libera as lições seguintes.
+tour-home-continue-body = A próxima lição para ler. Cada quiz em que você passa conclui uma lição.
 tour-home-stats-title = Sua rotina do dia
 tour-home-stats-body = As revisões trazem de volta o que você errou, na hora certa. O cálculo mental treina as contas que você usa na mesa.
 
 tour-tree-track-title = Níveis e temas
 tour-tree-track-body = As lições vão do zero ao pró, nível a nível. Em "Ver por" dá para agrupá-las por tema. Dá para ler uma lição bloqueada; só o quiz dela espera.
 tour-tree-next-title = Comece por aqui
-tour-tree-next-body = A lição destacada é a próxima. Passar no quiz dela libera as seguintes.
+tour-tree-next-body = A lição destacada é a próxima. Na engrenagem lá em cima você escolhe como as lições abrem: por nível com uma prova curta, uma de cada vez, ou tudo aberto.
 
 tour-lesson-doc-title = Leia com o glossário
 tour-lesson-doc-body = As palavras sublinhadas são termos de poker: passe o mouse por cima para ver o que significam.
 tour-lesson-quiz-title = O quiz
-tour-lesson-quiz-body = Passe nele para liberar as próximas lições. Respostas erradas voltam nas suas revisões.
+tour-lesson-quiz-body = Passe nele para concluir a lição. Respostas erradas voltam nas suas revisões.
 
 tour-table-controls-title = O que treinar
 tour-table-controls-body = O modo spot dá uma decisão por vez. A mão completa vai até o river. Escolha aqui a situação e o tipo de adversário.
