@@ -1,6 +1,7 @@
 //! Skill tree, lessons and quizzes (spec §12, §15.1).
 //!
-//! Lock state: a lesson is **done** once its quiz was passed at any version,
+//! Lock state: a lesson is **done** once its quiz was passed at any version
+//! (and, when it lists a guided hand, that hand was played to the end, D26),
 //! **available** when every prerequisite is done, otherwise **locked**.
 //! Progress rows are keyed by `(lesson id, version)` (§12.4), so a content
 //! update that bumps a version shows the lesson as done (from the older
@@ -44,6 +45,17 @@ pub struct OpenLesson {
     pub doc: Document,
     /// Glossary term ids; strings are Fluent `glossary-<id>` / `-def`.
     pub glossary: Vec<String>,
+    /// The guided hand played after the quiz (D26), if the lesson has one.
+    pub guided: Option<GuidedPart>,
+}
+
+/// A lesson's guided hand (D26).
+#[derive(Debug, Clone, PartialEq)]
+pub struct GuidedPart {
+    pub id: String,
+    pub title: String,
+    /// Played to the end at least once.
+    pub finished: bool,
 }
 
 /// A quiz rendered for one locale.
@@ -63,6 +75,8 @@ pub struct QuizResult {
     pub correct: Vec<bool>,
     /// Lessons this pass made available.
     pub unlocked: Vec<String>,
+    /// Passed, but the lesson's guided hand is still to play (D26): its id.
+    pub guided_pending: Option<String>,
 }
 
 /// Review-item key of a quiz question.
@@ -151,6 +165,14 @@ impl App {
             self.store
                 .record_lesson_progress(id, l.meta.version, LessonState::Available, None)?;
         }
+        let guided = match self.library.guided_for(id) {
+            Some(g) => Some(GuidedPart {
+                id: g.id.clone(),
+                title: crate::guided::text(&g.title, locale).to_owned(),
+                finished: self.guided_finished(&g.id)?,
+            }),
+            None => None,
+        };
         Ok(OpenLesson {
             id: id.to_owned(),
             version: l.meta.version,
@@ -158,6 +180,7 @@ impl App {
             state,
             doc,
             glossary: l.meta.glossary.clone(),
+            guided,
         })
     }
 
@@ -241,11 +264,16 @@ impl App {
             .library
             .lesson(lesson_id, taful_content::SOURCE_LOCALE)
             .map_or(1, |l| l.meta.version);
+        // A guided hand still to play keeps the lesson open (D26).
+        let guided_pending = match self.library.guided_for(lesson_id) {
+            Some(g) if passed && !self.guided_finished(&g.id)? => Some(g.id.clone()),
+            _ => None,
+        };
         let before = self.skill_tree_states()?;
         self.store.record_lesson_progress(
             lesson_id,
             version,
-            if passed {
+            if passed && guided_pending.is_none() {
                 LessonState::Done
             } else {
                 LessonState::Available
@@ -268,7 +296,22 @@ impl App {
             passed,
             correct,
             unlocked,
+            guided_pending,
         })
+    }
+
+    /// Whether the lesson's quiz was passed at any version.
+    pub(crate) fn quiz_passed(&self, lesson_id: &str) -> Result<bool> {
+        let Some(quiz) = self.library.quiz_for(lesson_id) else {
+            return Ok(false);
+        };
+        Ok(self
+            .store
+            .lesson_progress()?
+            .iter()
+            .filter(|p| p.lesson_id == lesson_id)
+            .filter_map(|p| p.best_score)
+            .any(|s| s + 1e-9 >= quiz.pass))
     }
 
     fn skill_tree_states(&self) -> Result<Vec<(String, LessonState)>> {
@@ -348,6 +391,61 @@ mod tests {
             app.submit_quiz(&id, &[], 1).is_err(),
             "answer count must match"
         );
+    }
+
+    /// A lesson with a guided hand is done once both its quiz is passed
+    /// and the hand finished, in either order (D26).
+    #[test]
+    fn a_guided_hand_completes_the_lesson_with_the_quiz() {
+        let lesson = "stacks-and-blinds";
+        let ready = |app: &mut App| {
+            for p in app
+                .library
+                .lesson(lesson, "en-US")
+                .unwrap()
+                .meta
+                .prerequisites
+                .clone()
+            {
+                app.store
+                    .record_lesson_progress(&p, 1, LessonState::Done, Some(1.0))
+                    .unwrap();
+            }
+        };
+        // Quiz first, then the hand.
+        let (mut app, _) = app_at(1_000);
+        ready(&mut app);
+        let open = app.open_lesson(lesson, Locale::PtBr).unwrap();
+        let g = open.guided.expect("the lesson lists a guided hand");
+        assert_eq!((g.id.as_str(), g.finished), ("first-hand", false));
+        assert_eq!(g.title, "Sua primeira mão");
+        let view = app.quiz(lesson, Locale::EnUs).unwrap();
+        let res = app.submit_quiz(lesson, &right_answers(&view), 1).unwrap();
+        assert!(res.passed);
+        assert_eq!(res.guided_pending.as_deref(), Some("first-hand"));
+        assert!(res.unlocked.is_empty(), "nothing opens before the hand");
+        assert_eq!(app.lesson_state(lesson).unwrap(), LessonState::Available);
+        assert_eq!(app.finish_guided("first-hand").unwrap(), vec![lesson]);
+        assert_eq!(app.lesson_state(lesson).unwrap(), LessonState::Done);
+        assert!(
+            app.open_lesson(lesson, Locale::EnUs)
+                .unwrap()
+                .guided
+                .unwrap()
+                .finished
+        );
+        assert!(app.finish_guided("first-hand").unwrap().is_empty());
+
+        // The hand first, then the quiz.
+        let (mut app, _) = app_at(1_000);
+        ready(&mut app);
+        assert!(app.finish_guided("first-hand").unwrap().is_empty());
+        assert_eq!(app.lesson_state(lesson).unwrap(), LessonState::Available);
+        let view = app.quiz(lesson, Locale::EnUs).unwrap();
+        let res = app.submit_quiz(lesson, &right_answers(&view), 1).unwrap();
+        assert!(res.passed && res.guided_pending.is_none());
+        assert_eq!(app.lesson_state(lesson).unwrap(), LessonState::Done);
+        assert!(app.finish_guided("nope").is_err());
     }
 
     #[test]

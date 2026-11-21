@@ -205,6 +205,28 @@ impl Shell {
             .string_setting(taful_app::keys::TOUR_SEEN)
             .unwrap_or_default();
         shell.maybe_start_tour();
+        // Dev override (screenshots): TAFUL_LESSON=<id> opens that lesson.
+        if let Ok(id) = std::env::var("TAFUL_LESSON") {
+            shell.open_lesson(&id);
+        }
+        // Dev override (screenshots): TAFUL_GUIDED=<id> opens a guided hand on
+        // the table, TAFUL_GUIDED_LESSON=<id> as if from that lesson.
+        if let Ok(id) = std::env::var("TAFUL_GUIDED") {
+            match shell.app.guided(&id) {
+                Ok(run) => {
+                    let lesson = std::env::var("TAFUL_GUIDED_LESSON").ok();
+                    // TAFUL_GUIDED_AT=<n>[w]: n pauses on, then a wrong click.
+                    let at = std::env::var("TAFUL_GUIDED_AT").unwrap_or_default();
+                    let wrong = at.ends_with('w');
+                    let pauses = at.trim_end_matches('w').parse().unwrap_or(0);
+                    shell.table.update(cx, |t, cx| {
+                        t.start_guided(run, lesson, cx);
+                        t.guided_dev_advance(pauses, wrong, cx);
+                    });
+                }
+                Err(e) => eprintln!("taful: guided hand `{id}`: {e}"),
+            }
+        }
         // Dev override (screenshots): TAFUL_REVIEW_START=1 deals the first review.
         if shell.screen == Screen::Review && std::env::var_os("TAFUL_REVIEW_START").is_some() {
             shell.review_load_next(cx);
@@ -255,6 +277,17 @@ impl Shell {
                 {
                     eprintln!("taful: storing the replay setting failed: {e}");
                 }
+            }
+            TableEvent::GuidedDone(id) => {
+                if let Err(e) = self.app.finish_guided(id) {
+                    eprintln!("taful: noting a guided hand failed: {e}");
+                }
+                // The lesson reader shows the new state when it opens again.
+                self.lesson.open = None;
+            }
+            TableEvent::BackToLesson(id) => {
+                self.open_lesson(id);
+                self.select(Screen::Lesson, window, cx);
             }
             TableEvent::ReviewHand => {
                 let id = self.hand_review.last_stored.clone();

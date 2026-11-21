@@ -161,6 +161,33 @@ impl Store {
     }
 }
 
+// ---- guided hands (D26) ---------------------------------------------------------------
+
+impl Store {
+    /// Notes that the guided hand `hand_id` at `version` was played to the
+    /// end; playing it again changes nothing.
+    pub fn record_guided_done(&self, hand_id: &str, version: u32) -> Result<()> {
+        let now = self.now();
+        self.conn().execute(
+            "INSERT INTO guided_hands (id, created_at, updated_at, hand_id, version)
+             VALUES (?1, ?2, ?2, ?3, ?4)
+             ON CONFLICT (hand_id, version) DO UPDATE SET deleted_at = NULL",
+            params![new_id(), now, hand_id, version],
+        )?;
+        Ok(())
+    }
+
+    /// The guided hands played to the end at any version, sorted.
+    pub fn guided_done(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn().prepare(
+            "SELECT DISTINCT hand_id FROM guided_hands WHERE deleted_at IS NULL
+             ORDER BY hand_id",
+        )?;
+        let rows = stmt.query_map([], |r| r.get(0))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+}
+
 // ---- attempts -------------------------------------------------------------------------
 
 /// A finished quiz.
@@ -1359,6 +1386,20 @@ mod tests {
         let c = s.solve_candidates(10).unwrap();
         assert_eq!(c[0], ("UTG:r250,HJ:c".into(), "".into(), 2));
         assert_eq!(c.len(), 2);
+    }
+
+    #[test]
+    fn guided_hands_are_noted_once() {
+        let (s, _) = store();
+        assert!(s.guided_done().unwrap().is_empty());
+        s.record_guided_done("first-hand", 1).unwrap();
+        s.record_guided_done("first-hand", 1).unwrap();
+        s.record_guided_done("first-hand", 2).unwrap();
+        s.record_guided_done("another", 1).unwrap();
+        assert_eq!(
+            s.guided_done().unwrap(),
+            vec!["another".to_string(), "first-hand".to_string()]
+        );
     }
 
     #[test]

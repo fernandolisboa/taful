@@ -74,6 +74,55 @@ impl Shell {
         }
     }
 
+    /// Opens the lesson's guided hand on the table (D26).
+    fn play_guided(&mut self, id: &str, window: &mut gpui::Window, cx: &mut Context<Self>) {
+        match self.app.guided(id) {
+            Ok(run) => {
+                let lesson = self.lesson.current.clone();
+                self.table
+                    .update(cx, |t, cx| t.start_guided(run, lesson, cx));
+                self.select(Screen::Table, window, cx);
+            }
+            Err(e) => eprintln!("taful: guided hand `{id}`: {e}"),
+        }
+    }
+
+    /// The lesson's guided hand: what it is and the button that opens it.
+    fn guided_block(&self, open: &OpenLesson, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let g = open.guided.as_ref()?;
+        if open.state == LessonState::Locked {
+            return None;
+        }
+        let (ui, p) = (&self.ui, &self.palette);
+        let id = g.id.clone();
+        let label = if g.finished {
+            "lesson-guided-again"
+        } else {
+            "lesson-guided-play"
+        };
+        Some(
+            card(ui, p)
+                .child(title(
+                    ui.i18n
+                        .tr_args("lesson-guided-title", &[("name", g.title.clone().into())]),
+                    ui,
+                ))
+                .child(muted(ui.i18n.tr("lesson-guided-body"), ui, p))
+                .when(g.finished, |c| {
+                    c.child(muted(ui.i18n.tr("lesson-guided-finished"), ui, p))
+                })
+                .child(div().flex().child(
+                    button("lesson_guided", ui.i18n.tr(label), !g.finished, ui, p).on_click(
+                        cx.listener(move |this, _, window, cx| {
+                            this.play_guided(&id, window, cx);
+                            cx.notify();
+                        }),
+                    ),
+                ))
+                .into_any_element(),
+        )
+    }
+
     fn quiz_answer(&mut self, a: Answer) {
         let Some(run) = self.lesson.quiz.as_mut() else {
             return;
@@ -266,6 +315,9 @@ impl Shell {
                     p,
                 ));
             }
+            if r.guided_pending.is_some() {
+                c = c.child(muted(ui.i18n.tr("quiz-guided-pending"), ui, p));
+            }
             c = c.child(
                 div()
                     .flex()
@@ -436,6 +488,9 @@ impl Shell {
                 );
             }
             None => {}
+        }
+        if let Some(g) = self.guided_block(&open, cx) {
+            col = col.child(g);
         }
         col.into_any_element()
     }

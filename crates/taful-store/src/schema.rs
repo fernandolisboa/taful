@@ -15,6 +15,7 @@ pub const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0002_hand_review.sql"),
     include_str!("migrations/0003_opponent_profiles.sql"),
     include_str!("migrations/0004_dealt_flops.sql"),
+    include_str!("migrations/0005_guided_hands.sql"),
 ];
 
 /// The schema version this binary writes.

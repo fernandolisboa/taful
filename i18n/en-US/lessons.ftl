@@ -47,3 +47,11 @@ tree-track-locked = { $count ->
     [one] 1 lesson
    *[other] { $count } lessons
 } · unlocks when you finish the previous track. Click to preview.
+
+## Guided hand (D26)
+lesson-guided-title = Guided hand: { $name }
+lesson-guided-body = Play a hand on the real table, step by step. The lesson is done once you pass the quiz and finish the hand.
+lesson-guided-play = Play the guided hand
+lesson-guided-again = Play the guided hand again
+lesson-guided-finished = Hand finished.
+quiz-guided-pending = One step left: play the guided hand to finish the lesson.

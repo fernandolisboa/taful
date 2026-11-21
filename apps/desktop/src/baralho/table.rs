@@ -155,7 +155,8 @@ fn action_buttons(
         .iter()
         .enumerate()
         .map(|(i, &a)| {
-            let fill = if matches!(a, Action::Raise(_) | Action::AllIn) {
+            // A guided hand does not hint at the answer.
+            let fill = if s.mode != Mode::Guided && matches!(a, Action::Raise(_) | Action::AllIn) {
                 Fill::Amber
             } else {
                 Fill::Cream
@@ -599,6 +600,134 @@ fn hand_scene(
         actions,
         card: Some((head, body)),
         hero: Some(h.hero),
+        answered: None,
+    }
+}
+
+/// A guided hand (D26): the felt, the coach's buttons, and the coach line
+/// on the card where the result goes.
+fn guided_scene(s: &TableScreen, fit: (f32, f32), cx: &mut Context<TableScreen>) -> Scene {
+    let (ui, p) = (s.ui.clone(), s.palette);
+    let bx = bx(&ui);
+    let i18n = &ui.i18n;
+    let Some(run) = s.guided_run() else {
+        return Scene::notice(&bx, fit, busy_text(s));
+    };
+    let hero = run.hero();
+    let position = run.state().position(hero).label();
+    let (name, step) = s.guided_title().unwrap_or_default();
+    let head = waiting_head(
+        &bx,
+        position,
+        name,
+        format!("{} · {step}", i18n.tr("table-mode-guided")),
+    );
+    let mut body: Vec<AnyElement> = Vec::new();
+    if let Some(line) = s.guided_line() {
+        body.push(
+            typo::text(16., 600)
+                .lh(1.45)
+                .on(div())
+                .flex_none()
+                .mt(u(16.))
+                .text_color(bx.ink)
+                .child(line)
+                .into_any_element(),
+        );
+    }
+    if let Some((head, why)) = s.guided_wrong() {
+        body.push(
+            div()
+                .flex()
+                .flex_col()
+                .flex_none()
+                .gap(u(4.))
+                .mt(u(14.))
+                .py(u(10.))
+                .px(u(14.))
+                .rounded(u(10.))
+                .border(u(2.))
+                .border_color(bx.amber)
+                .bg(alpha(bx.amber, 0.16))
+                .child(
+                    typo::text(14., 800)
+                        .on(div())
+                        .text_color(bx.ink)
+                        .child(head),
+                )
+                .child(
+                    typo::text(13.5, 600)
+                        .on(div())
+                        .text_color(bx.ink2)
+                        .child(why),
+                )
+                .into_any_element(),
+        );
+    }
+    let actions = if s.playing() {
+        skip_bar(s, &bx, cx)
+    } else if s.guided_says() {
+        row().child(button(
+            "guided_next",
+            i18n.tr("table-guided-continue"),
+            Fill::Amber,
+            &bx,
+            cx,
+            |this, cx| this.guided_continue(cx),
+        ))
+    } else if s.guided_done() {
+        let lesson = s.guided_lesson();
+        row()
+            .child(button(
+                "guided_again",
+                i18n.tr("table-guided-again"),
+                if lesson.is_some() {
+                    Fill::Cream
+                } else {
+                    Fill::Amber
+                },
+                &bx,
+                cx,
+                |this, cx| {
+                    this.deal(cx);
+                    cx.notify();
+                },
+            ))
+            .children(lesson.map(|id| {
+                button(
+                    "guided_lesson",
+                    i18n.tr("table-guided-back"),
+                    Fill::Amber,
+                    &bx,
+                    cx,
+                    move |_, cx| cx.emit(TableEvent::BackToLesson(id.clone())),
+                )
+            }))
+    } else {
+        action_buttons(s, &bx, run.state(), &s.guided_actions(), cx)
+    };
+    let wins = s.guided_wins();
+    let reveal = wins.is_some();
+    Scene {
+        table: tabletop::fitted(fit.0, fit.1, || {
+            tabletop::table(
+                &ui,
+                &p,
+                &bx,
+                s.shown(run.state()),
+                hero,
+                reveal,
+                SeatExtras {
+                    tags: &[],
+                    wins: wins.as_deref().unwrap_or(&[]),
+                },
+                None,
+                !reveal,
+            )
+        }),
+        actions,
+        card: Some((head, body)),
+        hero: Some(hero),
         answered: None,
     }
 }
@@ -1088,6 +1217,16 @@ fn controls(s: &TableScreen, t: &Trainers, cx: &mut Context<TableScreen>) -> Div
             cx,
         ));
     }
+    if s.guided.is_some() {
+        modes = modes.child(segment(
+            s,
+            &bx,
+            "mode_guided",
+            "table-mode-guided",
+            Mode::Guided,
+            cx,
+        ));
+    }
     // It takes the row's free width: sized by its content, rounding at
     // some scales wraps the last pill.
     let mut left = div()
@@ -1123,9 +1262,9 @@ fn controls(s: &TableScreen, t: &Trainers, cx: &mut Context<TableScreen>) -> Div
                 ));
             }
         }
-        Mode::Hand => {}
+        Mode::Hand | Mode::Guided => {}
     }
-    if s.mode != Mode::Drill {
+    if !matches!(s.mode, Mode::Drill | Mode::Guided) {
         let rows = opponent_rows(s, t, &bx, cx);
         left = left.child(dropdown(
             s,
@@ -1226,7 +1365,7 @@ pub fn view(
     // or that layer would take a click.
     let drawn = match s.baralho.menu {
         Some(Menu::Spot) => matches!(s.mode, Mode::Spot | Mode::Postflop),
-        Some(Menu::Opponent) => s.mode != Mode::Drill,
+        Some(Menu::Opponent) => !matches!(s.mode, Mode::Drill | Mode::Guided),
         None => true,
     };
     if !drawn {
@@ -1288,6 +1427,7 @@ pub fn view(
     let fit = rect(s, PanelId::Table).map_or((tabletop::W, tabletop::H), room);
     let scene = match s.mode {
         Mode::Hand => hand_scene(s, &trainers, fit, cx),
+        Mode::Guided => guided_scene(s, fit, cx),
         _ => question_scene(s, &trainers, fit, cx),
     };
     let Scene {
@@ -1342,7 +1482,10 @@ pub fn view(
                     .child(actions)
                     .child(crate::tour::anchor("table_actions")),
             )
-            .child(session_strip(s, &bx).mt(u(33.)));
+            // A guided hand is not graded: no session under it.
+            .when(s.mode != Mode::Guided, |d| {
+                d.child(session_strip(s, &bx).mt(u(33.)))
+            });
         grid = add(s, grid, PanelId::Actions, el, cx);
     }
     if let Some(r) = rect(s, PanelId::Explanation) {

@@ -6,7 +6,9 @@
 //! 3. locales disagree on id, version, front matter or placeholder set;
 //! 4. the skill tree has a cycle, a missing prerequisite, a prerequisite that
 //!    comes later in the tree, or a lesson with no unlock;
-//! 5. a glossary term is undefined in `i18n/*/glossary.ftl`.
+//! 5. a glossary term is undefined in `i18n/*/glossary.ftl`;
+//! 6. a guided hand does not play through (`guided::check_script`), or a
+//!    lesson names one that does not exist.
 //!
 //! Plus the structural checks those rules need: every lesson is in the tree
 //! once and exists in every locale, every quiz belongs to the lesson that
@@ -418,6 +420,38 @@ pub fn check_library(lib: &Library, content: &Files, i18n: &Files) -> Vec<Findin
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // ---- 6. guided hands (D26) ---------------------------------------------------------------
+    for (id, script) in &lib.guided {
+        for e in crate::guided::check_script(script) {
+            f.push(Finding::new(&format!("guided/{id}.toml"), e));
+        }
+    }
+    for (id, by_locale) in &lib.lessons {
+        let Some(src) = by_locale.get(SOURCE_LOCALE) else {
+            continue;
+        };
+        for (loc, l) in by_locale {
+            if l.meta.guided != src.meta.guided {
+                f.push(Finding::new(
+                    &format!("lessons/{loc}/{id}.md"),
+                    format!("`guided` differs from {SOURCE_LOCALE}"),
+                ));
+            }
+        }
+        let path = format!("lessons/{SOURCE_LOCALE}/{id}.md");
+        if let Some(g) = &src.meta.guided {
+            if !lib.guided.contains_key(g) {
+                f.push(Finding::new(&path, format!("guided hand `{g}` not found")));
+            }
+            if !matches!(src.meta.unlock, Some(Unlock::Quiz { .. })) {
+                f.push(Finding::new(
+                    &path,
+                    "a lesson with a guided hand unlocks with a quiz",
+                ));
             }
         }
     }

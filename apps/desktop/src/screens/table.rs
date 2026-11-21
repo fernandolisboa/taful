@@ -18,6 +18,7 @@ use gpui::{
     AnyElement, Context, Div, EventEmitter, SharedString, Stateful, Task, Window, div, prelude::*,
     px,
 };
+use taful_app::guided::{self as guide, Click, Pause, Run};
 use taful_app::layout::{Layout, PanelId, Rect};
 use taful_app::model::{
     DrillSpot, FullHand, HandEnd, LeakBucket, LeftReason, SpotContext, Street, Trainers,
@@ -40,6 +41,8 @@ pub(crate) enum Mode {
     Postflop,
     Hand,
     Drill,
+    /// A scripted hand from a lesson (D26).
+    Guided,
 }
 
 /// What the table tells the shell.
@@ -55,6 +58,10 @@ pub enum TableEvent {
     SaveLayout(Box<Layout>),
     /// The auto-replay toggle changed (#53), to store.
     AutoReplay(bool),
+    /// A guided hand was played to the end (D26), to note for its lessons.
+    GuidedDone(String),
+    /// Back to the lesson the guided hand came from.
+    BackToLesson(String),
 }
 
 impl EventEmitter<TableEvent> for TableScreen {}
@@ -110,6 +117,8 @@ pub struct TableScreen {
     /// The answered spot is on the table to be answered again: the new
     /// answer is graded but not stored (one decision per dealt spot).
     pub(crate) repeating: bool,
+    /// The guided hand (D26), once one was opened from a lesson.
+    pub(crate) guided: Option<Guided>,
     /// Each visual style's own state (D19); a style that keeps none
     /// leaves its slot unused.
     #[allow(dead_code)]
@@ -130,6 +139,15 @@ pub(crate) fn places_like_default(layout: &Layout) -> bool {
         && PanelId::ALL
             .iter()
             .all(|&id| layout.rect(id, 1.) == default.rect(id, 1.))
+}
+
+/// A guided hand on the table (D26).
+pub(crate) struct Guided {
+    pub(crate) run: Run,
+    /// The lesson it was opened from.
+    pub(crate) lesson: Option<String>,
+    /// The end was handed to the shell.
+    pub(crate) sent: bool,
 }
 
 /// The story of the shown question or hand and the state on the felt.
@@ -265,6 +283,7 @@ impl TableScreen {
             auto_replay,
             _ticker: None,
             repeating: false,
+            guided: None,
             salao: Default::default(),
             cockpit: Default::default(),
             baralho: Default::default(),
@@ -368,6 +387,20 @@ impl TableScreen {
                     Done::Question(bucket.and_then(|b| t.spot_for_bucket(&b, seed).ok()))
                 });
             }
+            Mode::Guided => {
+                // From the deal again.
+                self.busy = None;
+                self._job = None;
+                if let Some(g) = &mut self.guided {
+                    match g.run.restart() {
+                        Ok(run) => g.run = run,
+                        Err(e) => eprintln!("taful: guided hand: {e}"),
+                    }
+                    g.sent = false;
+                    let state = g.run.state().clone();
+                    self.show_story(&state, Some(0), cx);
+                }
+            }
             Mode::Hand => {
                 self.hand = None;
                 self.hand_sent = false;
@@ -435,7 +468,10 @@ impl TableScreen {
     /// Puts the answered spot back on the table, unanswered, with its
     /// story from the deal (the spot modes).
     pub(crate) fn repeat_spot(&mut self, cx: &mut Context<Self>) {
-        if self.mode == Mode::Hand || self.question.is_none() || self.answer.is_none() {
+        if matches!(self.mode, Mode::Hand | Mode::Guided)
+            || self.question.is_none()
+            || self.answer.is_none()
+        {
             return;
         }
         self.answer = None;
@@ -874,6 +910,321 @@ impl TableScreen {
         }
     }
 
+    // ---- guided hands (D26) -----------------------------------------------------
+
+    /// Opens a guided hand from a lesson, from its deal.
+    pub fn start_guided(&mut self, run: Run, lesson: Option<String>, cx: &mut Context<Self>) {
+        self.guided = Some(Guided {
+            run,
+            lesson,
+            sent: false,
+        });
+        self.mode = Mode::Guided;
+        self.editing = None;
+        self.deal(cx);
+        cx.notify();
+    }
+
+    /// Screenshots: moves the guided hand `pauses` pauses on with the right
+    /// clicks, then clicks a wrong button when `wrong`; no replay.
+    pub fn guided_dev_advance(&mut self, pauses: usize, wrong: bool, cx: &mut Context<Self>) {
+        let Some(g) = &mut self.guided else { return };
+        for _ in 0..pauses {
+            let r = match g.run.pause() {
+                Pause::Say(_) => g.run.proceed(),
+                Pause::Hero(_) => {
+                    let right = g
+                        .run
+                        .actions()
+                        .into_iter()
+                        .find(|&a| matches!(g.run.clone().act(a), Ok(Click::Right)));
+                    match right {
+                        Some(a) => g.run.act(a).map(|_| ()),
+                        None => Err("no right button".into()),
+                    }
+                }
+                Pause::Done => break,
+            };
+            if let Err(e) = r {
+                eprintln!("taful: guided hand: {e}");
+                break;
+            }
+        }
+        if wrong {
+            let bad = g
+                .run
+                .actions()
+                .into_iter()
+                .find(|&a| matches!(g.run.clone().act(a), Ok(Click::Wrong)));
+            if let Some(a) = bad {
+                g.run.act(a).ok();
+            }
+        }
+        if g.run.is_done() && !g.sent {
+            g.sent = true;
+            cx.emit(TableEvent::GuidedDone(g.run.guide().id.clone()));
+        }
+        let state = g.run.state().clone();
+        self.show_story(&state, None, cx);
+        cx.notify();
+    }
+
+    /// The guided hand on the table, in guided mode.
+    pub(crate) fn guided_run(&self) -> Option<&Run> {
+        self.guided
+            .as_ref()
+            .filter(|_| self.mode == Mode::Guided)
+            .map(|g| &g.run)
+    }
+
+    /// Plays what the run did since the last frame: the actions and cards
+    /// after the shown story's end, and tells the shell once it is over.
+    fn guided_moved(&mut self, cx: &mut Context<Self>) {
+        let Some(g) = &mut self.guided else { return };
+        if g.run.is_done() && !g.sent {
+            g.sent = true;
+            cx.emit(TableEvent::GuidedDone(g.run.guide().id.clone()));
+        }
+        let state = g.run.state().clone();
+        let from = self.playback.as_ref().map(|p| p.last() + 1);
+        if self.playback.as_ref().map(|p| p.story.last()) != Some(&state) {
+            self.show_story(&state, from, cx);
+        }
+    }
+
+    /// Past a coach line.
+    pub(crate) fn guided_continue(&mut self, cx: &mut Context<Self>) {
+        if self.playing() {
+            return;
+        }
+        let Some(g) = self.guided.as_mut().filter(|_| self.mode == Mode::Guided) else {
+            return;
+        };
+        if let Err(e) = g.run.proceed() {
+            eprintln!("taful: guided hand: {e}");
+        }
+        self.guided_moved(cx);
+        cx.notify();
+    }
+
+    /// A click on hero's turn: the right action plays, another is
+    /// explained and taken back.
+    fn guided_act(&mut self, action: Action, cx: &mut Context<Self>) {
+        let Some(g) = self.guided.as_mut() else {
+            return;
+        };
+        match g.run.act(action) {
+            Ok(Click::Right) => self.guided_moved(cx),
+            Ok(Click::Wrong) => {}
+            Err(e) => eprintln!("taful: guided hand: {e}"),
+        }
+    }
+
+    /// Hero's buttons now: empty unless the hand waits for hero's click.
+    pub(crate) fn guided_actions(&self) -> Vec<Action> {
+        match self.guided_run() {
+            Some(run) if !self.playing() && matches!(run.pause(), Pause::Hero(_)) => run.actions(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// The hand waits on a coach line (the continue button).
+    pub(crate) fn guided_says(&self) -> bool {
+        self.guided_run()
+            .is_some_and(|run| !self.playing() && matches!(run.pause(), Pause::Say(_)))
+    }
+
+    /// The hand is over and its last line read.
+    pub(crate) fn guided_done(&self) -> bool {
+        self.guided_run().is_some_and(Run::is_done) && !self.playing()
+    }
+
+    /// The coach line of the current pause: during a replay the line the
+    /// hand is heading to stays hidden.
+    pub(crate) fn guided_line(&self) -> Option<String> {
+        let run = self.guided_run()?;
+        let locale = self.ui.i18n.locale();
+        if self.playing() {
+            return Some(self.ui.i18n.tr("table-replay-panel"));
+        }
+        Some(match run.pause() {
+            Pause::Say(t) | Pause::Hero(t) => guide::text(t, locale).to_owned(),
+            Pause::Done => self.ui.i18n.tr("table-guided-done"),
+        })
+    }
+
+    /// Why the last click was not the move, with the button's label.
+    pub(crate) fn guided_wrong(&self) -> Option<(String, String)> {
+        let run = self.guided_run()?;
+        let (a, why) = run.wrong()?;
+        let label = felt::action_label(&self.ui, run.state(), a);
+        Some((
+            self.ui
+                .i18n
+                .tr_args("table-guided-wrong", &[("action", label.into())]),
+            guide::text(why, self.ui.i18n.locale()).to_owned(),
+        ))
+    }
+
+    /// The hand's name and how far it is: `Sua primeira mão · passo 3 de 15`.
+    pub(crate) fn guided_title(&self) -> Option<(String, String)> {
+        let run = self.guided_run()?;
+        let i18n = &self.ui.i18n;
+        let (at, of) = run.progress();
+        Some((
+            guide::text(&run.guide().title, i18n.locale()).to_owned(),
+            i18n.tr_args(
+                "table-guided-step",
+                &[("n", (at + 1).min(of).into()), ("of", of.into())],
+            ),
+        ))
+    }
+
+    /// The hand is settled and the replay caught up: show the cards and
+    /// who took the pot.
+    pub(crate) fn guided_wins(&self) -> Option<Vec<(Seat, Chips)>> {
+        let st = self.guided_run()?.settlement()?;
+        if self.playing() {
+            return None;
+        }
+        let mut wins: Vec<(Seat, Chips)> = Vec::new();
+        for pot in &st.pots {
+            let share = (pot.amount - pot.rake) / pot.winners.len().max(1) as Chips;
+            for &w in &pot.winners {
+                match wins.iter_mut().find(|(s, _)| *s == w) {
+                    Some((_, c)) => *c += share,
+                    None => wins.push((w, share)),
+                }
+            }
+        }
+        wins.retain(|(_, c)| *c > 0);
+        Some(wins)
+    }
+
+    /// The lesson to go back to, once the hand is over.
+    pub(crate) fn guided_lesson(&self) -> Option<String> {
+        self.guided
+            .as_ref()
+            .filter(|_| self.guided_done())
+            .and_then(|g| g.lesson.clone())
+    }
+
+    /// Classic's and Salão's guided hand: the felt, the coach's buttons
+    /// and the coach line where the evaluation goes.
+    pub(crate) fn guided_parts(&self, scale: f32, cx: &mut Context<Self>) -> Parts {
+        let (p, th, i18n) = (&self.palette, &self.ui.theme, &self.ui.i18n);
+        let Some(run) = self.guided_run() else {
+            return Parts::message(self.message(i18n.tr("table-no-spot")));
+        };
+        let mut panel = div().flex().flex_col().gap(px(th.spacing.md));
+        if let Some((name, step)) = self.guided_title() {
+            panel = panel.child(
+                div()
+                    .flex()
+                    .justify_between()
+                    .gap(px(th.spacing.sm))
+                    .text_size(px(th.text_size.sm))
+                    .text_color(p.text_muted)
+                    .child(
+                        div()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child(i18n.tr_args("table-guided-title", &[("name", name.into())])),
+                    )
+                    .child(step),
+            );
+        }
+        if let Some(line) = self.guided_line() {
+            panel = panel.child(
+                div()
+                    .text_size(px(th.text_size.md))
+                    .line_height(gpui::relative(1.45))
+                    .child(line),
+            );
+        }
+        if let Some((head, why)) = self.guided_wrong() {
+            panel = panel.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(th.spacing.xs))
+                    .p(px(th.spacing.md))
+                    .rounded(px(th.radii.md))
+                    .border_1()
+                    .border_color(p.accent)
+                    .child(
+                        div()
+                            .text_size(px(th.text_size.sm))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(p.accent)
+                            .child(head),
+                    )
+                    .child(div().text_size(px(th.text_size.sm)).child(why)),
+            );
+        }
+        let panel = panel.children(self.story_panel(run.hero(), cx));
+        let actions = self.guided_buttons(cx);
+        let wins = self.guided_wins();
+        Parts {
+            table: felt::table_tagged(
+                &self.ui,
+                p,
+                self.shown(run.state()),
+                run.hero(),
+                wins.is_some(),
+                scale,
+                felt::SeatExtras {
+                    tags: &[],
+                    wins: wins.as_deref().unwrap_or(&[]),
+                },
+            ),
+            actions,
+            panel,
+        }
+    }
+
+    /// The guided hand's buttons in the plain widgets (Classic, Salão).
+    pub(crate) fn guided_buttons(&self, cx: &mut Context<Self>) -> Div {
+        let i18n = &self.ui.i18n;
+        let Some(run) = self.guided_run() else {
+            return div();
+        };
+        let row = || div().flex().flex_wrap().gap(px(self.ui.theme.spacing.sm));
+        if self.playing() {
+            self.skip_bar(cx)
+        } else if self.guided_says() {
+            row().child(self.button(
+                "guided_next",
+                i18n.tr("table-guided-continue"),
+                true,
+                cx,
+                |this, cx| this.guided_continue(cx),
+            ))
+        } else if self.guided_done() {
+            row()
+                .child(self.button(
+                    "guided_again",
+                    i18n.tr("table-guided-again"),
+                    self.guided_lesson().is_none(),
+                    cx,
+                    |this, cx| {
+                        this.deal(cx);
+                        cx.notify();
+                    },
+                ))
+                .children(self.guided_lesson().map(|id| {
+                    self.button(
+                        "guided_lesson",
+                        i18n.tr("table-guided-back"),
+                        true,
+                        cx,
+                        move |_, cx| cx.emit(TableEvent::BackToLesson(id.clone())),
+                    )
+                }))
+        } else {
+            self.actions_bar(run.state(), &self.guided_actions(), cx)
+        }
+    }
+
     /// Drill a leak (the home screen's "drill this").
     pub fn start_drill(&mut self, bucket: LeakBucket, cx: &mut Context<Self>) {
         self.drill = Some(bucket);
@@ -909,7 +1260,7 @@ impl TableScreen {
                 return;
             }
             Mode::Hand => {}
-            Mode::Drill => self.mode = Mode::Spot,
+            Mode::Drill | Mode::Guided => self.mode = Mode::Spot,
         }
         self.deal(cx);
         cx.notify();
@@ -966,6 +1317,11 @@ impl TableScreen {
 
     pub(crate) fn act(&mut self, action: Action, cx: &mut Context<Self>) {
         if self.busy.is_some() || self.playing() {
+            return;
+        }
+        if self.mode == Mode::Guided {
+            self.guided_act(action, cx);
+            cx.notify();
             return;
         }
         let Ok(t) = self.trainers.clone() else { return };
@@ -1082,7 +1438,8 @@ impl TableScreen {
                 self.button(
                     ("act", i),
                     label,
-                    matches!(a, Action::Raise(_) | Action::AllIn),
+                    // A guided hand does not hint at the answer.
+                    self.mode != Mode::Guided && matches!(a, Action::Raise(_) | Action::AllIn),
                     cx,
                     move |this, cx| this.act(a, cx),
                 )
@@ -1458,6 +1815,15 @@ impl TableScreen {
                 |this, cx| this.set_mode(Mode::Drill, cx),
             ));
         }
+        if self.guided.is_some() {
+            modes.push(self.segment(
+                "mode_guided",
+                i18n.tr("table-mode-guided"),
+                self.mode == Mode::Guided,
+                cx,
+                |this, cx| this.set_mode(Mode::Guided, cx),
+            ));
+        }
         modes
     }
 
@@ -1620,6 +1986,7 @@ impl TableScreen {
                 None => String::new(),
             },
             Mode::Spot => i18n.tr("table-subtitle"),
+            Mode::Guided => i18n.tr("table-subtitle-guided"),
         }
         .into();
         let wrap = |items: Vec<Stateful<Div>>| {
@@ -1765,6 +2132,7 @@ impl TableScreen {
             .map_or(1., |r| felt::fit_scale(r.w, r.h));
         let parts = match self.mode {
             Mode::Hand => self.hand_parts(&trainers, scale, cx),
+            Mode::Guided => self.guided_parts(scale, cx),
             _ => self.question_parts(&trainers, scale, cx),
         };
         let controls = self.controls(&trainers, cx);

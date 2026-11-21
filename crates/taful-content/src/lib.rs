@@ -6,6 +6,7 @@
 pub mod check;
 pub mod expr;
 pub mod format;
+pub mod guided;
 pub mod lesson;
 pub mod library;
 pub mod quiz;
@@ -282,6 +283,29 @@ mod tests {
             (
                 Box::new(|c| c[1].1 = c[1].1.replace("glossary = [\"equity\"]", "glossary = []")),
                 "not listed in `glossary`",
+            ),
+            (
+                Box::new(|c| {
+                    for i in [1, 2] {
+                        c[i].1 = c[i].1.replace("minutes", "guided = \"nope\"\nminutes");
+                        c[i].1 = c[i]
+                            .1
+                            .replace("glossary = [", "guided = \"nope\"\nglossary = [");
+                    }
+                }),
+                "guided hand `nope` not found",
+            ),
+            (
+                Box::new(|c| {
+                    c[1].1 = c[1]
+                        .1
+                        .replace("glossary = [", "guided = \"nope\"\nglossary = [")
+                }),
+                "`guided` differs from en-US",
+            ),
+            (
+                Box::new(|c| c.push(("guided/g.toml", "id = \"h\"\n".into()))),
+                "guided/g.toml",
             ),
             (
                 Box::new(|c| c[5].1 = quiz("a-quiz", "b")),

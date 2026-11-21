@@ -27,6 +27,7 @@ pub mod calc_trainer;
 pub mod content;
 pub mod dashboard;
 pub mod fmt;
+pub mod guided;
 pub mod hand;
 pub mod i18n;
 pub mod insight;

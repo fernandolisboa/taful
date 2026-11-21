@@ -17,7 +17,7 @@ See [spec §4](spec.md#4-workspace). In short:
 | `tools/library-build` | Offline library build: preflop solver (M3), postflop batch (M4). The only crate allowed to link `postflop-solver` (pinned git rev, no default features). |
 | `tools/profile-stats` | Offline: HUD stats of the bot profiles over the library and auto-tuning of `content/bots/*.toml` toward `targets.toml` (#31). Core + solver only. |
 | `library/` | Built library files in the static layout of spec §7.6 (`v1/<config key>/…`). In git: the preflop charts (embedded by `taful-app`) and `flops.txt`. The postflop files are too big for git and live in the app's library folder. |
-| `content/` | Bot profiles (`bots/*.toml`), themes, `skill-tree.toml`, lessons (`lessons/<locale>/*.md`), quizzes (`quizzes/*.toml`) and their render snapshots (`.snapshots/`). Embedded into `taful-app` by its `build.rs`. |
+| `content/` | Bot profiles (`bots/*.toml`), themes, `skill-tree.toml`, lessons (`lessons/<locale>/*.md`), quizzes (`quizzes/*.toml`) and their render snapshots (`.snapshots/`), guided hands (`guided/*.toml`, D26). Embedded into `taful-app` by its `build.rs`. |
 | `config/` | Tunable numbers loaded at runtime: `grading.toml` (D3 thresholds), `calc.toml` (trainer tolerances and target times). Tests pin them to the code defaults. |
 | `i18n/<locale>/*.ftl` | Fluent strings. en-US is the source, pt-BR ships. |
 
@@ -169,6 +169,15 @@ cargo run --release -p taful-profile-stats -- tune --library <out>        # sear
 ## Running the desktop on Linux (unsupported, for screenshots)
 
 gpui 0.2.2 fails on Linux because `xattr` 0.2.3 uses `ENOATTR`. A local copy of the crate with `ENOATTR` → `ENODATA` in `src/sys/mod.rs`, wired in through `--config 'patch.crates-io.xattr.path="…"'`, builds it. Never commit that patch or the `Cargo.lock` it produces. Running under Xvfb needs `libxkbcommon-x11-dev`, `mesa-vulkan-drivers` and `libvulkan1`, and the first frame needs a mouse move (`xdotool mousemove`).
+
+## Guided hands (D26)
+
+A guided hand is a scripted hand played on the real table: fixed seats, cards, board and opponent actions, a coach line at each pause, and one right button at each of hero's turns. A wrong button is explained and taken back; nothing is graded or stored but the fact that the hand was finished.
+
+- **Format:** `content/guided/<id>.toml`, documented at the top of `crates/taful-content/src/guided.rs` (with an example). Amounts are chips (100 = 1 bb). The board comes out as soon as a betting round closes, so a line right after a street's last action talks about the new cards.
+- **Checks** (`content-check`): both locales for every line, every action legal and in turn, the right action among the buttons, every `wrong` entry a wrong button, the hand played to its end with every board card dealt, and every player at showdown scripted.
+- **Lessons:** `guided = "<id>"` in a lesson's front matter. The lesson is done once its quiz is passed and the hand finished, in either order (`App::finish_guided`, table `guided_hands`).
+- **Table:** `Mode::Guided` in `screens/table.rs` drives the run (`guided_*` helpers); each style draws the coach line where its evaluation goes. Dev overrides: `TAFUL_GUIDED=<id>` opens a hand, `TAFUL_GUIDED_LESSON=<id>` as if from that lesson, `TAFUL_GUIDED_AT=<n>[w]` moves it `n` pauses on (then a wrong click with `w`); `TAFUL_LESSON=<id>` opens a lesson.
 
 ## Visual styles (D19)
 

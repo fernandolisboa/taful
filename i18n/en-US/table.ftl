@@ -137,3 +137,14 @@ table-replay-earlier = You are looking at an earlier moment of the hand.
 table-replay-back = Back to your turn
 table-tl-pot = pot { $amount }
 table-replay-panel = The table is replaying how the hand got to your turn. Click a line of the history to see that moment.
+
+## Guided hands (D26)
+table-mode-guided = Guided hand
+table-subtitle-guided = A scripted hand: read each line and click the move it asks for. Nothing here is graded.
+table-guided-title = Guided hand · { $name }
+table-guided-step = step { $n } of { $of }
+table-guided-continue = Continue
+table-guided-wrong = Not { $action } this time
+table-guided-done = Hand finished. Play it again whenever you like.
+table-guided-again = Play again
+table-guided-back = Back to the lesson

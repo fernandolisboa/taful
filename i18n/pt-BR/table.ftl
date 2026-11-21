@@ -137,3 +137,14 @@ table-replay-earlier = Você está vendo um momento anterior da mão.
 table-replay-back = Voltar para a sua vez
 table-tl-pot = pote { $amount }
 table-replay-panel = A mesa está repassando como a mão chegou até a sua vez. Clique numa linha do histórico para ver aquele momento.
+
+## Mãos guiadas (D26)
+table-mode-guided = Mão guiada
+table-subtitle-guided = Uma mão roteirizada: leia cada frase e clique na jogada que ela pede. Nada aqui é avaliado.
+table-guided-title = Mão guiada · { $name }
+table-guided-step = passo { $n } de { $of }
+table-guided-continue = Continuar
+table-guided-wrong = Desta vez não é { $action }
+table-guided-done = Mão concluída. Jogue de novo quando quiser.
+table-guided-again = Jogar de novo
+table-guided-back = Voltar à lição

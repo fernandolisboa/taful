@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use taful_core::profile::Profile;
 
 use crate::Finding;
+use crate::guided::Script;
 use crate::lesson::Lesson;
 use crate::quiz::Quiz;
 
@@ -153,6 +154,8 @@ pub struct Library {
     pub quizzes: BTreeMap<String, Quiz>,
     /// Bot profile id → profile (`bots/<id>.toml`, spec §9).
     pub profiles: BTreeMap<String, Profile>,
+    /// Guided hand id → script (`guided/<id>.toml`, D26).
+    pub guided: BTreeMap<String, Script>,
 }
 
 impl Library {
@@ -203,6 +206,21 @@ impl Library {
                 Err(e) => findings.push(Finding::new(&path, e)),
             }
         }
+        for (stem, text) in files.in_dir("guided", ".toml") {
+            let path = format!("guided/{stem}.toml");
+            match Script::parse(text) {
+                Ok(g) => {
+                    if g.id != stem {
+                        findings.push(Finding::new(
+                            &path,
+                            format!("id `{}` does not match the file name", g.id),
+                        ));
+                    }
+                    lib.guided.insert(stem.to_owned(), g);
+                }
+                Err(e) => findings.push(Finding::new(&path, e)),
+            }
+        }
         let (profiles, profile_findings) = load_profiles(files);
         lib.profiles = profiles;
         findings.extend(profile_findings);
@@ -215,6 +233,16 @@ impl Library {
         by_locale
             .get(locale)
             .or_else(|| by_locale.get(SOURCE_LOCALE))
+    }
+
+    /// The guided hand a lesson lists, if any.
+    pub fn guided_for(&self, lesson_id: &str) -> Option<&Script> {
+        let id = self
+            .lesson(lesson_id, SOURCE_LOCALE)?
+            .meta
+            .guided
+            .as_ref()?;
+        self.guided.get(id)
     }
 
     /// The quiz a lesson's unlock names, if any.
