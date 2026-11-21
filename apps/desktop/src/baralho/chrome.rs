@@ -297,7 +297,7 @@ fn sheet_page(
     let body = shell.screen_body(window, cx);
     shell.ui = plain;
 
-    let sheet = kit::sheet(
+    let sheet = kit::page_sheet(
         bx,
         typo::text(15., 400)
             .on(div())
@@ -328,7 +328,8 @@ fn sheet_page(
                 .flex_none()
                 .w(u(width))
                 .pt(u(20.))
-                .pb(u(48.))
+                // The sheet keeps its drop's room below it.
+                .pb(u(48. - kit::SHEET_DROP))
                 .gap(u(24.))
                 .child(head)
                 .child(sheet),

@@ -91,9 +91,11 @@ pub const WINDOW: Option<(f32, f32)> = Some((CANVAS_W, CANVAS_H));
 /// The design canvas every measure refers to.
 pub(crate) const CANVAS_W: f32 = 1600.;
 pub(crate) const CANVAS_H: f32 = 900.;
-/// The window scales the canvas within these bounds.
+/// The window scales the canvas within these bounds. It never grows past
+/// the mockup's size: a larger window shows the same screens with more
+/// felt around them, as the other styles do (D21).
 const MIN_SCALE: f32 = 0.5;
-const MAX_SCALE: f32 = 3.;
+const MAX_SCALE: f32 = 1.;
 
 /// The canvas is fitted to the window, and the review screens' table with
 /// it: no pane is too narrow for it.
@@ -134,7 +136,8 @@ pub(crate) fn zoomed<R>(k: f32, draw: impl FnOnce() -> R) -> R {
     out
 }
 
-/// Fits the canvas to the window: the largest scale that shows all of it.
+/// Fits the canvas to the window: the largest scale that shows all of it,
+/// up to the mockup's size.
 pub(crate) fn fit(window: &Window) -> f32 {
     let vp = crate::caption::viewport(window);
     let s = (f32::from(vp.width) / CANVAS_W)
