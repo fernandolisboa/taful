@@ -1376,7 +1376,7 @@ pub fn view(
             )
             .w(u(w))
             // The grid's panels keep room for the sheet's drop.
-            .h(u(if mock { h + 7. } else { h }))
+            .h(u(if mock { h + kit::SHEET_DROP } else { h }))
         });
         let el = TableScreen::place(r)
             .p(u(inset))

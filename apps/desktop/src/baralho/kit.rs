@@ -81,6 +81,16 @@ impl Raised {
     /// taller than the outlined box and gives that room back as a
     /// negative margin, so it lays out like the box alone.
     pub fn wrap(self, face: Div) -> Div {
+        self.hug(face.flex_1()).mb(u(-self.drop))
+    }
+
+    /// A raised box as tall as what it holds, for a parent that takes its
+    /// height from its content (a page that scrolls). Unlike
+    /// [`Raised::wrap`] it has no negative margin: the layout leaves a box
+    /// with one out of that height, so the page came out too short to
+    /// scroll. The drop's room stays below the box, and the face hugs its
+    /// content rather than filling a fixed height.
+    pub fn hug(self, face: Div) -> Div {
         div()
             .flex()
             .flex_col()
@@ -90,12 +100,7 @@ impl Raised {
             .pt(u(self.border))
             .px(u(self.border))
             .pb(u(self.border + self.drop))
-            .mb(u(-self.drop))
-            .child(
-                face.flex_1()
-                    .rounded(u(self.radius - self.border))
-                    .bg(self.face),
-            )
+            .child(face.rounded(u(self.radius - self.border)).bg(self.face))
     }
 
     /// [`Raised::wrap`] at a fixed outlined-box size.
@@ -118,14 +123,28 @@ pub fn soft_shadow(bx: &Bx, y: f32, blur: f32, opacity: f32) -> Vec<BoxShadow> {
 /// A cream card panel: thick outline, hard drop, soft shadow and the
 /// thin line just inside the edge. `face` holds the content.
 pub fn sheet(bx: &Bx, face: Div) -> Div {
-    Raised {
+    sheet_with(bx, face, Raised::wrap)
+}
+
+/// A [`sheet`] laid out with [`Raised::hug`]: [`SHEET_DROP`] of room stays
+/// below it.
+pub fn page_sheet(bx: &Bx, face: Div) -> Div {
+    sheet_with(bx, face, Raised::hug)
+}
+
+/// How far a sheet's hard drop reaches below its outline, in design pixels.
+pub const SHEET_DROP: f32 = 7.;
+
+fn sheet_with(bx: &Bx, face: Div, raise: fn(Raised, Div) -> Div) -> Div {
+    let sheet = Raised {
         face: bx.cream,
         edge: bx.deep,
         radius: 20.,
         border: 2.5,
-        drop: 7.,
-    }
-    .wrap(
+        drop: SHEET_DROP,
+    };
+    raise(
+        sheet,
         face.relative().child(
             div()
                 .absolute()
