@@ -127,3 +127,4 @@ update-mode-notify-body = A card in the corner tells you when a new version show
 update-mode-silent-body = No card: whatever is automatic happens without a word. You see the state here and on the tray icon.
 settings-study-mode = How lessons open
 settings-study-mode-body = The same choice sits behind the gear on the lessons screen.
+settings-study-level-body = Every level up to it is open, with no test. The same choice sits behind the gear on the Lessons screen.

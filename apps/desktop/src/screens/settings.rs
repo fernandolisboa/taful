@@ -996,9 +996,18 @@ impl Shell {
                     .child(muted(ui.i18n.tr("settings-study-mode-body"), &ui, &p))
                     .child(self.study_mode_rows("settings_mode", cx).max_w(px(560.)))
                     .child(muted(ui.i18n.tr("study-mode-note"), &ui, &p));
+                // Where the Jornada starts (D25), also behind the gear.
+                let start_level = card(&ui, &p)
+                    .child(title(ui.i18n.tr("study-level-title"), &ui))
+                    .child(muted(ui.i18n.tr("settings-study-level-body"), &ui, &p))
+                    .child(
+                        self.start_level_row("settings_level_change", cx)
+                            .max_w(px(560.)),
+                    );
                 let optimizer = self.optimizer_card(cx);
                 column
                     .child(study_mode)
+                    .child(start_level)
                     .child(retention_card)
                     .child(optimizer)
                     .child(grading)

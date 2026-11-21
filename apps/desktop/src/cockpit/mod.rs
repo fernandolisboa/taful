@@ -20,7 +20,7 @@ mod table;
 
 pub use frame::frame;
 pub use home::home;
-pub use lessons::lessons;
+pub use lessons::{lessons, level_look};
 pub use state::ShellState;
 pub use table::{TableState, table};
 

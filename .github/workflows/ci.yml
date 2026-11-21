@@ -152,6 +152,8 @@ jobs:
           $env:TAFUL_SCREEN = "table"
           # No guided tour over the screenshot (#58).
           $env:TAFUL_TOUR = "0"
+          # No first-run level question over it either (D25).
+          $env:TAFUL_LEVEL_QUESTION = "0"
           # No update check against the real releases (D18).
           $env:TAFUL_UPDATE_URL = "http://127.0.0.1:9/none"
           Add-Type -AssemblyName System.Windows.Forms, System.Drawing

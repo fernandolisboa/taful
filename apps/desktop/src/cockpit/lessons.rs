@@ -18,6 +18,98 @@ use crate::screen::Screen;
 use crate::shell::Shell;
 use crate::study::{GearLook, on_test_click};
 
+/// How the level question (D25) is dressed: a Cockpit panel, mono labels,
+/// and each level's key cap (1–6 pick it from the keyboard).
+pub fn level_look(shell: &Shell) -> crate::level_question::Look {
+    let pal = Pal::new(&shell.ui);
+    crate::level_question::Look {
+        scrim: crate::theme::alpha(pal.rail_bg, 0.8),
+        card: |s, content| {
+            let pal = Pal::new(&s.ui);
+            kit::panel(&pal)
+                .child(content)
+                .border_color(pal.line2)
+                .shadow(kit::shadow(crate::theme::alpha(pal.rail_bg, 0.9), 18., 40.))
+                .text_color(pal.text)
+        },
+        pad: 24.,
+        eyebrow: |s, text| {
+            let pal = Pal::new(&s.ui);
+            div()
+                .flex()
+                .items_center()
+                .child(
+                    div()
+                        .flex_none()
+                        .size(px(6.))
+                        .mr(px(8.))
+                        .rounded(px(1.))
+                        .bg(pal.amber),
+                )
+                .child(
+                    kit::tracked(&text.to_uppercase(), 10.5, 0.09)
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(pal.amber),
+                )
+        },
+        title: |_, text| {
+            div()
+                .text_size(px(24.))
+                .line_height(px(30.))
+                .font_weight(STRONG)
+                .child(text)
+        },
+        text: |s, text| {
+            div()
+                .text_size(px(13.))
+                .line_height(px(19.))
+                .text_color(Pal::new(&s.ui).muted)
+                .child(text)
+        },
+        name: |_, text| {
+            div()
+                .text_size(px(13.5))
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(text)
+        },
+        about: |s, text| {
+            mono(text)
+                .text_size(px(11.))
+                .text_color(Pal::new(&s.ui).muted)
+        },
+        tag: |s, text, strong| {
+            let pal = Pal::new(&s.ui);
+            kit::tracked(&text.to_uppercase(), 9.5, 0.08)
+                .px(px(6.))
+                .py(px(2.))
+                .rounded(px(3.))
+                .border_1()
+                .border_color(if strong { pal.amber } else { pal.line2 })
+                .text_color(if strong { pal.on_amber } else { pal.dim })
+                .when(strong, |d| d.bg(pal.amber))
+        },
+        mark: |s, n, place| {
+            let (pal, soon) = (Pal::new(&s.ui), place.is_none());
+            kit::kbd(&(n + 1).to_string(), &pal)
+                .w(px(22.))
+                .flex()
+                .justify_center()
+                .when(!soon, |d| d.text_color(pal.amber))
+                .into_any_element()
+        },
+        link: (pal.muted, pal.amber),
+        row: crate::level_question::RowLook {
+            radius: 5.,
+            ring: pal.line,
+            fill: pal.panel2,
+            ring_hot: pal.amber_dim,
+            fill_hot: pal.raised,
+            ring_on: pal.amber,
+            fill_on: pal.amber_at(0.08),
+        },
+    }
+}
+
 /// The least the next lesson and the progress cells get in a narrow window.
 const NEXT_MIN: f32 = 380.;
 const PROGRESS_MIN: f32 = 240.;

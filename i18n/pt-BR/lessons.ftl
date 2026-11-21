@@ -117,3 +117,18 @@ lesson-guided-play = Jogar a mão guiada
 lesson-guided-again = Jogar a mão guiada de novo
 lesson-guided-finished = Mão concluída.
 quiz-guided-pending = Falta um passo: jogue a mão guiada para concluir a lição.
+
+## Pergunta de nível (D25): primeira abertura, engrenagem e Configurações › Estudo
+
+level-question-welcome = Boas-vindas ao Taful
+level-question-change = Seu nível
+level-question-title = Qual é o seu nível no poker?
+level-question-lead = A Jornada começa no nível que você escolher, e todos até ele ficam abertos. Nada fica marcado como feito, e não tem prova.
+level-question-note = Pular começa em { $level }. Dá para mudar depois, na engrenagem da tela de Lições.
+level-question-change-note = Lições concluídas e provas aprovadas continuam valendo.
+level-question-skip = Pular
+level-question-cancel = Cancelar
+level-question-current = Atual
+study-level-title = Seu nível
+study-level-line = A Jornada começa em { $level }.
+study-level-change = Mudar
