@@ -4,20 +4,21 @@
 //! 2. a rendered value differs from its pinned snapshot (drift); snapshots
 //!    are rewritten with `content-check --bless`;
 //! 3. locales disagree on id, version, front matter or placeholder set;
-//! 4. the skill tree has a cycle, a missing prerequisite, a prerequisite that
-//!    comes later in the tree, or a lesson with no unlock;
+//! 4. the catalog has a lesson without a known level or theme, a cycle, a
+//!    missing prerequisite, a prerequisite in a higher level or later in the
+//!    Jornada, or a lesson with no unlock;
 //! 5. a glossary term is undefined in `i18n/*/glossary.ftl`.
 //!
-//! Plus the structural checks those rules need: every lesson is in the tree
-//! once and exists in every locale, every quiz belongs to the lesson that
-//! unlocks with it, and every track has a Fluent title.
+//! Plus the structural checks those rules need: every lesson is in the
+//! catalog once and exists in every locale, every quiz belongs to the lesson
+//! that unlocks with it, and every level and theme has its Fluent strings.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::Finding;
 use crate::expr;
 use crate::lesson::Unlock;
-use crate::library::{Files, LOCALES, Library, SOURCE_LOCALE};
+use crate::library::{CATALOG, Files, LOCALES, Library, SOURCE_LOCALE};
 
 /// Snapshot file of a lesson.
 pub fn lesson_snapshot_path(id: &str) -> String {
@@ -279,20 +280,67 @@ pub fn check_library(lib: &Library, content: &Files, i18n: &Files) -> Vec<Findin
         }
     }
 
-    // ---- 4. skill tree -----------------------------------------------------------------------
-    let order = lib.tree.order();
+    // ---- 4. catalog --------------------------------------------------------------------------
+    let cat = &lib.catalog;
+    let order = cat.order();
     let mut position = BTreeMap::new();
     for (i, id) in order.iter().enumerate() {
         if position.insert(*id, i).is_some() {
-            f.push(Finding::new(
-                "skill-tree.toml",
-                format!("lesson `{id}` listed twice"),
-            ));
+            f.push(Finding::new(CATALOG, format!("lesson `{id}` listed twice")));
         }
         if !lib.lessons.contains_key(*id) {
+            f.push(Finding::new(CATALOG, format!("lesson `{id}` has no file")));
+        }
+    }
+    // Levels and themes: unique, each with its Fluent strings.
+    let mut seen = BTreeSet::new();
+    for (kind, ids, keys) in [
+        ("level", &cat.levels, &["level-{}", "level-{}-about"][..]),
+        ("theme", &cat.themes, &["theme-{}"][..]),
+    ] {
+        if ids.is_empty() {
+            f.push(Finding::new(CATALOG, format!("no {kind}s")));
+        }
+        for id in ids {
+            if !seen.insert((kind, id.as_str())) {
+                f.push(Finding::new(CATALOG, format!("{kind} `{id}` repeated")));
+            }
+            for key in keys {
+                let key = key.replace("{}", id);
+                for loc in LOCALES {
+                    if !has(loc, &key) {
+                        f.push(Finding::new(
+                            CATALOG,
+                            format!("{kind} `{id}` has no `{key}` message in i18n/{loc}"),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    // Every lesson has a known level and theme, and the list runs level by
+    // level (it is the Jornada's order).
+    let level_rank = |l: &str| cat.levels.iter().position(|x| x == l);
+    let mut last_rank = 0;
+    for e in &cat.lessons {
+        match level_rank(&e.level) {
+            None => f.push(Finding::new(
+                CATALOG,
+                format!("lesson `{}`: unknown level `{}`", e.id, e.level),
+            )),
+            Some(r) if r < last_rank => f.push(Finding::new(
+                CATALOG,
+                format!(
+                    "lesson `{}` (level `{}`) comes after a higher level; list the lessons level by level",
+                    e.id, e.level
+                ),
+            )),
+            Some(r) => last_rank = r,
+        }
+        if !cat.themes.contains(&e.theme) {
             f.push(Finding::new(
-                "skill-tree.toml",
-                format!("lesson `{id}` has no file"),
+                CATALOG,
+                format!("lesson `{}`: unknown theme `{}`", e.id, e.theme),
             ));
         }
     }
@@ -312,43 +360,27 @@ pub fn check_library(lib: &Library, content: &Files, i18n: &Files) -> Vec<Findin
             }
         }
     }
-    let mut track_ids = BTreeSet::new();
-    for t in &lib.tree.tracks {
-        if !track_ids.insert(t.id.as_str()) {
-            f.push(Finding::new(
-                "skill-tree.toml",
-                format!("track `{}` repeated", t.id),
-            ));
-        }
-        for loc in LOCALES {
-            if !has(loc, &format!("track-{}", t.id)) {
-                f.push(Finding::new(
-                    "skill-tree.toml",
-                    format!(
-                        "track `{}` has no `track-{}` message in i18n/{loc}",
-                        t.id, t.id
-                    ),
-                ));
-            }
-        }
-    }
     for (id, by_locale) in &lib.lessons {
         let Some(l) = by_locale.get(SOURCE_LOCALE) else {
             continue;
         };
         let path = format!("lessons/{SOURCE_LOCALE}/{id}.md");
         let Some(&pos) = position.get(id.as_str()) else {
-            f.push(Finding::new(&path, "not in skill-tree.toml"));
+            f.push(Finding::new(&path, format!("not in {CATALOG}")));
             continue;
         };
+        let rank = |id: &str| cat.entry(id).and_then(|e| level_rank(&e.level));
         for p in &l.meta.prerequisites {
             match position.get(p.as_str()) {
                 None if !lib.lessons.contains_key(p) => {
                     f.push(Finding::new(&path, format!("missing prerequisite `{p}`")))
                 }
+                Some(_) if matches!((rank(p), rank(id)), (Some(a), Some(b)) if a > b) => f.push(
+                    Finding::new(&path, format!("prerequisite `{p}` is in a higher level")),
+                ),
                 Some(&pp) if pp >= pos => f.push(Finding::new(
                     &path,
-                    format!("prerequisite `{p}` comes later in the skill tree"),
+                    format!("prerequisite `{p}` comes later in the catalog"),
                 )),
                 _ => {}
             }
@@ -377,7 +409,7 @@ pub fn check_library(lib: &Library, content: &Files, i18n: &Files) -> Vec<Findin
     }
     if let Some(cycle) = find_cycle(lib) {
         f.push(Finding::new(
-            "skill-tree.toml",
+            CATALOG,
             format!("prerequisite cycle: {}", cycle.join(" → ")),
         ));
     }

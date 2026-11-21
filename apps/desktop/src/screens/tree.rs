@@ -1,34 +1,108 @@
-//! Skill tree (spec §15.1 item 2): tracks and lessons with lock state.
+//! The lessons screen (spec §15.1 item 2, D23): the catalog grouped by
+//! level or by theme ("Ver por"), each lesson with its lock state.
 
-use gpui::{AnyElement, Context, FontWeight, div, prelude::*, px};
+use gpui::{AnyElement, Context, Div, FontWeight, div, prelude::*, px};
 use taful_app::fmt;
+use taful_app::lessons::{LessonGroup, LessonList, ViewBy};
 use taful_app::model::LessonState;
 
 use crate::screen::Screen;
 use crate::shell::Shell;
-use crate::widgets::{button, card, muted, progress, title};
+use crate::widgets::{button, card, muted, progress, segment, segmented, title};
 
 impl Shell {
+    /// How the lessons screen groups the catalog, as last picked.
+    pub(crate) fn view_by(&mut self) -> ViewBy {
+        if self.lesson.view_by.is_none() {
+            self.lesson.view_by = Some(self.app.lesson_view());
+        }
+        self.lesson.view_by.unwrap_or_default()
+    }
+
+    /// Switches the lessons screen's grouping and remembers it.
+    pub(crate) fn set_view_by(&mut self, view: ViewBy) {
+        self.lesson.view_by = Some(view);
+        if let Err(e) = self.app.set_lesson_view(view) {
+            eprintln!("taful: saving the lessons view failed: {e}");
+        }
+    }
+
+    /// The catalog grouped as the lessons screen shows it now.
+    pub(crate) fn lesson_list(&mut self) -> taful_app::Result<LessonList> {
+        let view = self.view_by();
+        self.app.lesson_list(view, self.ui.i18n.locale())
+    }
+
+    /// The "Ver por" segments, one per view, in the style's own segmented
+    /// control (without the label: each style places it).
+    pub(crate) fn view_switch(&mut self, cx: &mut Context<Self>) -> Div {
+        let current = self.view_by();
+        let (ui, p) = (self.ui.clone(), self.palette);
+        segmented(&ui, &p).children(ViewBy::ALL.into_iter().map(|view| {
+            segment(
+                ("tree_view", view as usize),
+                ui.i18n.tr(view.label_key()),
+                view == current,
+                &ui,
+                &p,
+            )
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.set_view_by(view);
+                cx.notify();
+            }))
+        }))
+    }
+
+    /// Whether the user unfolded a group (Classic and Salão keep groups
+    /// without open lessons folded until clicked).
+    pub(crate) fn group_expanded(&self, group: &LessonGroup) -> bool {
+        self.lesson.expanded.contains(&group.title_key())
+    }
+
+    /// Opens a folded group, or folds an open one.
+    pub(crate) fn toggle_group(&mut self, group: &LessonGroup) {
+        let key = group.title_key();
+        if !self.lesson.expanded.remove(&key) {
+            self.lesson.expanded.insert(key);
+        }
+    }
+
     /// Classic's lessons tree.
     pub(crate) fn tree_classic(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let (ui, p) = (self.ui.clone(), self.palette);
         let t = &ui.theme;
         let loc = ui.i18n.locale();
-        let tracks = match self.app.skill_tree(loc) {
-            Ok(tr) => tr,
+        let list = match self.lesson_list() {
+            Ok(l) => l,
             Err(e) => return muted(e.to_string(), &ui, &p).into_any_element(),
         };
-        // The first available lesson anywhere is "next".
-        let next = tracks
-            .iter()
-            .flat_map(|tr| tr.lessons.iter())
-            .find(|l| l.state == LessonState::Available)
-            .map(|l| l.id.clone());
-        let mut col = div().flex().flex_col().gap(px(t.spacing.lg));
+        let next = list.next.clone();
+        let switch = div()
+            .flex()
+            .items_center()
+            .gap(px(t.spacing.md))
+            .child(muted(ui.i18n.tr("tree-view-by"), &ui, &p))
+            .child(self.view_switch(cx));
+        let mut col = div().flex().flex_col().gap(px(t.spacing.lg)).child(switch);
         let mut n = 0usize;
-        for track in tracks {
+        let mut g = 0usize;
+        for track in list.groups {
+            g += 1;
             let total = track.lessons.len();
             if total == 0 {
+                // A level without lessons yet: its title and "em breve".
+                col = col.child(
+                    card(&ui, &p).child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .child(
+                                title(ui.i18n.tr(&track.title_key()), &ui).text_color(p.text_muted),
+                            )
+                            .child(muted(ui.i18n.tr("tree-soon"), &ui, &p)),
+                    ),
+                );
                 continue;
             }
             let done = track
@@ -37,7 +111,7 @@ impl Shell {
                 .filter(|l| l.state == LessonState::Done)
                 .count();
             let open = track.lessons.iter().any(|l| l.state != LessonState::Locked);
-            let expanded = open || self.lesson.expanded.contains(&track.id);
+            let expanded = open || self.group_expanded(&track);
             let header = div()
                 .flex()
                 .flex_col()
@@ -48,7 +122,7 @@ impl Shell {
                         .items_center()
                         .justify_between()
                         .child(
-                            title(ui.i18n.tr(&format!("track-{}", track.id)), &ui)
+                            title(ui.i18n.tr(&track.title_key()), &ui)
                                 .when(!open, |d| d.text_color(p.text_muted)),
                         )
                         .child(muted(
@@ -70,14 +144,14 @@ impl Shell {
             if !expanded {
                 // A locked track is one line, not a wall of grey rows; a
                 // click expands it to preview its lessons.
-                let track_id = track.id.clone();
+                let group = track.clone();
                 c = c.child(
                     div()
-                        .id(("track", n))
+                        .id(("track", g))
                         .cursor_pointer()
                         .hover(|s| s.opacity(0.8))
                         .on_click(cx.listener(move |this, _, _, cx| {
-                            this.lesson.expanded.insert(track_id.clone());
+                            this.toggle_group(&group);
                             cx.notify();
                         }))
                         .child(muted(

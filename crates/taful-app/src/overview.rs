@@ -1,5 +1,5 @@
 //! What a home screen with more than the basics shows (the Salão visual
-//! style, D19): the next lesson with its place in its track, the calc
+//! style, D19): the next lesson with its place in its level, the calc
 //! trainer's pace and the week's table decisions by grade.
 
 use taful_core::grading::Grade;
@@ -8,18 +8,18 @@ use taful_store::{LessonState, Millis};
 use crate::i18n::Locale;
 use crate::{App, Home, Result};
 
-/// The next lesson and where it sits in its track.
+/// The next lesson and where it sits in its level.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NextLesson {
     pub id: String,
     pub title: String,
-    /// The track's id (title: Fluent `track-<id>`).
-    pub track: String,
-    /// Its place in the track, from 1.
+    /// The level's id (title: Fluent `level-<id>`).
+    pub level: String,
+    /// Its place in the level, from 1.
     pub number: usize,
     pub minutes: Option<u32>,
-    /// The state of every lesson of the track, in order.
-    pub track_states: Vec<LessonState>,
+    /// The state of every lesson of the level, in order.
+    pub level_states: Vec<LessonState>,
 }
 
 /// The home screen's numbers.
@@ -69,7 +69,7 @@ pub fn date_parts(ms: Millis) -> Option<(u8, u8, u8)> {
 
 impl App {
     pub fn overview(&self, locale: Locale) -> Result<Overview> {
-        let tree = self.skill_tree(locale)?;
+        let tree = self.journey(locale)?;
         let recent = self
             .store
             .recent_calc_attempts(crate::services::HOME_CALC_WINDOW)?;
@@ -83,10 +83,10 @@ impl App {
             Some(NextLesson {
                 id: l.id.clone(),
                 title: l.title.clone(),
-                track: t.id.clone(),
+                level: t.id.clone(),
                 number: at + 1,
                 minutes: l.minutes,
-                track_states: t.lessons.iter().map(|l| l.state).collect(),
+                level_states: t.lessons.iter().map(|l| l.state).collect(),
             })
         });
         let calc_mean_ms = (!recent.is_empty()).then(|| {
@@ -128,9 +128,10 @@ mod tests {
             Some(&next.id),
             o.home.next_lesson.as_ref().map(|(id, _)| id)
         );
-        assert_eq!(next.track_states[0], LessonState::Available);
+        assert_eq!(next.level, "fundamentos");
+        assert_eq!(next.level_states[0], LessonState::Available);
         assert!(
-            next.track_states[1..]
+            next.level_states[1..]
                 .iter()
                 .all(|s| *s == LessonState::Locked)
         );

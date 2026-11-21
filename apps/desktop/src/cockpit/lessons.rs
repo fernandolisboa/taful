@@ -1,11 +1,12 @@
 //! Cockpit's lessons: a summary strip (overall progress, time left, quiz
-//! average, the next lesson) over one column per track.
+//! average, the next lesson) over one column per level or theme ("Ver por"
+//! sits in the status bar).
 
 use gpui::{
     AnyElement, Context, Div, FontWeight, div, linear_color_stop, linear_gradient, prelude::*, px,
     relative,
 };
-use taful_app::lessons::{LessonCard, TrackView};
+use taful_app::lessons::{GroupKind, LessonCard, LessonGroup, ViewBy};
 use taful_app::model::LessonState;
 
 use super::kit::{self, Btn, GAP, MONO, STRONG, btn, figure, head, icon, label, mono};
@@ -29,6 +30,8 @@ const NEXT_H: f32 = 72.;
 /// The narrowest a track's column gets: what the design gives it at 1280.
 const COLUMN_MIN: f32 = 224.;
 const ROW_H: f32 = 54.;
+/// A level without lessons yet ("em breve"), when the columns share a row.
+const SOON_W: f32 = 190.;
 
 /// The lessons tree's body.
 pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
@@ -41,26 +44,54 @@ pub fn lessons(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             .child(ui.i18n.tr("cockpit-kpi-empty"))
             .into_any_element();
     };
-    let tracks: Vec<&TrackView> = data
-        .tracks
-        .iter()
-        .filter(|t| !t.lessons.is_empty())
-        .collect();
-    let n = tracks.len().max(1);
-    let per_row = per_row(w, n);
-    let wraps = per_row < n;
-    let column_w = (w - (per_row - 1) as f32 * GAP) / per_row as f32;
-    let column_w = if wraps { column_w.floor() } else { column_w };
+    let groups = &data.summary.list.groups;
     let next = data.summary.next.as_ref().map(|n| n.id.as_str());
-    let mut columns = div()
-        .flex()
-        .flex_none()
-        .items_start()
-        .gap(px(GAP))
-        .when(wraps, |d| d.flex_wrap().w(px(w)));
-    for (k, track) in tracks.into_iter().enumerate() {
-        columns = columns.child(column(&ui, &pal, track, k, next, column_w, cx));
-    }
+    let first = groups.iter().position(|g| !g.is_soon());
+    // Levels without lessons yet ("em breve") take narrow columns when
+    // everything fits on one row; otherwise the groups with lessons wrap
+    // into even rows and the empty ones follow on a short row of their own.
+    let (real, soon): (Vec<_>, Vec<_>) = groups.iter().enumerate().partition(|(_, g)| !g.is_soon());
+    let one_row = real.len() as f32 * COLUMN_MIN
+        + soon.len() as f32 * SOON_W
+        + groups.len().saturating_sub(1) as f32 * GAP
+        <= w;
+    let row = |items: &[(usize, &LessonGroup)], col_w: f32, cx: &mut Context<Shell>| {
+        let mut r = div().flex().flex_none().items_start().gap(px(GAP));
+        for (k, g) in items {
+            r = r.child(column(
+                &ui,
+                &pal,
+                g,
+                (*k, first == Some(*k)),
+                next,
+                col_w,
+                cx,
+            ));
+        }
+        r
+    };
+    let columns = if one_row && !real.is_empty() {
+        let full_w =
+            (w - (groups.len() - 1) as f32 * GAP - soon.len() as f32 * SOON_W) / real.len() as f32;
+        let mut r = div().flex().flex_none().items_start().gap(px(GAP));
+        for (k, g) in groups.iter().enumerate() {
+            let cw = if g.is_soon() { SOON_W } else { full_w };
+            r = r.child(column(&ui, &pal, g, (k, first == Some(k)), next, cw, cx));
+        }
+        r
+    } else {
+        let mut block = div().flex().flex_col().flex_none().gap(px(GAP));
+        for items in [&real, &soon] {
+            if items.is_empty() {
+                continue;
+            }
+            let n = items.len();
+            let per = per_row(w, n);
+            let col_w = ((w - (per - 1) as f32 * GAP) / per as f32).floor();
+            block = block.child(row(items, col_w, cx).when(per < n, |d| d.flex_wrap().w(px(w))));
+        }
+        block
+    };
     let page = div().flex().flex_col().gap(px(GAP)).w(px(w));
     if w < SUMMARY_MIN {
         return page
@@ -195,24 +226,17 @@ fn summary(
     let narrow = progress_w < 520.;
     // Every lesson as a block, one group per track.
     let all = div().flex().gap(px(8.)).mt(px(10.)).children(
-        data.tracks
+        data.summary
+            .list
+            .groups
             .iter()
             .filter(|t| !t.lessons.is_empty())
             .map(|t| {
-                let done = t
-                    .lessons
-                    .iter()
-                    .filter(|l| l.state == LessonState::Done)
-                    .count();
-                let current = t
-                    .lessons
-                    .iter()
-                    .position(|l| s.next.as_ref().is_some_and(|n| n.id == l.id));
                 div()
                     .flex()
                     .gap(px(2.))
                     .children(
-                        kit::steps(done, current, t.lessons.len(), pal)
+                        kit::steps(&t.lessons, s.next.as_ref().map(|n| n.id.as_str()), pal)
                             .into_iter()
                             .map(|b| {
                                 let b = b.h(px(12.)).rounded(px(1.5));
@@ -282,12 +306,13 @@ fn summary(
         })
 }
 
-/// One track: its lessons in order, each with its state.
+/// One group: its lessons in order, each with its state. `first` marks
+/// the first group with lessons (the tour points at it).
 fn column(
     ui: &Ui,
     pal: &Pal,
-    track: &TrackView,
-    k: usize,
+    track: &LessonGroup,
+    (k, first): (usize, bool),
     next: Option<&str>,
     w: f32,
     cx: &mut Context<Shell>,
@@ -303,10 +328,10 @@ fn column(
     let mut col = kit::panel(pal)
         .relative()
         .w(px(w))
-        .when(k == 0, |d| d.child(crate::tour::anchor("tree_first")))
+        .when(first, |d| d.child(crate::tour::anchor("tree_first")))
         .child(head(
-            &i18n.tr(&format!("track-{}", track.id)),
-            Some(mono(format!("{done}/{total}")).into_any_element()),
+            &i18n.tr(&track.title_key()),
+            (!track.is_soon()).then(|| mono(format!("{done}/{total}")).into_any_element()),
             open,
             pal,
         ))
@@ -318,6 +343,35 @@ fn column(
                     .bg(pal.teal),
             ),
         );
+    if track.is_soon() {
+        // A level without lessons yet.
+        let about = (track.kind == GroupKind::Level)
+            .then(|| i18n.tr(&format!("{}-about", track.title_key())));
+        col = col.child(
+            div()
+                .flex()
+                .flex_col()
+                .justify_center()
+                .h(px(ROW_H))
+                .px(px(12.))
+                .child(
+                    div()
+                        .text_size(px(12.5))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(pal.locked_text)
+                        .child(i18n.tr("tree-soon")),
+                )
+                .children(about.map(|a| {
+                    div()
+                        .mt(px(2.))
+                        .font_family(MONO)
+                        .text_size(px(10.))
+                        .text_color(pal.dim)
+                        .truncate()
+                        .child(a)
+                })),
+        );
+    }
     for (i, lesson) in track.lessons.iter().enumerate() {
         let is_next = next == Some(lesson.id.as_str());
         col = col.child(
@@ -442,6 +496,54 @@ fn row(
         .child(state)
 }
 
+/// "Ver por" for the status bar: a label and one small toggle per view.
+pub(super) fn view_switch(shell: &mut Shell, pal: &Pal, cx: &mut Context<Shell>) -> Div {
+    let current = shell.view_by();
+    let i18n = &shell.ui.i18n;
+    let item = |view: ViewBy| {
+        let on = view == current;
+        div()
+            .id(("cockpit_view", view as usize))
+            .flex()
+            .items_center()
+            .h_full()
+            .px(px(10.))
+            .rounded(px(3.))
+            .text_size(px(12.))
+            .font_weight(FontWeight::MEDIUM)
+            .cursor_pointer()
+            .when(on, |d| d.bg(pal.raised).text_color(pal.amber))
+            .when(!on, |d| {
+                let hover = pal.text;
+                d.text_color(pal.muted).hover(move |s| s.text_color(hover))
+            })
+            .child(i18n.tr(view.label_key()))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.set_view_by(view);
+                cx.notify();
+            }))
+    };
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(8.))
+        .ml(px(10.))
+        .child(label(&i18n.tr("tree-view-by"), pal))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .h(px(26.))
+                .p(px(2.))
+                .gap(px(2.))
+                .rounded(px(4.))
+                .border_1()
+                .border_color(pal.line2)
+                .children(ViewBy::ALL.into_iter().map(item)),
+        )
+}
+
 // The summary's one-row arrangement fits the width it was designed for.
 const _: () = assert!(SUMMARY_MIN <= super::frame::WIDE_ROOM);
 
@@ -451,8 +553,10 @@ mod tests {
 
     #[test]
     fn columns_wrap_into_even_rows() {
-        // Five tracks, as shipped: one row from the 1280 px design up.
+        // Five tracks: one row from the 1280 px design up.
         assert_eq!(per_row(super::super::frame::WIDE_ROOM, 5), 5);
+        // Six themes wrap into two even rows at 1280, not five and one.
+        assert_eq!(per_row(super::super::frame::WIDE_ROOM, 6), 3);
         assert_eq!(per_row(1484., 5), 5);
         // The smallest window: three and two, not four and one.
         let least = crate::MIN_WINDOW.0 - super::super::frame::RAIL - 2. * kit::EDGE;

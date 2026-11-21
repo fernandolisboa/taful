@@ -16,8 +16,8 @@ tour-home-continue-body = The next lesson to read. Each quiz you pass unlocks th
 tour-home-stats-title = Your daily routine
 tour-home-stats-body = Reviews bring back what you got wrong, at the right time. Mental math trains the numbers you need at the table.
 
-tour-tree-track-title = Tracks
-tour-tree-track-body = Lessons come in tracks, in order. Locked lessons can still be read; only their quiz waits.
+tour-tree-track-title = Levels and themes
+tour-tree-track-body = Lessons go from zero to pro, level by level. "View by" regroups them by theme. Locked lessons can still be read; only their quiz waits.
 tour-tree-next-title = Start here
 tour-tree-next-body = The highlighted lesson is the next one. Passing its quiz unlocks the following lessons.
 

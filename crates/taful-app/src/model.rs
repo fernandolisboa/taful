@@ -9,7 +9,9 @@ pub use taful_core::srs::Rating;
 pub use taful_store::{LessonState, Millis};
 
 pub use crate::calc_trainer::{CalcOutcome, CalcRound};
-pub use crate::lessons::{LessonCard, OpenLesson, QuizResult, QuizView, TrackView};
+pub use crate::lessons::{
+    LessonCard, LessonGroup, LessonList, OpenLesson, QuizResult, QuizView, ViewBy,
+};
 pub use crate::review_session::ReviewPrompt;
 pub use taful_core::action::Street;
 pub use taful_core::grading::Grade;

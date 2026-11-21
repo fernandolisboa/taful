@@ -62,6 +62,10 @@ pub const ASSETS: &[(&str, &[u8])] = &[
         include_bytes!("../../assets/baralho/icons/star.svg"),
     ),
     (
+        "baralho/icons/crown.svg",
+        include_bytes!("../../assets/baralho/icons/crown.svg"),
+    ),
+    (
         "baralho/icons/lock.svg",
         include_bytes!("../../assets/baralho/icons/lock.svg"),
     ),

@@ -64,15 +64,16 @@ baralho-home-practice-none-title = Training table
 baralho-home-practice-none-go = Go to the table
 baralho-home-calc = Calculate
 baralho-home-calc-body = { $secs } s per exercise on average, { $accuracy }% right. The target is { $target } s.
-baralho-home-tracks = Your tracks · { $done } of { $total } lessons
+baralho-home-tracks = Your journey · { $done } of { $total } lessons
 baralho-home-all-lessons-link = See all lessons →
 baralho-track-done = Completed
 baralho-track-open = In progress
-baralho-track-locked = Opens after the previous track
+baralho-track-locked = Opens as you finish what comes before
 
 ## Lessons
 
-baralho-lessons-body = Each track is a suit. A finished lesson turns face up; the closed ones open in order.
+baralho-lessons-body = Each level is a suit. A finished lesson turns face up; the closed ones open as you go.
+baralho-lessons-body-themes = Each theme is a suit. A finished lesson turns face up; the closed ones open as you go.
 baralho-lessons-total = of { $total } lessons
 baralho-lessons-count = { $done } of { $total }
 baralho-lessons-track-done = completed

@@ -1,4 +1,4 @@
-//! Loading the content tree: skill tree, lessons per locale, quizzes.
+//! Loading the content tree: the lesson catalog, lessons per locale, quizzes.
 //!
 //! The loader works over [`Files`], an in-memory map of relative paths to
 //! text, so the app can load content embedded in the binary and the checks
@@ -20,6 +20,9 @@ use crate::quiz::Quiz;
 pub const LOCALES: [&str; 2] = ["en-US", "pt-BR"];
 /// Where content is authored (§12.1).
 pub const SOURCE_LOCALE: &str = "en-US";
+
+/// The catalog file, relative to the content root.
+pub const CATALOG: &str = "catalog.toml";
 
 /// Text files by path relative to their root, `/`-separated.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -118,35 +121,44 @@ pub fn load_profiles(files: &Files) -> (BTreeMap<String, Profile>, Vec<Finding>)
     (out, findings)
 }
 
-/// `content/skill-tree.toml`.
+/// `content/catalog.toml` (D23): the levels and themes in display order and
+/// every lesson with its level and theme, in Jornada order.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct SkillTree {
-    pub tracks: Vec<Track>,
+pub struct Catalog {
+    /// Level ids, from zero to pro. Title: Fluent `level-<id>`.
+    pub levels: Vec<String>,
+    /// Theme ids. Title: Fluent `theme-<id>`.
+    pub themes: Vec<String>,
+    /// Every lesson, level by level and in order within a level.
+    pub lessons: Vec<Entry>,
 }
 
-/// A group of lessons in order. Its title is the Fluent message `track-<id>`.
+/// One lesson's place in the catalog.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Track {
+pub struct Entry {
     pub id: String,
-    pub lessons: Vec<String>,
+    pub level: String,
+    pub theme: String,
 }
 
-impl SkillTree {
-    /// Every lesson id in tree order.
+impl Catalog {
+    /// Every lesson id in Jornada order.
     pub fn order(&self) -> Vec<&str> {
-        self.tracks
-            .iter()
-            .flat_map(|t| t.lessons.iter().map(String::as_str))
-            .collect()
+        self.lessons.iter().map(|e| e.id.as_str()).collect()
+    }
+
+    /// A lesson's catalog entry.
+    pub fn entry(&self, id: &str) -> Option<&Entry> {
+        self.lessons.iter().find(|e| e.id == id)
     }
 }
 
 /// The loaded content.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Library {
-    pub tree: SkillTree,
+    pub catalog: Catalog,
     /// Lesson id → locale → lesson.
     pub lessons: BTreeMap<String, BTreeMap<String, Lesson>>,
     /// Quiz id → quiz.
@@ -160,12 +172,12 @@ impl Library {
     pub fn load(files: &Files) -> (Library, Vec<Finding>) {
         let mut findings = Vec::new();
         let mut lib = Library::default();
-        match files.get("skill-tree.toml") {
-            Some(text) => match toml::from_str::<SkillTree>(text) {
-                Ok(t) => lib.tree = t,
-                Err(e) => findings.push(Finding::new("skill-tree.toml", e.to_string())),
+        match files.get(CATALOG) {
+            Some(text) => match toml::from_str::<Catalog>(&text.replace("\r\n", "\n")) {
+                Ok(c) => lib.catalog = c,
+                Err(e) => findings.push(Finding::new(CATALOG, e.to_string())),
             },
-            None => findings.push(Finding::new("skill-tree.toml", "missing")),
+            None => findings.push(Finding::new(CATALOG, "missing")),
         }
         for locale in LOCALES {
             let dir = format!("lessons/{locale}");

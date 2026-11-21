@@ -1,14 +1,15 @@
-//! Lessons: one row per track, one playing card per lesson. A finished
+//! Lessons: one row per level (or theme), one playing card per lesson. A finished
 //! lesson is a face-up card with a check, the next one is the wide card
 //! with the button, and locked lessons lie face down.
 
 use gpui::{AnyElement, Context, Div, div, prelude::*};
+use taful_app::lessons::{GroupKind, LessonCard, ViewBy};
 use taful_app::model::LessonState;
 
-use super::chrome::{MARGIN, heading};
+use super::chrome::{MARGIN, NAV_H, heading};
 use super::kit::{self, Fill, Pip, Raised};
 use super::paint::{self, Tex};
-use super::{Bx, CANVAS_W, Tone, bx, typo, u};
+use super::{Bx, CANVAS_H, CANVAS_W, Tone, bx, typo, u};
 use crate::screen::Screen;
 use crate::shell::Shell;
 use crate::theme::alpha;
@@ -144,13 +145,46 @@ fn locked_card(n: usize, title: &str, bx: &Bx) -> Div {
     .sized(CARD_W, CARD_H, face)
 }
 
+/// A level without lessons yet: its label alone, on a shorter row.
+const SOON_STEP: f32 = 80.;
+const SOON_H: f32 = 56.;
+/// The most cards may overlap on one line before the row takes two.
+const MAX_OVERLAP: f32 = 6.;
+/// Room under the last row.
+const BOTTOM: f32 = 40.;
+
+/// How a row's cards go on lines: the cards' widths are split into the
+/// fewest even lines whose cards overlap by `MAX_OVERLAP` at most. Returns
+/// each line's card count and gap.
+fn lines(widths: &[f32], room: f32) -> Vec<(usize, f32)> {
+    let total = widths.len();
+    for n in 1..=total.max(1) {
+        let per = total.div_ceil(n);
+        let mut out = Vec::new();
+        let mut fits = true;
+        for chunk in widths.chunks(per.max(1)) {
+            let natural: f32 = chunk.iter().sum();
+            let gap = if chunk.len() > 1 {
+                GAP.min((room - natural) / (chunk.len() - 1) as f32)
+            } else {
+                GAP
+            };
+            fits &= gap >= -MAX_OVERLAP;
+            out.push((chunk.len(), gap));
+        }
+        if fits || per == 1 {
+            return out;
+        }
+    }
+    vec![(total, GAP)]
+}
+
 pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
     let (ui, p) = (shell.ui.clone(), shell.palette);
     let bx = bx(&ui);
     let i18n = &ui.i18n;
-    let loc = i18n.locale();
-    let tracks = match shell.app.skill_tree(loc) {
-        Ok(t) => t,
+    let list = match shell.lesson_list() {
+        Ok(l) => l,
         Err(e) => {
             return typo::text(15., 400)
                 .on(div())
@@ -161,78 +195,117 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                 .into_any_element();
         }
     };
-    let lessons = || tracks.iter().flat_map(|t| t.lessons.iter());
-    let done_all = lessons().filter(|l| l.state == LessonState::Done).count();
-    // The first available lesson anywhere is the one to continue.
-    let next = lessons()
-        .find(|l| l.state == LessonState::Available)
-        .map(|l| l.id.clone());
+    let done_all = list.done();
+    let next = list.next.clone();
+    let body = match list.view {
+        ViewBy::Journey => "baralho-lessons-body",
+        ViewBy::Themes => "baralho-lessons-body-themes",
+    };
 
-    let head = heading(
-        i18n.tr("nav-skill-tree"),
-        Some(i18n.tr("baralho-lessons-body").into()),
-        &bx,
-    )
-    .absolute()
-    .left(u(MARGIN))
-    .right(u(MARGIN))
-    .top(u(90.))
-    .child(
-        div()
-            .flex()
-            .flex_none()
-            .items_baseline()
-            .gap(u(6.))
+    // Everything below sits on the page, which scrolls under the
+    // navigation: a top `y` on the canvas is `y - NAV_H` in it.
+    let at = |y: f32| u(y - NAV_H);
+    let head =
+        heading(i18n.tr("nav-skill-tree"), Some(i18n.tr(body).into()), &bx)
+            .absolute()
+            .left(u(MARGIN))
+            .right(u(MARGIN))
+            .top(at(90.))
             .child(
-                typo::disp(26., 800, 30)
-                    .on(div())
-                    .child(done_all.to_string()),
+                div()
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .gap(u(10.))
+                    .mb(u(2.))
+                    .child(
+                        typo::text(14., 600)
+                            .on(div())
+                            .text_color(bx.on_felt_mut)
+                            .child(i18n.tr("tree-view-by")),
+                    )
+                    .child(shell.view_switch(cx)),
             )
             .child(
-                typo::text(14., 600)
-                    .on(div())
-                    .text_color(bx.on_felt_mut)
-                    .child(i18n.tr_args(
-                        "baralho-lessons-total",
-                        &[("total", lessons().count().into())],
-                    )),
-            ),
-    );
+                div()
+                    .flex()
+                    .flex_none()
+                    .items_baseline()
+                    .gap(u(6.))
+                    .ml(u(18.))
+                    .child(
+                        typo::disp(26., 800, 30)
+                            .on(div())
+                            .child(done_all.to_string()),
+                    )
+                    .child(
+                        typo::text(14., 600)
+                            .on(div())
+                            .text_color(bx.on_felt_mut)
+                            .child(i18n.tr_args(
+                                "baralho-lessons-total",
+                                &[("total", list.total().into())],
+                            )),
+                    ),
+            );
 
-    let mut page = div().size_full().child(head);
-    let mut row = 0usize;
+    let mut page = div().relative().w(u(CANVAS_W)).child(head);
+    let mut y = ROW_TOP;
     let mut n = 0usize;
-    for track in &tracks {
+    // Groups with lessons take the suits in order, as on the home; an
+    // empty level shows a lock instead.
+    let mut suit = 0usize;
+    let mut first = true;
+    for track in &list.groups {
         let total = track.lessons.len();
-        if total == 0 {
-            continue;
+        let soon = track.is_soon();
+        let pip = Pip::TRACKS[suit % Pip::TRACKS.len()];
+        if !soon {
+            suit += 1;
         }
-        let pip = Pip::TRACKS[row % Pip::TRACKS.len()];
-        let tone = pip.tone(&bx, &p);
-        let done = track
-            .lessons
-            .iter()
-            .filter(|l| l.state == LessonState::Done)
-            .count();
-        let open = track.lessons.iter().any(|l| l.state != LessonState::Locked);
-        let has_next = track
-            .lessons
-            .iter()
-            .any(|l| next.as_deref() == Some(l.id.as_str()));
-        let count = i18n.tr_args(
-            "baralho-lessons-count",
-            &[("done", done.into()), ("total", total.into())],
-        );
-        let state = i18n.tr(if done == total {
-            "baralho-lessons-track-done"
-        } else if done > 0 || has_next {
-            "baralho-lessons-track-open"
-        } else if open {
-            "baralho-lessons-track-ready"
+        let tone = if soon {
+            bx.on_felt_mut
         } else {
-            "baralho-lessons-track-locked"
-        });
+            pip.tone(&bx, &p)
+        };
+        let done = track.done();
+        let has_next = track.lessons.iter().any(|l| list.is_next(&l.id));
+        let open = track.lessons.iter().any(|l| l.state != LessonState::Locked);
         let in_progress = done < total && (done > 0 || has_next);
+        let detail = if soon {
+            let mut text = i18n.tr("tree-soon");
+            if track.kind == GroupKind::Level {
+                text = format!(
+                    "{text} · {}",
+                    i18n.tr(&format!("{}-about", track.title_key()))
+                );
+            }
+            div().child(text)
+        } else {
+            let count = i18n.tr_args(
+                "baralho-lessons-count",
+                &[("done", done.into()), ("total", total.into())],
+            );
+            let state = i18n.tr(if done == total {
+                "baralho-lessons-track-done"
+            } else if done > 0 || has_next {
+                "baralho-lessons-track-open"
+            } else if open {
+                "baralho-lessons-track-ready"
+            } else {
+                "baralho-lessons-track-locked"
+            });
+            div()
+                .flex()
+                .child(
+                    div()
+                        .when(in_progress, |d| {
+                            d.text_color(bx.amber).font_weight(gpui::FontWeight::BOLD)
+                        })
+                        .child(count),
+                )
+                .child(format!(" · {state}"))
+        };
         let label = div()
             .flex()
             .flex_none()
@@ -241,7 +314,7 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
             .w(u(LABEL_W))
             .child(
                 Raised {
-                    face: bx.cream,
+                    face: if soon { bx.back_locked } else { bx.cream },
                     edge: bx.deep,
                     radius: 25.,
                     border: 2.5,
@@ -254,7 +327,11 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .child(kit::icon(pip.path(), 26., tone)),
+                        .child(kit::icon(
+                            if soon { kit::LOCK } else { pip.path() },
+                            26.,
+                            tone,
+                        )),
                 ),
             )
             .child(
@@ -266,159 +343,216 @@ pub fn view(shell: &mut Shell, cx: &mut Context<Shell>) -> AnyElement {
                         typo::disp(20., 800, 25)
                             .lh(1.08)
                             .on(div())
-                            .child(i18n.tr(&format!("track-{}", track.id))),
+                            .when(soon, |d| d.text_color(bx.on_felt_mut))
+                            .child(i18n.tr(&track.title_key())),
                     )
                     .child(
                         typo::text(13., 600)
                             .on(div())
-                            .flex()
                             .mt(u(3.))
                             .text_color(bx.on_felt_mut)
-                            .child(
-                                div()
-                                    .when(in_progress, |d| {
-                                        d.text_color(bx.amber).font_weight(gpui::FontWeight::BOLD)
-                                    })
-                                    .child(count),
-                            )
-                            .child(format!(" · {state}")),
+                            .child(detail),
                     ),
             );
+        if soon {
+            page = page.child(
+                div()
+                    .absolute()
+                    .left(u(MARGIN))
+                    .top(at(y))
+                    .h(u(SOON_H))
+                    .flex()
+                    .items_center()
+                    .opacity(0.72)
+                    .child(label),
+            );
+            y += SOON_STEP;
+            continue;
+        }
 
-        // Cards overlap a little when a long track holds the wide card.
-        let natural = track
+        // Cards overlap a little when a long row holds the wide card; past
+        // that the row takes a second line.
+        let widths: Vec<f32> = track
             .lessons
             .iter()
             .map(|l| {
-                if next.as_deref() == Some(l.id.as_str()) {
+                if list.is_next(&l.id) {
                     NEXT_W + 2. * NEXT_MARGIN
                 } else {
                     CARD_W
                 }
             })
-            .sum::<f32>();
+            .collect();
         let room = CANVAS_W - MARGIN - LABEL_W - RIGHT;
-        let gap = if total > 1 {
-            GAP.min((room - natural) / (total - 1) as f32)
-        } else {
-            GAP
-        };
-        let mut cards = div().flex().items_center().gap(u(gap));
-        for (k, lesson) in track.lessons.iter().enumerate() {
-            n += 1;
-            let id = lesson.id.clone();
-            let open_it = cx.listener(move |this: &mut Shell, _: &gpui::ClickEvent, window, cx| {
-                this.open_lesson(&id);
-                this.select(Screen::Lesson, window, cx);
-            });
-            let card = if next.as_deref() == Some(lesson.id.as_str()) {
-                let meta = match lesson.minutes {
-                    Some(m) => i18n.tr_args("baralho-lessons-next-meta", &[("minutes", m.into())]),
-                    None => i18n.tr("baralho-lessons-next-meta-plain"),
-                };
-                let face = div()
-                    .flex()
-                    .flex_col()
-                    .py(u(10.))
-                    .px(u(12.))
-                    .child(crate::tour::anchor("tree_next"))
-                    .child(
-                        div()
-                            .flex()
-                            .gap(u(10.))
-                            .child(index(k + 1, 26., 15., pip, tone, tone).items_center())
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .min_w_0()
-                                    .child(
-                                        typo::disp(20., 800, 30)
-                                            .lh(1.05)
-                                            .on(div())
-                                            .text_color(bx.ink)
-                                            .child(lesson.title.clone()),
-                                    )
-                                    .child(
-                                        typo::text(12., 600)
-                                            .on(div())
-                                            .mt(u(2.))
-                                            .text_color(bx.mut_ink)
-                                            .child(meta),
-                                    ),
-                            ),
-                    )
-                    .child(div().flex_1())
-                    .child(
-                        kit::btn(
-                            ("tree_start", n),
-                            i18n.tr("baralho-lessons-continue"),
-                            Fill::Amber,
-                            true,
+        let lines = lines(&widths, room);
+        let mut column = div().flex().flex_col().gap(u(ROW_STEP - ROW_H));
+        let mut lessons = track.lessons.iter().enumerate();
+        for (count, gap) in &lines {
+            let mut cards = div().flex().items_center().h(u(ROW_H)).gap(u(*gap));
+            for (k, lesson) in lessons.by_ref().take(*count) {
+                n += 1;
+                let id = lesson.id.clone();
+                let open_it =
+                    cx.listener(move |this: &mut Shell, _: &gpui::ClickEvent, window, cx| {
+                        this.open_lesson(&id);
+                        this.select(Screen::Lesson, window, cx);
+                    });
+                let card = if next.as_deref() == Some(lesson.id.as_str()) {
+                    next_card(k, lesson, pip, tone, n, &bx, i18n)
+                } else {
+                    match lesson.state {
+                        LessonState::Locked => locked_card(k + 1, &lesson.title, &bx),
+                        state => open_card(
+                            k + 1,
+                            &lesson.title,
+                            pip,
+                            tone,
+                            (state == LessonState::Done).then_some(p.grade_best),
                             &bx,
-                        )
-                        .w_full(),
-                    );
-                div()
-                    .relative()
-                    .flex_none()
-                    .mx(u(NEXT_MARGIN))
-                    .child(
-                        // The amber halo around the card to continue.
-                        div()
-                            .absolute()
-                            .top(u(-5.))
-                            .left(u(-5.))
-                            .w(u(NEXT_W + 10.))
-                            .h(u(NEXT_H + 10.))
-                            .rounded(u(16.))
-                            .bg(alpha(bx.amber, 0.6)),
-                    )
-                    .child(
-                        Raised {
-                            face: bx.cream_hero,
-                            edge: bx.deep,
-                            radius: 11.,
-                            border: 2.5,
-                            drop: 7.,
-                        }
-                        .sized(NEXT_W, NEXT_H, face.relative())
-                        .relative(),
-                    )
-            } else {
-                match lesson.state {
-                    LessonState::Locked => locked_card(k + 1, &lesson.title, &bx),
-                    state => open_card(
-                        k + 1,
-                        &lesson.title,
-                        pip,
-                        tone,
-                        (state == LessonState::Done).then_some(p.grade_best),
-                        &bx,
-                    ),
-                }
-            };
-            cards = cards.child(
-                card.id(("lesson", n))
-                    .cursor_pointer()
-                    .hover(|s| s.opacity(0.94))
-                    .on_click(open_it),
-            );
+                        ),
+                    }
+                };
+                cards = cards.child(
+                    card.id(("lesson", n))
+                        .cursor_pointer()
+                        .hover(|s| s.opacity(0.94))
+                        .on_click(open_it),
+                );
+            }
+            column = column.child(cards);
         }
 
         page = page.child(
             div()
                 .absolute()
                 .left(u(MARGIN))
-                .top(u(ROW_TOP + row as f32 * ROW_STEP))
-                .h(u(ROW_H))
+                .top(at(y))
                 .flex()
                 .items_center()
-                .when(row == 0, |d| d.child(crate::tour::anchor("tree_first")))
+                .when(first, |d| d.child(crate::tour::anchor("tree_first")))
                 .child(label)
-                .child(cards),
+                .child(column),
         );
-        row += 1;
+        first = false;
+        y += lines.len() as f32 * ROW_STEP;
     }
-    page.into_any_element()
+    // The last row's cards, their drop and a margin under them.
+    let height = (y - (ROW_STEP - ROW_H) + BOTTOM).max(CANVAS_H);
+    div()
+        .id("lessons_page")
+        .absolute()
+        .top(u(NAV_H))
+        .left_0()
+        .right_0()
+        .bottom_0()
+        .overflow_y_scroll()
+        .track_scroll(&shell.scroll)
+        .child(page.h(u(height - NAV_H)))
+        .into_any_element()
+}
+
+/// The wide card of the lesson to continue, with its button.
+fn next_card(
+    k: usize,
+    lesson: &LessonCard,
+    pip: Pip,
+    tone: Tone,
+    n: usize,
+    bx: &Bx,
+    i18n: &taful_app::i18n::Localizer,
+) -> Div {
+    let meta = match lesson.minutes {
+        Some(m) => i18n.tr_args("baralho-lessons-next-meta", &[("minutes", m.into())]),
+        None => i18n.tr("baralho-lessons-next-meta-plain"),
+    };
+    let face = div()
+        .flex()
+        .flex_col()
+        .py(u(10.))
+        .px(u(12.))
+        .child(crate::tour::anchor("tree_next"))
+        .child(
+            div()
+                .flex()
+                .gap(u(10.))
+                .child(index(k + 1, 26., 15., pip, tone, tone).items_center())
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .min_w_0()
+                        .child(
+                            typo::disp(20., 800, 30)
+                                .lh(1.05)
+                                .on(div())
+                                .text_color(bx.ink)
+                                .child(lesson.title.clone()),
+                        )
+                        .child(
+                            typo::text(12., 600)
+                                .on(div())
+                                .mt(u(2.))
+                                .text_color(bx.mut_ink)
+                                .child(meta),
+                        ),
+                ),
+        )
+        .child(div().flex_1())
+        .child(
+            kit::btn(
+                ("tree_start", n),
+                i18n.tr("baralho-lessons-continue"),
+                Fill::Amber,
+                true,
+                bx,
+            )
+            .w_full(),
+        );
+    div()
+        .relative()
+        .flex_none()
+        .mx(u(NEXT_MARGIN))
+        .child(
+            // The amber halo around the card to continue.
+            div()
+                .absolute()
+                .top(u(-5.))
+                .left(u(-5.))
+                .w(u(NEXT_W + 10.))
+                .h(u(NEXT_H + 10.))
+                .rounded(u(16.))
+                .bg(alpha(bx.amber, 0.6)),
+        )
+        .child(
+            Raised {
+                face: bx.cream_hero,
+                edge: bx.deep,
+                radius: 11.,
+                border: 2.5,
+                drop: 7.,
+            }
+            .sized(NEXT_W, NEXT_H, face.relative())
+            .relative(),
+        )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn long_rows_take_even_lines() {
+        let room = CANVAS_W - MARGIN - LABEL_W - RIGHT;
+        let cards = |n: usize| vec![CARD_W; n];
+        // The mockup's longest row (12) stays on one line, overlap-free.
+        assert_eq!(lines(&cards(12), room).len(), 1);
+        assert!(lines(&cards(12), room)[0].1 >= 0.);
+        // A row that would overlap by more than a few pixels splits evenly.
+        let sixteen = lines(&cards(16), room);
+        assert_eq!(sixteen.iter().map(|l| l.0).collect::<Vec<_>>(), [8, 8]);
+        let mut with_next = cards(14);
+        with_next[3] = NEXT_W + 2. * NEXT_MARGIN;
+        assert_eq!(lines(&with_next, room).len(), 2);
+        assert_eq!(lines(&[], room).len(), 0);
+    }
 }

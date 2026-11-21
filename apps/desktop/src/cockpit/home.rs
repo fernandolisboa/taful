@@ -684,18 +684,15 @@ fn tracks(ui: &Ui, pal: &Pal, lessons: &Lessons, w: f32, cx: &mut Context<Shell>
             .text_color(pal.muted)
             .child(i18n.tr("home-lesson-none")),
     };
-    let last = lessons.tracks.len().saturating_sub(1);
-    let rows = lessons.tracks.iter().enumerate().map(|(i, track)| {
+    let levels = &lessons.summary.levels;
+    let last = levels.len().saturating_sub(1);
+    let rows = levels.iter().enumerate().map(|(i, track)| {
         let total = track.lessons.len();
         let done = track
             .lessons
             .iter()
             .filter(|l| l.state == LessonState::Done)
             .count();
-        let current = track
-            .lessons
-            .iter()
-            .position(|l| s.next.as_ref().is_some_and(|n| n.id == l.id));
         let open = track.lessons.iter().any(|l| l.state != LessonState::Locked);
         div()
             .flex()
@@ -712,11 +709,11 @@ fn tracks(ui: &Ui, pal: &Pal, lessons: &Lessons, w: f32, cx: &mut Context<Shell>
                     .font_weight(FontWeight::MEDIUM)
                     .truncate()
                     .when(!open, |d| d.text_color(pal.dim))
-                    .child(i18n.tr(&format!("track-{}", track.id))),
+                    .child(i18n.tr(&track.title_key())),
             )
             .child(
                 div().flex_1().flex().gap(px(3.)).children(
-                    kit::steps(done, current, total, pal)
+                    kit::steps(&track.lessons, s.next.as_ref().map(|n| n.id.as_str()), pal)
                         .into_iter()
                         .map(|b| b.flex_1().h(px(10.)).rounded(px(1.5))),
                 ),
@@ -765,9 +762,9 @@ pub(super) fn next_meta(ui: &Ui, n: &taful_app::dashboard::NextLesson) -> String
     i18n.tr_args(
         "cockpit-next-meta",
         &[
-            ("track", i18n.tr(&format!("track-{}", n.track)).into()),
+            ("track", i18n.tr(&format!("level-{}", n.level)).into()),
             ("n", n.number.into()),
-            ("total", n.track_len.into()),
+            ("total", n.level_len.into()),
             ("minutes", n.minutes.unwrap_or(0).into()),
         ],
     )

@@ -40,6 +40,8 @@ pub fn frame(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>) ->
     let pal = Pal::new(&shell.ui);
     let view = view(shell, &pal, window, cx);
     let wide = f32::from(crate::caption::viewport(window).width) - RAIL >= WIDE_PANE;
+    let switch =
+        (shell.screen == Screen::SkillTree).then(|| super::lessons::view_switch(shell, &pal, cx));
     let table_crumb = (shell.screen == Screen::Table)
         .then(|| super::table::crumb(shell.table.read(cx)))
         .flatten();
@@ -57,7 +59,7 @@ pub fn frame(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>) ->
                 .h_full()
                 .flex()
                 .flex_col()
-                .child(bar(shell, table_crumb, wide, &pal))
+                .child(bar(shell, table_crumb, switch, wide, &pal))
                 .child(view),
         )
         .into_any_element()
@@ -206,7 +208,13 @@ pub fn percent(x: f64) -> String {
 
 /// The status bar. In a window narrower than designed (`wide` off) the
 /// crumb gives way and the last grades are left out.
-fn bar(shell: &Shell, table_crumb: Option<String>, wide: bool, pal: &Pal) -> Div {
+fn bar(
+    shell: &Shell,
+    table_crumb: Option<String>,
+    switch: Option<Div>,
+    wide: bool,
+    pal: &Pal,
+) -> Div {
     let (ui, i18n) = (&shell.ui, &shell.ui.i18n);
     let today = shell.cockpit.today();
     let crumb = match shell.screen {
@@ -215,7 +223,17 @@ fn bar(shell: &Shell, table_crumb: Option<String>, wide: bool, pal: &Pal) -> Div
             i18n.tr_args(
                 "cockpit-lessons-crumb",
                 &[
-                    ("tracks", l.summary.tracks.into()),
+                    (
+                        "groups",
+                        l.summary
+                            .list
+                            .groups
+                            .iter()
+                            .filter(|g| !g.is_soon())
+                            .count()
+                            .into(),
+                    ),
+                    ("view", l.summary.list.view.id().into()),
                     ("lessons", l.summary.total.into()),
                 ],
             )
@@ -326,6 +344,7 @@ fn bar(shell: &Shell, table_crumb: Option<String>, wide: bool, pal: &Pal) -> Div
                 .truncate()
                 .child(c)
         }))
+        .children(switch)
         .child(div().flex_1())
         .child(right)
 }
